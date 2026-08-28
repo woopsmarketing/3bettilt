@@ -435,3 +435,69 @@ retrofitted onto a finished run is a guess about what was run.
    strategy, and player-tendency logic**. ESLint already blocks `react`/`next`/`@gto-self/db`
    there; this extends the rule to strategy and player packages. Solver work does not start
    early — Phase 13 is gated by ADR-0020.
+
+---
+
+## ADR-0022 — Verification cadence: fast gate, milestone gate, final gate
+
+**Date:** 2026-08-28 · **Phase:** operating rule · **Status:** accepted
+
+**Context.** Running the full suite after every small change spends most of its time
+re-proving things no one touched. The cost is real: it slows every work package and makes
+agents reluctant to iterate.
+
+**Decision.** Three tiers, documented in `CLAUDE.md`:
+
+- **Fast gate** after each small task — the smallest check that proves the new code is not
+  obviously broken. No full E2E, no full regression, nothing unrelated to the change.
+- **Milestone gate** when a real user-facing capability is complete — typecheck, lint,
+  build, targeted integration and targeted E2E.
+- **Final gate** on frozen source — `pnpm verify`, full regression, cross-surface E2E,
+  fresh security and product review, run once.
+
+**Three rules that keep this from degrading into "less testing":**
+
+1. **Immediate-verification exceptions.** Migrations/schema, auth, authorization, security
+   boundaries, money/cost, PII, retention, concurrency/TOCTOU, shared runtime, wire
+   formats, destructive mutations, external side effects, shared API contracts and startup
+   configuration are verified at the moment they change — with a targeted integration test
+   for that specific risk, not a whole-product E2E run.
+2. **Never accumulate known breakage.** A failing fast gate stops the work package. "The
+   final E2E will catch it" is not a plan; it is a decision to debug several changes at
+   once later.
+3. **No redundant runs.** An expensive suite that passed on unchanged source is not re-run
+   without a reason (code changed, dependency changed, finding fixed, source frozen).
+
+**What is explicitly not changed.** Scope, architecture, safety rules and acceptance
+criteria are untouched. The aim is removing duplicate verification, not verification.
+
+---
+
+## ADR-0023 — Strategy policy is a composition layer, not part of `gto-core`
+
+**Date:** 2026-08-28 · **Phase:** 10 input · **Status:** accepted
+
+**Context.** Two rules that are individually obvious collide. ADR-0021: `gto-core` must
+never depend on `player-core`, so player statistics can never influence baseline solution
+data. The product spec: `ADAPTIVE` is by definition a function of the baseline *and* a
+player's tendencies. If strategy policy lived inside `gto-core` — as
+`docs/ARCHITECTURE.md` originally said — then implementing `ADAPTIVE` would require
+`gto-core` to import `player-core`, breaking the first rule at exactly the moment the
+feature ships.
+
+**Decision.** Strategy policy becomes its own composition layer that may depend on both:
+
+```
+gto-core   player-core
+     \\        /
+   strategy-policy   ->   apps/web
+```
+
+`gto-core` and `player-core` remain mutually unaware. During MVP, `GTO` and `SAFE_GTO`
+need no player data at all and may be implemented inside `gto-core`. **The split happens
+before any adaptive logic is written, not after** — retrofitting a boundary around code
+that has already reached across it is how the rule would quietly die.
+
+**Consequences.** A `packages/strategy-policy` workspace package is created when Phase 10
+begins, with its own ESLint entry. The baseline stays structurally incapable of being
+mutated by player statistics, rather than merely conventionally protected.

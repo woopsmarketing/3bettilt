@@ -59,13 +59,31 @@ notes, our own observations, and context-scoped confidence.
 Manual HUD snapshots and our own observations are permanently separate record types.
 Manual snapshots are never auto-overwritten.
 
-### D. Strategy Policy — inside `@gto-self/gto-core`
+### D. Strategy Policy — a composition layer above `gto-core` and `player-core`
 
 Three presentation modes: `GTO`, `SAFE_GTO` (default), `ADAPTIVE` (scaffolding only).
 
 The GTO baseline is always kept intact and separately visible. `SAFE_GTO` is a policy
-layer _on top of_ GTO, never relabelled as equilibrium. See
-`docs/GTO_BASELINE.md` for the exact rules.
+layer _on top of_ GTO, never relabelled as equilibrium. See `docs/GTO_BASELINE.md` for
+the exact rules.
+
+**Where it lives.** `gto-core` must never depend on `player-core` (ADR-0021) — player
+statistics can never be allowed to influence baseline solution data. But `ADAPTIVE` is by
+definition a function of both the baseline and a player's tendencies. Those two facts
+force strategy policy into its own layer that depends on both, rather than into either of
+them (ADR-0023):
+
+```
+   gto-core          player-core
+       \                /
+        strategy-policy        <- composes; may depend on both
+              |
+           apps/web
+```
+
+During MVP, `GTO` and `SAFE_GTO` need no player data and may be implemented inside
+`gto-core`. `ADAPTIVE` is what forces the split, and the split happens before any adaptive
+logic is written — not after.
 
 ## Money
 

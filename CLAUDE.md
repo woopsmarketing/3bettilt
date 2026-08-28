@@ -75,8 +75,42 @@ solver-lab  ->  shared only. Never imported by the app.
 | `pnpm dev`                             | Next dev server on :3210             |
 | `pnpm e2e`                             | Playwright critical-path tests       |
 
-Before you report a phase complete: `pnpm verify` must pass, and you must have
-added real tests for every money/state transition you touched.
+## Verification cadence
+
+The goal is to remove *duplicate* verification, not verification. Correctness and security
+gates are never lowered — only the frequency of the expensive ones changes.
+
+**Fast gate — after every small task.** Run the smallest check that proves what you just
+wrote is not obviously broken: the changed module's unit tests, the changed contract's
+test, a targeted component test, `tsc` if types moved. Do not run the full E2E suite, a
+full regression sweep, or tests unrelated to your change.
+
+**Milestone gate — when a real user-facing capability is complete** (a phase, or DB + API
++ UI joined into something a person can actually use): `pnpm typecheck`, `pnpm lint`,
+`pnpm build`, targeted integration and targeted E2E.
+
+**Final gate — once implementation is complete and the source is frozen:** `pnpm verify`
+plus full regression, cross-surface E2E, and fresh security and product review. Run the
+full suite once, not repeatedly. If it finds a problem: fix it, run that problem's targeted
+test, then the affected milestone tests, then only the final regression the change actually
+invalidates.
+
+**Verify immediately, whatever the cadence**, when a change touches: DB migrations or
+schema, auth or authorization, a security boundary, money/cost/budget, PII, retention or
+deletion, concurrency or races, shared runtime, a wire/protocol format, a destructive
+mutation, an external side effect, a shared API contract, or production startup
+configuration. Even then prefer the targeted integration test that exercises that specific
+risk over a whole-product E2E run.
+
+**Never accumulate known breakage.** If a fast gate fails: stop, fix it, get the targeted
+check passing, then continue. "The final E2E will catch it" is not a plan.
+
+**Do not re-run an expensive suite that already passed on unchanged source.** Re-run when
+the code changed, a dependency changed, a reviewer finding was fixed, or the source is
+frozen for final verification. Reuse a running dev server rather than restarting it.
+
+Whatever the gate: you must have added real tests for every money/state transition you
+touched, and long test logs belong in a report file, not in your handoff.
 
 ## Working agreement for phase agents
 
