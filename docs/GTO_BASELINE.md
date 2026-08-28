@@ -24,13 +24,22 @@ A mock provider is permitted for UI development on these conditions:
 ## Baseline identity and versioning
 
 ```
-CP_NL50_ANTE_100BB_BASELINE_V1
-   ^   ^     ^     ^
-   |   |     |     stack depth
-   |   |     ante mode
-   |   stake preset
-   site style
+CP_NL50_ANTE_100BB_PREFLOP_V1
+CP_NL50_ANTE_100BB_HU_POSTFLOP_SRP_V1
+ ^   ^     ^     ^      ^          ^
+ |   |     |     |      coverage   version
+ |   |     |     stack depth
+ |   |     ante mode
+ |   stake preset
+ site style
 ```
+
+**The identifier must state its coverage** (ADR-0019). A name like
+`..._BASELINE_V1` implies a dataset covering the whole game; per ADR-0014 no such dataset
+is reachable, so the name would be a claim we cannot meet. Coverage names the lineup,
+street scope and pot type actually solved — which is what lets the matcher detect a miss
+and the UI say "no exact solution for this lineup" instead of silently presenting a
+six-handed answer for a four-handed spot.
 
 Every solution dataset is versioned and immutable. **Never regenerate under an
 existing version.** A changed action tree, a changed rake model, a changed sizing set

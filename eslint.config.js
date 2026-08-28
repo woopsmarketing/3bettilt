@@ -36,8 +36,9 @@ export default tseslint.config(
     },
   },
   {
-    // Domain packages must stay pure: no React, no DOM, no direct DB access.
-    files: ['packages/poker-core/**/*.ts', 'packages/gto-core/**/*.ts'],
+    // The poker engine knows nothing but poker (ADR-0021): no React, no DOM, no
+    // persistence, and no strategy or player-tendency logic.
+    files: ['packages/poker-core/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -45,9 +46,36 @@ export default tseslint.config(
           paths: [
             { name: 'react', message: 'Domain packages must not depend on React.' },
             { name: 'next', message: 'Domain packages must not depend on Next.js.' },
+            { name: '@gto-self/db', message: 'Domain packages must not depend on persistence.' },
             {
-              name: '@gto-self/db',
-              message: 'Domain packages must not depend on persistence.',
+              name: '@gto-self/gto-core',
+              message: 'poker-core must not know about GTO, CFR or strategy policy (ADR-0021).',
+            },
+            {
+              name: '@gto-self/player-core',
+              message: 'poker-core must not know about player tendencies (ADR-0021).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The GTO engine knows nothing about individual players, and never reaches for
+    // persistence or the UI.
+    files: ['packages/gto-core/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            { name: 'react', message: 'Domain packages must not depend on React.' },
+            { name: 'next', message: 'Domain packages must not depend on Next.js.' },
+            { name: '@gto-self/db', message: 'Domain packages must not depend on persistence.' },
+            {
+              name: '@gto-self/player-core',
+              message:
+                'GTO baseline data must never be influenced by individual player statistics (ADR-0021).',
             },
           ],
         },
@@ -64,7 +92,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.ts', '**/*.test.tsx', 'solver-lab/**/*.ts'],
+    files: ['**/*.test.ts', '**/*.test.tsx', 'solver-lab/**/*.ts', 'scripts/**/*.mjs'],
     rules: { 'no-console': 'off', '@typescript-eslint/no-explicit-any': 'off' },
   },
 );

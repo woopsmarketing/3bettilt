@@ -330,3 +330,108 @@ adapter that converts its rounding to ours at the comparison boundary, and the d
 must be restated in the comparison harness so nobody reads a 1-milliBB difference as a bug
 in our engine. This does not change ADR-0009; our floor rule stands until a real CoinPoker
 fixture says otherwise.
+
+---
+
+## ADR-0018 — Rake and fee are configuration; CoinPoker behaviour is observed, not asserted
+
+**Date:** 2026-08-28 · **Phase:** 1 · **Status:** accepted
+
+**Context.** The user's CoinPoker hand-history evidence shows three things:
+
+1. preflop-only hands can have `Rake = 0`;
+2. postflop hands show a normal percentage rake;
+3. **Splash Fee is recorded separately from Rake**.
+
+This resembles the widely used "no flop, no drop" convention, but resemblance is not
+evidence. We have observations from one export, not a documented site rule.
+
+**Decision.** Treat all three as **observed fixture behaviour to be verified in Phase 11**,
+never as a universal poker rule, and never as something poker-core knows about CoinPoker.
+`poker-core` accepts a policy; it does not contain a site.
+
+- `RakeConfig` carries an explicit **`triggerPolicy`** (a named policy such as `ALWAYS` or
+  `FLOP_SEEN`), not a boolean flag whose meaning is only legible from its name. Adding a
+  third trigger must not require touching rake arithmetic.
+- `RakeConfig` keeps its explicit **rounding policy** (ADR-0009: floor).
+- The rate stays an **exact rational** (`numerator`/`denominator`), not a float `rate`, and
+  the cap stays **milliBB**, not BB. This deviates from the field names sketched in the
+  decision (`rate`, `capBB`) and does so deliberately: ADR-0001 forbids float money, and
+  `5%` as `5/100` is exact where `0.05` is not.
+- **`FeeConfig` is separate from `RakeConfig`.** Splash fee is recorded, computed and
+  reported as its own deduction, because the hand history records it separately and
+  collapsing them would destroy that distinction. Default: disabled/zero.
+- Settlement reports rake and fees as **separate recorded amounts**, so a corrected rule
+  later changes configuration and data, not code.
+
+**Consequences.** Every CoinPoker-specific assumption is confined to a preset value, and
+`docs/STATE.md` carries the open question until a real fixture settles it. Splash-fee
+*trigger* semantics remain unknown; the config models the amount without inventing when it
+applies.
+
+---
+
+## ADR-0019 — Baseline identifiers carry their coverage scope
+
+**Date:** 2026-08-28 · **Phase:** 9/13 input · **Status:** accepted
+
+**Context.** `CP_NL50_ANTE_100BB_BASELINE_V1` implies a dataset covering the whole game.
+Per ADR-0014 no such dataset is reachable, so the name would be a claim we cannot meet, and
+a UI reading it would have no way to know what is missing.
+
+**Decision.** Identifiers state coverage explicitly:
+
+```
+CP_NL50_ANTE_100BB_PREFLOP_V1
+CP_NL50_ANTE_100BB_HU_POSTFLOP_SRP_V1
+```
+
+Format: `<site>_<stake>_<ante>_<stack>_<coverage>_V<n>`, where coverage names the lineup,
+street scope and pot type actually solved. `..._BASELINE_V1` is retired as a name.
+
+**Consequences.** A spot outside a dataset's coverage is a *miss* the matcher can detect
+from the identifier, which is what lets the UI say "no exact solution for this lineup"
+instead of silently presenting a six-handed answer for a four-handed spot. Immutability
+(one version, never regenerated) is unchanged.
+
+---
+
+## ADR-0020 — Pre-Phase-13 planning checkpoint
+
+**Date:** 2026-08-28 · **Phase:** gate before 13 · **Status:** accepted
+
+**Decision.** Phase 13 does not start until a planning checkpoint has settled and recorded,
+in writing, all six of:
+
+1. **Exact baseline coverage and version naming** — the concrete identifier set to be
+   produced, per ADR-0019.
+2. **Exact CoinPoker rake trigger semantics** — verified against real hand histories, not
+   inferred from convention (ADR-0018).
+3. **Rake rounding semantics** — confirm or correct ADR-0009's floor rule against fixtures.
+4. **Splash Fee treatment** — when it applies, how it interacts with the cap, and whether it
+   belongs in the solved game at all or only in settlement.
+5. **Solver validation thresholds** — the exploitability targets that count as converged, per
+   game size, decided *before* any solve so the bar cannot be moved to fit a result.
+6. **Solver reproducibility requirements** — seed, iteration count, abstraction, code version
+   and hardware recorded such that a dataset can be regenerated bit-identically.
+
+**Why a gate rather than a task.** Items 5 and 6 lose their value entirely if decided after
+the fact: a threshold chosen once a number is known is not a threshold, and reproducibility
+retrofitted onto a finished run is a guess about what was run.
+
+---
+
+## ADR-0021 — Decision stability, and poker-core's independence during MVP
+
+**Date:** 2026-08-28 · **Phase:** operating rule · **Status:** accepted
+
+**Decision.**
+
+1. Accepted decisions — in particular the open-source spike outcomes ADR-0011..0017 — are
+   **not reopened during normal MVP work**. They are revisited only on the falsifying
+   evidence each ADR names, or on an explicit instruction. An agent that disagrees reports
+   it; it does not relitigate.
+2. `packages/poker-core` stays independent of **CFR, GTO solution data, SAFE_GTO, ADAPTIVE
+   strategy, and player-tendency logic**. ESLint already blocks `react`/`next`/`@gto-self/db`
+   there; this extends the rule to strategy and player packages. Solver work does not start
+   early — Phase 13 is gated by ADR-0020.

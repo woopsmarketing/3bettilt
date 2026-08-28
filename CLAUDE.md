@@ -27,8 +27,11 @@ preference.
 3. **Never destroy user input.** Actual entered values are persisted alongside any
    normalized/bucketed values used for solution lookup. Both are shown.
 4. **Layering is enforced.** `poker-core` and `gto-core` must not import React,
-   Next.js, or `@gto-self/db` (ESLint enforces this). The domain engine is
-   authoritative; the DB is persistence; React is presentation.
+   Next.js, or `@gto-self/db`. `poker-core` additionally must not import `gto-core` or
+   `player-core` — the poker engine knows nothing about CFR, GTO data, SAFE_GTO,
+   ADAPTIVE, or player tendencies. `gto-core` must not import `player-core` — player
+   statistics must never influence baseline solution data. ESLint enforces all of this.
+   The domain engine is authoritative; the DB is persistence; React is presentation.
 5. **No fake implementations.** No stubs that silently return plausible values. A
    `TODO` must be explicit, documented, and listed in `docs/STATE.md` under known
    issues.
@@ -37,6 +40,12 @@ preference.
 7. **When unsure about a poker rule, do not invent behaviour.** Add a documented
    assumption in `docs/DECISIONS.md` and expose a manual override in the UI.
 8. **No scope expansion, no drive-by refactors.** Do the phase you were given.
+9. **Do not reopen accepted decisions.** `docs/DECISIONS.md` is settled unless the
+   falsifying evidence an ADR names actually appears. If you disagree, report it — do
+   not relitigate it in code.
+10. **Rake and fees are policy, not site knowledge.** `poker-core` accepts a
+    `RakeConfig`/`FeeConfig`; it never contains CoinPoker-specific assumptions. Observed
+    hand-history behaviour is an observation until a fixture confirms it (ADR-0018).
 
 ## Layering (import direction)
 

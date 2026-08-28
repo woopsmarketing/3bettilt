@@ -74,6 +74,13 @@ rake, splash fee, run-it-twice.
 **12 — QA hardening.** Full critical path exercised repeatedly, Playwright coverage,
 UX friction removed.
 
+**Pre-13 planning checkpoint (ADR-0020).** Phase 13 does not start until six items are
+settled and written down: exact baseline coverage and version naming; exact CoinPoker rake
+trigger semantics verified against real hand histories; rake rounding semantics; Splash Fee
+treatment; solver validation thresholds; and solver reproducibility requirements. Items 5
+and 6 must be fixed *before* any solve — a threshold chosen once the number is known is not
+a threshold, and reproducibility retrofitted onto a finished run is a guess about what ran.
+
 **13 — Solver research spike.** Gated. Requires an explicit go-ahead. Scope fixed by
 ADR-0014 after the open-source evaluation measured the problem: the deliverable is
 (1) our own CFR validated on Kuhn and Leduc against published equilibria, and (2) a
