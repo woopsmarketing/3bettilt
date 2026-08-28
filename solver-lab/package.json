@@ -1,0 +1,16 @@
+{
+  "name": "@gto-self/solver-lab",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Isolated research sandbox for CFR experiments. Never imported by the app.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@gto-self/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
+  }
+}

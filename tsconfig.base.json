@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowJs": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+
+    "types": [],
+
+    "baseUrl": ".",
+    "paths": {
+      "@gto-self/shared": ["packages/shared/src/index.ts"],
+      "@gto-self/shared/*": ["packages/shared/src/*"],
+      "@gto-self/poker-core": ["packages/poker-core/src/index.ts"],
+      "@gto-self/poker-core/*": ["packages/poker-core/src/*"],
+      "@gto-self/gto-core": ["packages/gto-core/src/index.ts"],
+      "@gto-self/gto-core/*": ["packages/gto-core/src/*"],
+      "@gto-self/player-core": ["packages/player-core/src/index.ts"],
+      "@gto-self/player-core/*": ["packages/player-core/src/*"],
+      "@gto-self/db": ["packages/db/src/index.ts"],
+      "@gto-self/db/*": ["packages/db/src/*"],
+      "@gto-self/coinpoker-parser": ["packages/coinpoker-parser/src/index.ts"],
+      "@gto-self/coinpoker-parser/*": ["packages/coinpoker-parser/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", ".next", "coverage"]
+}

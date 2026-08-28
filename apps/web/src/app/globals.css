@@ -1,0 +1,57 @@
+@import 'tailwindcss';
+
+/*
+ * GTO-SELF design tokens.
+ * Dense, dark, fast. Decoration is a non-goal — every pixel should carry
+ * information the player needs during a hand.
+ */
+@theme {
+  --color-felt-900: #0a1512;
+  --color-felt-800: #0f211c;
+  --color-felt-700: #14302a;
+  --color-felt-600: #1b3f37;
+
+  --color-surface-900: #0b0d10;
+  --color-surface-800: #12151a;
+  --color-surface-700: #1a1f27;
+  --color-surface-600: #242b35;
+  --color-surface-500: #333c49;
+
+  --color-ink-100: #f4f6f8;
+  --color-ink-300: #c3cad4;
+  --color-ink-500: #8b96a5;
+  --color-ink-700: #5b6572;
+
+  --color-hero-500: #38bdf8;
+  --color-actor-500: #fbbf24;
+  --color-dirty-500: #f97316;
+  --color-danger-500: #ef4444;
+  --color-good-500: #34d399;
+
+  /* Anything sourced from a non-real strategy provider renders in this colour. */
+  --color-mock-500: #c084fc;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-surface-900);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  /* The app is a keyboard-first tool; accidental text selection fights the UX. */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures everywhere money is shown, so digits never jitter. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
