@@ -107,11 +107,22 @@ the last logical user event and rebuilds from scratch — no inverse operations,
 drift.
 
 ```
-HAND_STARTED  PLAYER_DEALT_IN  POST_ANTE  POST_SB  POST_BB
+HAND_STARTED  PLAYER_DEALT_IN  POST_ANTE  POST_SB  POST_BB  HOLE_CARDS_SET
 FOLD  CHECK  CALL  BET  RAISE  ALL_IN  RETURN_UNCALLED
-FLOP_DEALT  TURN_DEALT  RIVER_DEALT  SHOW_CARD
+FLOP_DEALT  TURN_DEALT  RIVER_DEALT
 POT_AWARDED  HAND_FINISHED
 ```
+
+Two corrections against the original sketch, made in Phase 1 and normative from here
+(the authoritative definition is `HandEventKind` in `packages/poker-core/src/events.ts`,
+specified in `docs/POKER_CORE_API.md`):
+
+- **`HOLE_CARDS_SET` replaces `SHOW_CARD`.** Cards are set for a seat as a unit, and the
+  same event serves both the Hero's own cards and a showdown reveal, so one event covers
+  both rather than a per-card event that would need reassembling on replay.
+- **There is no street-transition event.** The street is derived from the board deals and
+  the betting-round state. An explicit `STREET_ADVANCED` would be a second source of truth
+  for something already implied, and the two could disagree after an undo.
 
 Persist the _actual_ input values. Derived values must be reproducible from the event
 log plus the hand's starting configuration.

@@ -501,3 +501,71 @@ that has already reached across it is how the rule would quietly die.
 **Consequences.** A `packages/strategy-policy` workspace package is created when Phase 10
 begins, with its own ESLint entry. The baseline stays structurally incapable of being
 mutated by player statistics, rather than merely conventionally protected.
+
+---
+
+## ADR-0024 — `round.currentBet` is a price, not an obligation
+
+**Date:** 2026-08-28 · **Phase:** 1 · **Status:** accepted
+
+**Context.** Under `rules.shortBlindSetsFullLevel`, a big blind who cannot cover the blind
+still sets `round.currentBet` to the nominal 1 BB. The engine originally decided "does this
+seat still owe an action?" by comparing the seat's street contribution against
+`round.currentBet`. A review lens found that this puts a seat on the clock that owes
+nothing: it has already matched every live opponent, and no opponent can raise it.
+
+The consequences were not cosmetic. Folding there forfeits chips no poker rule can take,
+and calling writes a `CALL` into `state.actions` for an action that never happened —
+corrupting the action tree that GTO matching criterion 4 requires to be exact. Heads-up,
+the hand dead-ended.
+
+**Decision.** Round closure keys off the **highest live opposing contribution** — money an
+unfolded opponent actually wagered — not off `round.currentBet`. `callAmount`,
+`fullCallAmount` and `minWagerToAmount` continue to key off `currentBet`, so the nominal
+1 BB price of entry is unchanged for seats that genuinely face action.
+
+**Consequences.** Money-neutral, action-tree-correcting. Two previously passing tests had
+encoded the phantom call and were rewritten: the final stacks are byte-identical either
+way, and the only difference is that a `CALL` that never happened is no longer recorded.
+That is exactly what CLAUDE.md rule 3 forbids, so the tests were wrong and the engine was
+right to change. Assumption 6 in `docs/POKER_CORE_API.md` was corrected accordingly.
+
+---
+
+## ADR-0025 — `MAIN_POT_FIRST` rake allocation can pay a winner zero
+
+**Date:** 2026-08-28 · **Phase:** 1 · **Status:** accepted, documented rather than "fixed"
+
+**Context.** With `rake.allocation = 'MAIN_POT_FIRST'`, a capped rake drains from the main
+pot upward and can consume a small main pot entirely, leaving its winner a net of zero.
+
+**Decision.** Leave the arithmetic as it is and **state it**, in `allocateRake`'s TSDoc, in
+spec §7.13 and as assumption 4. Do not invent a minimum-payout floor.
+
+**Why not "fix" it.** Draining the main pot first is literally what the policy name means,
+`PROPORTIONAL` is the shipped default, and CLAUDE.md rule 7 forbids inventing poker
+behaviour where we have no evidence. A floor would be a fabricated rule dressed as a bug
+fix. The genuine latent defect next to it *was* fixed: `PROPORTIONAL` now spills its floor
+remainder past a main pot too small to hold it, and `allocateRake` asserts that no pot is
+ever charged more than it contains.
+
+---
+
+## ADR-0026 — `rootDir` removed from every package tsconfig (Phase 0 defect)
+
+**Date:** 2026-08-28 · **Phase:** 1 · **Status:** accepted
+
+**Context.** Phase 0 set `"rootDir": "."` in every package's tsconfig. Under `noEmit` it
+achieves nothing, and it makes TypeScript reject **any** cross-package import with TS6059.
+`poker-core` hit it the moment it imported `@gto-self/shared`. I reproduced it
+independently on `gto-core` with a two-line probe import before accepting the report.
+
+**Decision.** `rootDir` is removed from all seven package tsconfigs. Verified: the probe
+import typechecks clean afterwards, and `pnpm typecheck` passes across all eight projects.
+
+**Why it is recorded.** It was a latent repo-wide defect that would have surfaced as a
+confusing failure in the first task each of `gto-core`, `player-core`, `db`,
+`coinpoker-parser` and `solver-lab` attempted. It was found because a phase agent was
+required to run a verification it could not otherwise pass, and reported the config change
+as a deliberate divergence instead of making it silently — which is the behaviour the
+delegation rules are meant to produce.
