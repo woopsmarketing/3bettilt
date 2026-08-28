@@ -38,3 +38,6 @@ fixtures/coinpoker/private/
 
 # read-only clones of external projects, kept out of the repo (ADR-0015)
 references/
+
+# ephemeral instruction scratchpad, not project state
+prompt2
