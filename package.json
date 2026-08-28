@@ -21,7 +21,8 @@
     "e2e": "pnpm --filter @gto-self/web e2e",
     "db:generate": "pnpm --filter @gto-self/db db:generate",
     "db:migrate": "pnpm --filter @gto-self/db db:migrate",
-    "verify": "pnpm typecheck && pnpm test && pnpm build"
+    "verify": "pnpm typecheck && pnpm test && pnpm lint && pnpm lint:licences && pnpm build",
+    "lint:licences": "node scripts/check-licence-hygiene.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

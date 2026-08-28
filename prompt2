@@ -1,0 +1,69 @@
+다음 fresh-agent에게 바로 이런 Spike를 시키는 걸 추천한다.
+OPEN SOURCE INTEGRATION SPIKE
+
+목표:
+현재 GTO-SELF에서 직접 구현 중인 코드 중
+검증된 오픈소스로 대체/참조할 부분을 판단한다.
+
+반드시 검토:
+
+1. Ge-limin/poker-engine-ts
+2. elliottneilclark/rs-poker
+3. amaster97/poker_solver
+4. uoftcprg/pokerkit
+5. google-deepmind/open_spiel
+
+검토 기준:
+
+- License
+- 유지보수 상태
+- 테스트 수준
+- 6-max 지원
+- NLHE 지원
+- ante 지원
+- arbitrary stacks
+- all-in
+- side pot
+- replay
+- event sourcing
+- CFR/GTO capabilities
+- multiway capability
+- rake support
+- integration complexity
+- performance
+- future commercial/free distribution suitability
+
+현재 GTO-SELF 코드와 기능을 비교해서 다음 중 하나로 분류:
+
+ADOPT
+직접 dependency로 사용
+
+ADAPT
+wrapper를 만들어 사용
+
+REFERENCE
+알고리즘/테스트 oracle로만 참고
+
+REJECT
+사용하지 않음
+
+특히 poker-engine-ts를 현재 poker-core와 비교하고,
+직접 poker-core 구현을 계속하는 것과 dependency로 교체하는 것의
+비용/리스크를 비교하라.
+
+rs-poker의 CFR 구현이
+CoinPoker 6-max / 100BB / 0.16BB ante / 5% rake / cap 8BB
+baseline 생성에 어느 정도 활용 가능한지 코드 수준으로 조사하라.
+
+amaster97/poker_solver의
+DCFR, blueprint storage, nearest/interpolation, range-vs-range 구조 중
+재사용 가능한 아이디어/코드를 조사하라.
+
+라이선스가 AGPL인 저장소의 코드를 복사하지 마라.
+
+결과를:
+docs/OPEN_SOURCE_EVALUATION.md
+에 기록하라.
+
+아직 기존 architecture를 대규모 변경하지 마라.
+평가 후 orchestrator가 결정을 내리게 하라.

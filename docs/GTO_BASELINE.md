@@ -72,12 +72,26 @@ Research sizing candidates — these are **candidates to evaluate, not poker law
 
 Rules for the spike:
 
-- Do not attempt a production six-player NLHE solver in one phase.
+- Do not attempt a production six-player NLHE solver in one phase. `docs/OPEN_SOURCE_EVALUATION.md`
+  section 6 supplies the measured numbers behind this sentence, and ADR-0014 fixes the
+  deliverable as a validated method plus a cost curve, not a baseline.
 - Validate any CFR implementation on Kuhn and Leduc poker first, with published
-  equilibrium values as the check.
+  equilibrium values as the check. **Two landmines, found during the open-source
+  evaluation:** (1) Kuhn poker has a *continuum* of equilibria parameterised by
+  alpha in (0, 1/3], so asserting a point strategy value is wrong — assert the algebraic
+  invariant between infosets instead. (2) At least one published open-source DCFR
+  implementation has docstrings that write the strategy-sum update with the opponent's
+  reach while its code correctly uses the acting player's own reach. Transcribing the
+  comment yields a silently wrong average strategy that still looks plausible. Read the
+  code, not the comment.
 - Before integrating any external solver: check the licence, document the licence in
   `docs/DECISIONS.md`, and confirm compatibility with future distribution. Never
-  silently adopt AGPL, commercial or proprietary code.
+  silently adopt AGPL, commercial or proprietary code. ADR-0015 carries a named
+  blocklist of AGPL/unlicensed poker solvers, because those are exactly what a search
+  for "open source poker solver" surfaces first. `pnpm lint:licences` is the standing
+  tripwire.
+- Never import an unprovenanced strategy chart as baseline data, whatever its licence.
+  A permissive licence makes copying *legal*, not the numbers *true*.
 - Never claim NLHE solving works unless it has actually been validated.
 
 ## Strategy policy layer

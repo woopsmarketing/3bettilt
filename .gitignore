@@ -35,3 +35,6 @@ blob-report/
 
 # private hand histories (may contain real nicknames)
 fixtures/coinpoker/private/
+
+# read-only clones of external projects, kept out of the repo (ADR-0015)
+references/

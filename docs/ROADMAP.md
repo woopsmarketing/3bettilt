@@ -74,7 +74,15 @@ rake, splash fee, run-it-twice.
 **12 — QA hardening.** Full critical path exercised repeatedly, Playwright coverage,
 UX friction removed.
 
-**13 — Solver research spike.** Gated. Requires an explicit go-ahead. CFR validated on
-Kuhn/Leduc first; licences documented before any external solver is touched.
+**13 — Solver research spike.** Gated. Requires an explicit go-ahead. Scope fixed by
+ADR-0014 after the open-source evaluation measured the problem: the deliverable is
+(1) our own CFR validated on Kuhn and Leduc against published equilibria, and (2) a
+measured cost curve for progressively larger abstractions. A 6-max NLHE baseline is
+**not** attempted. Preconditions: the full evaluation pass on `open_spiel` (ADR-0013),
+and licences documented before any external solver is touched (ADR-0015).
 
-**14 — Real baseline generation.** Only after 13 validates an approach.
+**14 — Real baseline generation.** Blocked on 13, and now understood to be *not yet
+scopeable* rather than merely pending: nothing evaluated solves 6-max NLHE, and the
+measured scale (open_spiel's unabstracted 6-player no-limit game exposes 100,001 distinct
+actions; rs-poker's own source allocates ~17 GB per hand at three players) says no
+single-machine exact solve exists to schedule.
