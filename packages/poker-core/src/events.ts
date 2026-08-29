@@ -1,13 +1,15 @@
 /**
  * The persisted event log. A hand IS its ordered `HandEvent[]`; `HandState` is the fold.
  *
- * Every leaf field is `number | string | boolean`, an array of those, or `TableConfig`
- * (itself all primitives). No `Date`, `Map`, `Set`, `bigint`, `undefined` or class
- * instance appears in any payload, so `JSON.parse(JSON.stringify(e))` is lossless.
+ * Every leaf field is `number | string | boolean`, an array of those, `TableConfig` or
+ * `BlindSeatOverride` (both themselves all primitives). No `Date`, `Map`, `Set`,
+ * `bigint`, `undefined` or class instance appears in any payload, so
+ * `JSON.parse(JSON.stringify(e))` is lossless.
  */
 import { asId, type Card, type HandId, type IdFactory } from '@gto-self/shared';
 import type { EventId, MilliBB, PlayerId } from '@gto-self/shared';
 import type { TableConfig } from './config.js';
+import type { BlindSeatOverride } from './positions.js';
 import type { SeatIndex } from './seat.js';
 
 export type EventOrigin = 'USER' | 'ENGINE';
@@ -29,6 +31,7 @@ export type HandEventKind =
   | 'HAND_STARTED'
   | 'PLAYER_DEALT_IN'
   | 'POST_ANTE'
+  | 'POST_DEAD_BLIND'
   | 'POST_SB'
   | 'POST_BB'
   | 'HOLE_CARDS_SET'
@@ -61,6 +64,13 @@ export type HandEventPayload =
       readonly config: TableConfig;
       readonly buttonSeat: SeatIndex;
       readonly heroSeat: SeatIndex | null;
+      /**
+       * The manual SB/BB assignment this hand was started with, or `null` for the
+       * ordinary rotation (ADR-0031). REQUIRED and persisted: positions and both action
+       * orders are derived from it on every replay, and a hand that replayed to
+       * different blinds would be a corrupt log.
+       */
+      readonly blindOverride: BlindSeatOverride | null;
     }
   /** ENGINE. One per dealt-in seat, ascending physical seat order. */
   | {
@@ -72,6 +82,20 @@ export type HandEventPayload =
     }
   /** ENGINE. amount = min(config.ante.amount, stack) — the ACTUAL amount posted. */
   | { readonly kind: 'POST_ANTE'; readonly seat: SeatIndex; readonly amount: MilliBB }
+  /**
+   * ENGINE, from an EXPLICIT `StartHandOptions.deadBlinds` entry — never inferred
+   * (ADR-0031). A neutral accounting event whose arithmetic is IDENTICAL to an ante:
+   * dead money that reaches the pot and the side-pot layering basis but never lowers
+   * what the seat owes to call.
+   *
+   * Only the DEAD portion of a returning player's post is modelled here. A live portion
+   * is an ordinary blind post; there is no combined event, and the engine has no opinion
+   * about who owes one — automatic missed-blind and dead-button rules stay unimplemented.
+   *
+   * amount = min(requested, stackAfterAnte) — the ACTUAL amount posted, and always > 0
+   * (a seat the ante left with nothing posts no event at all).
+   */
+  | { readonly kind: 'POST_DEAD_BLIND'; readonly seat: SeatIndex; readonly amount: MilliBB }
   /** ENGINE. amount = min(smallBlind, stackAfterAnte). */
   | { readonly kind: 'POST_SB'; readonly seat: SeatIndex; readonly amount: MilliBB }
   /** ENGINE. amount = min(bigBlind, stackAfterAnte). */
@@ -131,8 +155,11 @@ export type HandEventPayload =
   /**
    * Winners are USER input in Phase 1 (hand evaluation is out of scope) or ENGINE when
    * exactly one contender remains. Amounts are always engine-computed. `rake` records the
-   * rake ACTUALLY APPLIED (ADR-0009), so a later configuration correction never rewrites
-   * or invalidates stored history.
+   * rake ACTUALLY APPLIED (ADR-0009) and `fee` the fee ACTUALLY APPLIED (ADR-0032), so a
+   * later configuration correction never rewrites or invalidates stored history.
+   *
+   * `fee` is REQUIRED and is ZERO when there is none — the two deductions are recorded
+   * separately, and `netAmount === grossAmount - rake - fee`.
    */
   | {
       readonly kind: 'POT_AWARDED';
@@ -140,6 +167,7 @@ export type HandEventPayload =
       readonly winners: readonly SeatIndex[];
       readonly grossAmount: MilliBB;
       readonly rake: MilliBB;
+      readonly fee: MilliBB;
       readonly netAmount: MilliBB;
       readonly shares: readonly PotShare[];
     }
@@ -148,6 +176,8 @@ export type HandEventPayload =
       readonly kind: 'HAND_FINISHED';
       readonly reason: HandEndReason;
       readonly totalRake: MilliBB;
+      /** Required, ZERO when no fee was charged. Never merged into `totalRake`. */
+      readonly totalFees: MilliBB;
     };
 
 /** Narrows correctly on `.kind`: an intersection distributes over the union. */

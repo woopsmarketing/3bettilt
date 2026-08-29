@@ -255,3 +255,115 @@ export function applyHandResult(table: TableState, hand: Hand): EngineResult<Tab
   }
   return ok({ ...table, seats, handNumber: table.handNumber + 1 });
 }
+
+/**
+ * Auto top-up is a between-hands TABLE operation, not a poker rule: the intended
+ * sequence is `applyHandResult` -> `applyAutoTopUp` -> `advanceButton`, run once per
+ * completed hand. Running top-up before the button search matters — a seat this policy
+ * revives must be eligible again by the time the button looks for the next dealt-in
+ * seat (see `table.test.ts` / `tests/auto-top-up.test.ts` for the worked sequence).
+ */
+export interface AutoTopUpPolicy {
+  readonly enabled: boolean;
+  /** Stack to top a seat back up TO. Typically config.referenceStack. */
+  readonly targetStack: MilliBB;
+  /** Only seats with a stack STRICTLY BELOW this are topped up. */
+  readonly threshold: MilliBB;
+}
+
+/** Total. Off by default; tops any seat below the buy-in back up to the buy-in. */
+export function defaultAutoTopUpPolicy(config: TableConfig): AutoTopUpPolicy {
+  return { enabled: false, targetStack: config.referenceStack, threshold: config.referenceStack };
+}
+
+/**
+ * Total. The per-seat deltas a top-up would apply, so the UI can preview it before
+ * `applyAutoTopUp` commits it. Empty when `policy.enabled` is false — that is the
+ * whole meaning of the flag, so an unchecked toggle previews as "nothing changes".
+ *
+ * A seat qualifies when it is ACTIVE with a player seated (never SITTING_OUT, never
+ * EMPTY — see ASSUMPTION below) and its stack is strictly below BOTH
+ * `policy.threshold` AND `policy.targetStack`. Top-up only ever ADDS chips: requiring
+ * both means that when `threshold > targetStack`, the effective rule is "top up only
+ * seats below targetStack" — a threshold set above the target can never shrink anyone,
+ * and can never be satisfied by matching only the (looser) target check.
+ *
+ * ASSUMPTION: a busted (zero-stack) seat IS a qualifying seat, exactly like any other
+ * short stack. This is a practice tool for reviewing strategy, not a bankroll/rebuy
+ * simulator, so a bust does not by itself demand a rebuy decision. To model a real
+ * rebuy decision instead, use `policy.enabled` (turn top-up off) or `policy.threshold`
+ * (e.g. `Money.ZERO`, so a zero stack no longer counts as "below threshold").
+ *
+ * ASSUMPTION: a SITTING_OUT seat is never topped up even when its stack qualifies.
+ * The user brings the seat back ACTIVE with the `S` toggle (`setSeatOccupancy`,
+ * `docs/UX.md`) first — that is also the natural moment to decide against a rebuy.
+ *
+ * Trusts `policy` is a valid shape; `applyAutoTopUp` is the boundary that validates
+ * untrusted policy values, the same way `setSeatStack` (not this function) validates
+ * untrusted stack values.
+ */
+export function topUpPlan(
+  table: TableState,
+  policy: AutoTopUpPolicy,
+): readonly { readonly seat: SeatIndex; readonly from: MilliBB; readonly to: MilliBB }[] {
+  if (!policy.enabled) return [];
+  return ([0, 1, 2, 3, 4, 5] as const)
+    .filter((seat) => {
+      const s = table.seats[seat];
+      return (
+        s.occupancy === 'ACTIVE' &&
+        s.playerId !== null &&
+        s.stack < policy.threshold &&
+        s.stack < policy.targetStack
+      );
+    })
+    .map((seat) => ({ seat, from: table.seats[seat].stack, to: policy.targetStack }));
+}
+
+/**
+ * Result. Applies `topUpPlan` one seat at a time through `setSeatStack`, so the same
+ * table-TOTAL range check `setSeatStack` already runs (six individually valid stacks
+ * can still sum past `Money.MAX_MILLI_BB`) governs a top-up too, with nothing
+ * duplicated or able to drift from it. Errors AMOUNT_OUT_OF_RANGE if applying the plan
+ * would push the table's total past that limit; a plan built by `topUpPlan` cannot
+ * otherwise fail against a table that already validated (SEAT_EMPTY / STACK_NEGATIVE
+ * cannot fire), but any such error is still returned rather than swallowed.
+ *
+ * `policy.enabled: false` returns `table` UNCHANGED (same reference, no seat read or
+ * rewritten) before anything else, including validation below — a disabled policy is
+ * always inert, even one with garbage `targetStack`/`threshold` values sitting in a UI
+ * form. Only once the policy is live is its shape checked, so a real top-up can never
+ * silently no-op: errors STACK_NOT_POSITIVE (`targetStack <= 0`), STACK_NEGATIVE
+ * (`threshold < 0`), AMOUNT_OUT_OF_RANGE (either value not a whole milliBB number
+ * within +/-Money.MAX_MILLI_BB).
+ */
+export function applyAutoTopUp(
+  table: TableState,
+  policy: AutoTopUpPolicy,
+): EngineResult<TableState> {
+  if (!policy.enabled) return ok(table);
+
+  if (!isMoneyValue(policy.targetStack) || !isMoneyValue(policy.threshold)) {
+    return engineErr(
+      'AMOUNT_OUT_OF_RANGE',
+      `AutoTopUpPolicy.targetStack and threshold must be whole numbers of milliBB within +/-${Money.MAX_MILLI_BB}`,
+    );
+  }
+  if (policy.targetStack <= 0) {
+    return engineErr('STACK_NOT_POSITIVE', 'AutoTopUpPolicy.targetStack must be positive');
+  }
+  if (policy.threshold < 0) {
+    return engineErr('STACK_NEGATIVE', 'AutoTopUpPolicy.threshold must not be negative');
+  }
+
+  const plan = topUpPlan(table, policy);
+  if (plan.length === 0) return ok(table);
+
+  let next = table;
+  for (const { seat, to } of plan) {
+    const result = setSeatStack(next, seat, to);
+    if (!result.ok) return result;
+    next = result.value;
+  }
+  return ok(next);
+}

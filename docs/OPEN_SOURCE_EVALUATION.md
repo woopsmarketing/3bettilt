@@ -3,6 +3,24 @@
 **Date of evaluation:** 2026-08-28. Every metadata figure, licence text, test count and
 measurement below was captured on that date and will drift.
 
+> **Supersession note (added later).** This document is a dated evidence report
+> (see the evaluation date above) and is deliberately **not** rewritten as later
+> decisions change the project's terminology — it records what was measured on
+> that date, not the project's current state.
+>
+> Since this evaluation was written, **ADR-0019** (`docs/DECISIONS.md`) retired
+> `CP_NL50_ANTE_100BB_BASELINE_V1` as a baseline identifier: a name ending
+> `..._BASELINE_V1` implies a dataset covering the whole game, which per ADR-0014
+> is not reachable, so identifiers must now state their coverage scope explicitly
+> (e.g. `CP_NL50_ANTE_100BB_PREFLOP_V1`).
+>
+> Every occurrence of `CP_NL50_ANTE_100BB_BASELINE_V1` below is therefore
+> **historical terminology**, preserved exactly as written on 2026-08-28. It
+> records what the target dataset was called then, not what it is called now.
+> The findings, measurements and verdicts in this evaluation are unaffected by
+> the rename. For the current naming rule, see `docs/DECISIONS.md` (ADR-0019)
+> and `docs/GTO_BASELINE.md`.
+
 ## 1. Purpose, scope, and how to read this
 
 ### Purpose

@@ -15,6 +15,7 @@ import { canUndo } from './hand.js';
 import { deadCards, effectiveStackFor, potOdds, spr } from './metrics.js';
 import type { Position } from './positions.js';
 import { potAfterCall, potBeforeAction, unawardedPots, type Pot } from './pots.js';
+import { allocateFee, resolveFee } from './fee.js';
 import { allocateRake, computeRake } from './rake.js';
 import { makeBySeat, type BySeat, type SeatIndex } from './seat.js';
 import { handResult, sawFlop, type HandResult } from './settlement.js';
@@ -47,6 +48,14 @@ export interface AwardablePot {
   readonly eligibleSeats: readonly SeatIndex[];
   /** What the rake would be if all remaining pots were awarded now. Display only. */
   readonly projectedRake: MilliBB;
+  /**
+   * What the fee would be if all remaining pots were awarded now, with NOTHING supplied.
+   * Display only, and it is ZERO under every shipped `fee.triggerPolicy`: there is no
+   * automatic fee, so no fee exists until an `AWARD_POTS` command carries an observed
+   * one (ADR-0032). Computed through the real allocator rather than written as a
+   * constant, so a future automatic trigger needs no new field here.
+   */
+  readonly projectedFee: MilliBB;
   readonly awarded: boolean;
 }
 
@@ -125,7 +134,11 @@ function actorView(state: HandState, seat: SeatIndex): ActorView {
   };
 }
 
-/** Internal. Rake each remaining pot would bear if every one were awarded right now. */
+/**
+ * Internal. Rake and fee each remaining pot would bear if every one were awarded right
+ * now with no fee supplied. Uses the settlement path's own functions, so the preview
+ * cannot drift from the award.
+ */
 function awardablePots(state: HandState): readonly AwardablePot[] {
   const pending = unawardedPots(state);
   const gross = Money.sum(pending.map((pot) => pot.amount));
@@ -133,16 +146,27 @@ function awardablePots(state: HandState): readonly AwardablePot[] {
     sawFlop: sawFlop(state),
     contenderCount: contenders(state).length,
   }).rake;
-  const allocation =
+  const rakeShares =
     pending.length === 0 ? [] : allocateRake(pending, rake, state.config.rake.allocation);
-  const projected = new Map<number, MilliBB>();
-  pending.forEach((pot, index) => projected.set(pot.index, allocation[index] ?? Money.ZERO));
+  const fee = resolveFee(null, state.config.fee, { gross, rake });
+  const feeTotal = fee.ok ? fee.value : Money.ZERO;
+  const feeShares =
+    pending.length === 0
+      ? []
+      : allocateFee(pending, rakeShares, feeTotal, state.config.fee.allocation);
+  const projectedRake = new Map<number, MilliBB>();
+  const projectedFee = new Map<number, MilliBB>();
+  pending.forEach((pot, index) => {
+    projectedRake.set(pot.index, rakeShares[index] ?? Money.ZERO);
+    projectedFee.set(pot.index, feeShares[index] ?? Money.ZERO);
+  });
   return state.pots.map((pot) => ({
     index: pot.index,
     kind: pot.kind,
     amount: pot.amount,
     eligibleSeats: pot.eligibleSeats,
-    projectedRake: projected.get(pot.index) ?? Money.ZERO,
+    projectedRake: projectedRake.get(pot.index) ?? Money.ZERO,
+    projectedFee: projectedFee.get(pot.index) ?? Money.ZERO,
     awarded: pot.awarded,
   }));
 }

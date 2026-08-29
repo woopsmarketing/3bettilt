@@ -5,7 +5,12 @@
 import { Money, type Card, type HandId, type MilliBB, type PlayerId } from '@gto-self/shared';
 import type { TableConfig } from './config.js';
 import type { HandEndReason, HandEventKind, PotShare } from './events.js';
-import type { BlindAssignment, Position, PositionMap } from './positions.js';
+import type {
+  BlindAssignment,
+  BlindSeatOverride,
+  Position,
+  PositionMap,
+} from './positions.js';
 import type { Pot } from './pots.js';
 import { orderClockwise, type BySeat, type SeatIndex } from './seat.js';
 import type { Street } from './street.js';
@@ -45,7 +50,7 @@ export interface SeatHandState {
   readonly stack: MilliBB;
   /** Live wager on the CURRENT street. Equals `contributionByStreet[state.street]`. */
   readonly streetContribution: MilliBB;
-  /** Antes this hand. Dead money: never counts toward a call. */
+  /** Antes and dead blinds this hand. Dead money: never counts toward a call. */
   readonly deadContribution: MilliBB;
   /**
    * `deadContribution` + every street's live contribution, net of RETURN_UNCALLED.
@@ -65,8 +70,11 @@ export interface SeatHandState {
   readonly actedAtFullRaiseCount: number | null;
   readonly lastAction: HandEventKind | null;
   readonly returnedUncalled: MilliBB;
+  /** Every pot share this seat won, BEFORE its rake and fee attribution. */
   readonly wonGross: MilliBB;
   readonly rakePaid: MilliBB;
+  /** Splash fee attributed to this seat. Recorded separately from `rakePaid` (ADR-0032). */
+  readonly feePaid: MilliBB;
 }
 
 export interface BettingRound {
@@ -108,6 +116,8 @@ export interface PotAwardRecord {
   readonly winners: readonly SeatIndex[];
   readonly grossAmount: MilliBB;
   readonly rake: MilliBB;
+  /** ZERO when no fee applies. `netAmount === grossAmount - rake - fee`. */
+  readonly fee: MilliBB;
   readonly netAmount: MilliBB;
   readonly shares: readonly PotShare[];
 }
@@ -143,6 +153,12 @@ export interface HandState {
   readonly buttonSeat: SeatIndex;
   readonly heroSeat: SeatIndex | null;
   readonly blinds: BlindAssignment;
+  /**
+   * The manual SB/BB assignment carried on `HAND_STARTED`, or `null` for the ordinary
+   * rotation. Held on the state because `finalizeRoster` runs `assignBlinds` lazily,
+   * once the roster is complete, and must reach the same `blinds` on every replay.
+   */
+  readonly blindOverride: BlindSeatOverride | null;
   /** Ascending physical seat order. Fixed once the roster is finalized. */
   readonly dealtInSeats: readonly SeatIndex[];
   readonly positions: PositionMap;
@@ -169,6 +185,8 @@ export interface HandState {
   readonly potTotal: MilliBB;
   readonly awards: readonly PotAwardRecord[];
   readonly totalRake: MilliBB;
+  /** Summed splash fee across every award. Never merged into `totalRake` (ADR-0032). */
+  readonly totalFees: MilliBB;
   readonly endReason: HandEndReason | null;
 
   readonly actions: readonly ActionRecord[];
@@ -202,6 +220,7 @@ export function emptySeatHandState(seat: SeatIndex): SeatHandState {
     returnedUncalled: Money.ZERO,
     wonGross: Money.ZERO,
     rakePaid: Money.ZERO,
+    feePaid: Money.ZERO,
   };
 }
 

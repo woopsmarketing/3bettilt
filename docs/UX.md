@@ -3,6 +3,18 @@
 Desktop-first. Speed over decoration. The user's hands should rarely leave the
 keyboard, and the app should never ask for a number it can derive.
 
+## What this app is, in one line
+
+An **independent practice / simulation / replay tool** (ADR-0029). Two modes of use:
+
+- **Simulated practice hands** entered into our own training table. Strategy may be shown
+  _during_ such a hand — no real-money hand is in progress.
+- **Imported or recorded real hands**, reviewed **after the fact**.
+
+It is never used alongside a real-money hand in progress: no live-client integration, no
+live screen reading, no live automation, no concurrent decision assistance. UI copy must not
+imply otherwise.
+
 ## Layout
 
 ```
@@ -124,5 +136,7 @@ rendered in the mock colour with an explicit `MOCK DATA` badge.
 
 ## Interruption policy
 
-Avoid modals. Prefer inline correction tools and non-blocking warnings. The user is
-mid-session at a poker table; blocking them is worse than showing a caveat.
+Avoid modals. Prefer inline correction tools and non-blocking warnings. The user is working
+through hands quickly and a modal breaks that flow; a caveat shown in place costs nothing.
+Speed here is about keeping a practice or review session fluid — not about racing a
+real-money action clock.

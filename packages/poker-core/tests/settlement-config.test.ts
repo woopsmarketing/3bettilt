@@ -152,6 +152,7 @@ describe('table configuration validation', () => {
       presetId: 'CP_NL100_6MAX_ANTE',
       label: 'CoinPoker NL100 6-max (ante)',
       rakeCap: Money.mbb(6000),
+      rakeQuantum: Money.mbb(10), // one cent at BB = 1.00
       bigBlindValue: 1,
     });
     expect(validateTableConfig(nl100).ok).toBe(true);

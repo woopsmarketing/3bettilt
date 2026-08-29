@@ -18,6 +18,7 @@ export * from './pots.js';
 export * from './betting.js';
 export * from './sizing.js';
 export * from './rake.js';
+export * from './fee.js';
 export * from './settlement.js';
 export * from './metrics.js';
 export * from './reduce.js';

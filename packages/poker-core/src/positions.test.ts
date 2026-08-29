@@ -5,8 +5,11 @@ import {
   assignBlinds,
   assignPositions,
   comparePositions,
+  derivePositionLabels,
   postflopActionOrder,
   preflopActionOrder,
+  type BlindAssignment,
+  type BlindSeatOverride,
   type Position,
 } from './positions.js';
 import type { SeatIndex } from './seat.js';
@@ -134,5 +137,110 @@ describe('structural lineup keys', () => {
     const unsorted: Position[] = ['BB', 'BTN', 'UTG', 'SB', 'CO', 'HJ'];
     const sorted = [...unsorted].sort(comparePositions);
     expect(sorted).toEqual(['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The manual SB/BB override (ADR-0031). It is USER input: nothing here infers one.
+// ---------------------------------------------------------------------------
+
+const override = (
+  smallBlindSeat: SeatIndex,
+  bigBlindSeat: SeatIndex,
+): BlindSeatOverride => ({ smallBlindSeat, bigBlindSeat });
+
+describe('assignBlinds with a manual override', () => {
+  it('takes the named seats and keeps the button where it is', () => {
+    const blinds = unwrap(assignBlinds([0, 1, 2, 3, 4, 5], 0, rules, override(3, 4)));
+    expect(blinds).toEqual({ buttonSeat: 0, smallBlindSeat: 3, bigBlindSeat: 4, headsUp: false });
+  });
+
+  it('refuses the dead-button case: the button cannot hold a blind with 3+ dealt in', () => {
+    expect(unwrapErr(assignBlinds([0, 1, 2], 0, rules, override(0, 1)))).toBe(
+      'BLIND_OVERRIDE_ON_BUTTON',
+    );
+    expect(unwrapErr(assignBlinds([0, 1, 2], 0, rules, override(1, 0)))).toBe(
+      'BLIND_OVERRIDE_ON_BUTTON',
+    );
+  });
+
+  it('refuses seats that are not dealt in and the same seat twice', () => {
+    expect(unwrapErr(assignBlinds([0, 1, 2], 0, rules, override(4, 1)))).toBe('SEAT_NOT_DEALT_IN');
+    expect(unwrapErr(assignBlinds([0, 1, 2], 0, rules, override(1, 5)))).toBe('SEAT_NOT_DEALT_IN');
+    expect(unwrapErr(assignBlinds([0, 1, 2], 0, rules, override(1, 1)))).toBe(
+      'BLIND_OVERRIDE_INVALID',
+    );
+  });
+
+  it('lets the heads-up button hold a blind, and outranks the configured rule', () => {
+    const flipped = { ...rules, headsUpButtonPostsSmallBlind: false };
+    // The rule says the button posts the big blind; the override says the small one.
+    const blinds = unwrap(assignBlinds([0, 1], 0, flipped, override(0, 1)));
+    expect(blinds).toEqual({ buttonSeat: 0, smallBlindSeat: 0, bigBlindSeat: 1, headsUp: true });
+    // ...and the other way round, against the default rule.
+    const back = unwrap(assignBlinds([0, 1], 0, rules, override(1, 0)));
+    expect(back.smallBlindSeat).toBe(1);
+    expect(back.bigBlindSeat).toBe(0);
+  });
+
+  it('is a no-op when the override names the seats the rotation would have chosen', () => {
+    const plain = unwrap(assignBlinds([0, 1, 2, 3, 4, 5], 0, rules));
+    const named = unwrap(assignBlinds([0, 1, 2, 3, 4, 5], 0, rules, override(1, 2)));
+    expect(named).toEqual(plain);
+  });
+});
+
+describe('derivation follows the effective blind assignment', () => {
+  it('walks the ladder backwards from the button over the non-blind seats', () => {
+    const blinds = unwrap(assignBlinds([0, 1, 2, 3, 4, 5], 0, rules, override(3, 4)));
+    const positions = assignPositions([0, 1, 2, 3, 4, 5], blinds, rules);
+    const at = (seat: SeatIndex): Position | null => positions[seat]?.position ?? null;
+    expect([0, 1, 2, 3, 4, 5].map((s) => at(s as SeatIndex))).toEqual([
+      'BTN',
+      'UTG',
+      'HJ',
+      'SB',
+      'BB',
+      'CO',
+    ]);
+  });
+
+  it('puts the big blind last preflop and the button last postflop', () => {
+    const blinds = unwrap(assignBlinds([0, 1, 2, 3, 4, 5], 0, rules, override(3, 4)));
+    // Preflop begins immediately after the big blind (seat 4).
+    expect(preflopActionOrder([0, 1, 2, 3, 4, 5], blinds)).toEqual([5, 0, 1, 2, 3, 4]);
+    // Postflop is a BUTTON rule and does not move with the blinds.
+    expect(postflopActionOrder([0, 1, 2, 3, 4, 5], blinds)).toEqual([1, 2, 3, 4, 5, 0]);
+  });
+
+  it('never invents a label: an unlabelable lineup is an Err, not a guess', () => {
+    // Hand-built (and invalid) assignment: the button also holds the small blind with
+    // three dealt in. `assignBlinds` rejects it up front; the derivation refuses it too
+    // rather than reusing a label or defaulting.
+    const broken: BlindAssignment = {
+      buttonSeat: 0,
+      smallBlindSeat: 0,
+      bigBlindSeat: 1,
+      headsUp: false,
+    };
+    const derived = derivePositionLabels([0, 1, 2], broken, rules);
+    expect(derived.ok).toBe(false);
+    if (derived.ok) return;
+    expect(derived.error.code).toBe('POSITION_LINEUP_UNSUPPORTED');
+    // And the total wrapper fails loud rather than returning half a map.
+    expect(() => assignPositions([0, 1, 2], broken, rules)).toThrow();
+  });
+
+  it('labels every dealt-in seat exactly once for every legal override', () => {
+    for (const sb of [1, 2, 3, 4, 5] as const) {
+      for (const bb of [1, 2, 3, 4, 5] as const) {
+        if (sb === bb) continue;
+        const blinds = unwrap(assignBlinds([0, 1, 2, 3, 4, 5], 0, rules, override(sb, bb)));
+        const positions = assignPositions([0, 1, 2, 3, 4, 5], blinds, rules);
+        const labels = [0, 1, 2, 3, 4, 5].map((s) => positions[s as SeatIndex]?.position);
+        expect(labels.every((l) => l !== undefined)).toBe(true);
+        expect(new Set(labels).size).toBe(6);
+      }
+    }
   });
 });

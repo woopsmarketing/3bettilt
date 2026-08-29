@@ -3,7 +3,7 @@
 Single source of truth for where the project is. The orchestrator updates this after
 every phase; phase agents report, they do not edit it.
 
-**Last updated:** 2026-08-28, after Phase 1.
+**Last updated:** 2026-08-29, after Phase 2 (MVP priority update, ADR-0033).
 
 ## Completed
 
@@ -20,7 +20,7 @@ every phase; phase agents report, they do not edit it.
   - Docs: `CLAUDE.md`, `ARCHITECTURE.md`, `DECISIONS.md` (ADR-0001..0010), `ROADMAP.md`,
     `UX.md`, `GTO_BASELINE.md`, this file.
 
-- **Open-source integration spike** — `docs/OPEN_SOURCE_EVALUATION.md` (937 lines).
+- **Open-source integration spike** — `docs/OPEN_SOURCE_EVALUATION.md`.
   Five projects cloned and evaluated at source level against 17 criteria, then put
   through an independent adversarial fact-check pass (licences read from the actual
   LICENSE file in each clone, never from a badge or from recollection).
@@ -35,8 +35,8 @@ every phase; phase agents report, they do not edit it.
     rake-rounding normalisation policy for `pokerkit` comparisons.
 
 - **Phase 1 — Poker core domain.** `packages/poker-core`, 21 modules, **420 tests
-  passing workspace-wide** (386 in poker-core). Spec: `docs/POKER_CORE_API.md` (2,215
-  lines), written by a judge agent that synthesized three independent design proposals.
+  passing workspace-wide** (386 in poker-core). Spec: `docs/POKER_CORE_API.md`,
+  written by a judge agent that synthesized three independent design proposals.
   - Implemented: fixed-point money wiring, seats (ACTIVE/SITTING_OUT/EMPTY), button/SB/BB,
     positions for 2-6 dealt in, ante and blind posting, pot (side-pot-ready layered
     model), call amount, min legal raise under raise-TO semantics, all-in, effective stack,
@@ -45,32 +45,69 @@ every phase; phase agents report, they do not edit it.
     reducer with replay and undo.
   - Two replay modes: `replayHand` (strict, re-validates every action — the Phase 11
     round-trip guarantee) and `loadHand` (structural, asserts arithmetic and conservation
-    — the DB path). `POT_AWARDED` stores the rake *actually applied* (ADR-0009), so a
+    — the DB path). `POT_AWARDED` stores the rake _actually applied_ (ADR-0009), so a
     corrected rake rule can never make stored hands unloadable.
   - Review found 8 actionable defects across 3 lenses; an independent test author added
     110 spec-derived tests and surfaced 1 crash the implementer's own 250 tests missed.
     All fixed or explicitly rejected with reasons. New ADRs: 0024, 0025, 0026.
 
+- **Phase 2 — Poker core edge cases.** `packages/poker-core` + `packages/shared`,
+  **47 test files / 546 tests passing workspace-wide** (up from 41 / 420). Four work packages:
+  - **Settlement policy surface (ADR-0027/0033).** `Money.quantize` and
+    `Money.mulRatioQuantized` — the latter applies the rate and quantizes in ONE rounding
+    step, because rounding to milliBB and quantizing afterwards rounds twice and can land a
+    whole quantum from the exact value. `RakeConfig.noFlopNoDrop` became a named
+    `triggerPolicy` union; `RakeConfig` gained an explicit settlement `quantum` (NL50: 20
+    milliBB = one cent) that is **never** derived from `DisplayConfig`. `validateTableConfig`
+    rejects a `cap` that is not an exact multiple of the `quantum`. Both real observed
+    CoinPoker data points are pinned as regression tests in two packages: a 10 740 milliBB
+    pot rakes to 540 (record: 0.27) and a 13 740 pot to 680 (record: 0.34).
+  - **Fee accounting (ADR-0018/0032).** New `FeeConfig` and `fee.ts`, separate from rake all
+    the way down. `FeeTriggerPolicy` is `'NEVER' | 'MANUAL'` — there is deliberately no
+    automatic trigger, and a manually supplied amount is range-checked and then stored exactly
+    as entered. `POT_AWARDED.fee`, `HAND_FINISHED.totalFees`, `SeatHandState.feePaid`,
+    `HandState.totalFees`. All three money identities now include fees.
+  - **Neutral blind primitives (ADR-0031).** `POST_DEAD_BLIND` (accounting identical to an
+    ante) and a `BlindSeatOverride` persisted on `HAND_STARTED` so a hand can never replay to
+    different blinds. When an override yields a lineup the six-member `Position` union cannot
+    label, `assignPositions` returns `POSITION_LINEUP_UNSUPPORTED` and the hand refuses to
+    start — no label is ever invented. Automatic missed-blind and dead-button rules remain
+    unimplemented on purpose.
+  - **Independent review.** A fresh-context adversarial review of the blind primitives found
+    no blockers and two should-fix items, both now closed: posts (`POST_ANTE` and
+    `POST_DEAD_BLIND` alike) were accepted by `loadHand` outside command group 0, where
+    re-seeding the preflop round would silently reset the street and reopen action while
+    leaving every money identity satisfied — now guarded and pinned by tests that fail
+    without the guard; and the "a hand can never replay to different blinds" property was
+    held by reasoning alone and is now pinned by a tamper test.
+  - **Auto top-up + settlement breadth.** `AutoTopUpPolicy` / `topUpPlan` / `applyAutoTopUp`
+    in `table.ts`, with all twelve boundaries tested. New multiway-award, rake-allocation-branch
+    and simultaneous-odd-chip suites, including ADR-0025's documented `MAIN_POT_FIRST`
+    zero-payout consequence asserted as intended behaviour.
+
 ## Current
 
-- Nothing in flight.
+- Nothing in flight. Phases 1 and 2 are **accepted** — neither is reopened or reimplemented.
+- **MVP priority update (ADR-0033), 2026-08-29.** The real CoinPoker hand-history export will
+  not be provided, and this is **not** a blocker. Phase 11 (parser) is deferred past the first
+  usable MVP; delivery order is **2 -> 10, then 12**. Phase 2 does no further rake forensics —
+  it builds the *configuration surface* so that a later correction is config-only.
+- A bounded documentation + Phase-2 input reconciliation pass ran on 2026-08-29. No source
+  code changed. It removed the duplicated status column from `docs/ROADMAP.md`, reconciled
+  `ARCHITECTURE.md` with ADR-0023, corrected product-boundary wording, and recorded
+  **ADR-0027..0032** plus `docs/GTO_DESIGN_NOTES.md`.
 
 ## Next
 
-- **Phase 2 — Poker core edge cases** (`packages/poker-core`), fresh agent. Handoff from
-  Phase 1, nothing stubbed and no representation change needed:
-  - multi-way side-pot *award* breadth, and both `rake.allocation` branches under a real
-    multi-pot hand (`allocateRake` is unit-tested both ways; only `PROPORTIONAL` is
-    exercised end to end)
-  - odd chips under simultaneous multi-pot splits (`splitPot`/`oddChipOrder` are tested on
-    a single pot only)
-  - missed blinds, dead button, `POST_DEAD_BLIND`, manual SB/BB override
-  - auto top-up boundary behaviour
-  - Hand evaluation stays out of scope: the winner is an `AWARD_POTS` input, which is
-    where an evaluator plugs in later.
-- **ADR-0018 follow-up** (bounded, queued): generalize `RakeConfig.noFlopNoDrop` into a
-  named `triggerPolicy`, and add `FeeConfig` so splash fee is modelled and reported
-  separately from rake.
+- **Phase 3 — Database and player domain** (`packages/db`, `packages/player-core`), fresh
+  agent. Drizzle + SQLite, migrations, players, HUD snapshots, sessions, seats, hands, events,
+  notes. Manual HUD snapshots are never auto-overwritten. `serialization.ts` and `jsonRoundTrip`
+  are the seam; the event log gained fields in Phase 2, so the schema must be written against
+  the CURRENT event shape.
+- **Then Phases 4 -> 10 in order, then 12.** The milestone is the loop in `docs/UX.md`:
+  session setup -> seats/stacks -> start hand -> hero cards -> rapid F/C/R/A -> automatic
+  pot/stack/action order -> board entry -> undo -> hero fold / observe -> Skip Rest / dirty
+  resync -> next hand -> MOCK-labelled strategy. Phase 11 is deferred past it (ADR-0033).
 
 ## Known issues / explicit TODOs
 
@@ -79,17 +116,54 @@ every phase; phase agents report, they do not edit it.
   `placeholder.test.ts`. (`poker-core`'s was deleted in Phase 1.)
 - `MAIN_POT_FIRST` rake allocation can pay a winner a net of zero. Documented policy, not
   a bug (ADR-0025); `PROPORTIONAL` is the shipped default.
-- `docs/POKER_CORE_API.md` carries **18 explicit assumptions**, each naming the
-  `TableConfig` field that corrects it. They are engine behaviour chosen where a real-world
-  rule was not known — not claims about how CoinPoker behaves.
-- `fixtures/coinpoker/` has no real hand history yet. Phase 11 cannot start until the
-  user drops a file in (see `fixtures/coinpoker/README.md`). Nothing may be
-  fabricated in its place.
-- CoinPoker rake rounding and splash-fee interaction are **assumptions** (ADR-0009),
-  to be verified against a real fixture in Phase 11.
+- `docs/POKER_CORE_API.md` §8 splits its numbered entries into **poker-rule assumptions**
+  (§8.1) and **architecture/model decisions** (§8.2, rows 17-18). Accepted ADRs cite entries by
+  index, so **1-18 keep their meaning permanently**; Phase 2 appended rows **19-28** rather than
+  inserting. Rows 2, 5 and 15 were rewritten in place: assumption 5 (rake floors) is now marked
+  KNOWN WRONG for CoinPoker and superseded by ADR-0027, retained only to hold its number.
+- **`fixtures/coinpoker/` has no real hand history, and none is expected now** (ADR-0033).
+  Do **not** request or wait for it. Consequences: Phase 11 is deferred, and the exact
+  CoinPoker settlement rule stays a pre-Phase-13 validation item rather than a Phase-2 task.
+  If an export is ever supplied it goes in `fixtures/coinpoker/private/` (git-ignored, safe
+  for real nicknames). Nothing may be fabricated in its place — see
+  `fixtures/coinpoker/README.md`.
+- **CoinPoker rake rounding: ADR-0009's milliBB floor is FALSIFIED, and no replacement rule
+  is confirmed yet** (ADR-0027). Real NL50 lines show a ₮5.37 pot raked to a recorded ₮0.27,
+  where a milliBB floor yields ₮0.2685 — the site settles in whole currency cents
+  (20 mBB at NL50), not milliBB. The two known data points also rule out floor-at-cent and
+  ceil-at-cent, and are consistent with nearest-cent; **neither is a half-cent tie, so the
+  tie-breaking rule is undetermined and must not be guessed.** Phase 2 ships the quantum and
+  rounding mode as explicit configuration with the half-way behaviour flagged as an assumption;
+  confirming the real rule is a pre-Phase-13 validation item (ADR-0033).
+- **Open question — the 8 BB rake cap may be valid only for the dealt-in count currently
+  targeted.** Rooms commonly run a short-handed cap schedule. Do not invent one, and do not
+  claim exact CoinPoker short-handed settlement until a fixture verifies it.
+- Splash-fee **trigger** semantics (when it applies, how it interacts with the cap) remain
+  unknown. The amount is modelled; the trigger is not invented (ADR-0018). Shipped as
+  `fee.triggerPolicy: 'NEVER'`, so the fee surface exists but is inert by default.
+- **An all-folded hand cannot record a fee.** The engine auto-awards inside the command
+  cascade, so there is no user command to carry an observed amount; `autoAwardUncontested`
+  accepts one but the cascade passes `null`. Vacuous under the shipped `'NEVER'` default.
+  Phase 8 is the natural place to fix it — it already needs an explicit abandon path for the
+  same structural reason.
+- **The rake `quantum` applies to the hand's TOTAL rake, not to each pot's share.**
+  `allocateRake` then splits that quantized total at plain milliBB granularity so the parts sum
+  exactly, which means an individual side pot's rake need not be a whole cent. Coherent — only
+  the amount leaving the table is quantized — and documented in `docs/POKER_CORE_API.md` §7.13.
+- **`POSITION_LINEUP_UNSUPPORTED` is unreachable today.** An independent review established
+  that for every input `assignBlinds` accepts, the refusal cannot fire: with three or more
+  dealt in the override guarantees BTN/SB/BB are three distinct seats, and heads-up the two
+  labels are always distinct. It is sound defence in depth for a future lineup rule (a null
+  small blind, a dead button, a seventh seat) — **not** evidence that a present-day input is
+  gated. Code and assumption 28 now say so explicitly.
+- **Two pre-existing `docs/POKER_CORE_API.md` gaps found during the Phase 2 doc pass, not
+  fixed** (they predate Phase 2): §3.1's `EngineErrorContext` omits `commandIndex?: number`,
+  which exists in `errors.ts` and is live; and §3.9 plus §1 label a formula `mayAggress` where
+  `betting.ts` computes it as `mayReopen` (`mayAggress` is strictly narrower). The source is
+  right and the doc is wrong in both cases.
 - No GTO data of any kind exists. The only permitted provider until Phase 14 is a
   mock that labels itself.
-- `open_spiel` and `pokerkit` received only a *partial* evaluation in the spike — no
+- `open_spiel` and `pokerkit` received only a _partial_ evaluation in the spike — no
   independent fact-check pass. ADR-0013 makes the full pass a precondition of actually
   taking the open_spiel dependency at Phase 13.
 - Whether an external engine's numeric output could legally be committed as a fixture
@@ -98,10 +172,13 @@ every phase; phase agents report, they do not edit it.
 
 ## Test status
 
-| Suite            | Result                                                          |
-| ---------------- | --------------------------------------------------------------- |
-| `pnpm typecheck` | pass (8 projects)                                               |
-| `pnpm test`      | pass — 8 files, 35 tests                                        |
-| `pnpm build`     | pass (Next 16, 3 static routes)                                 |
-| `pnpm lint`      | pass                                                            |
-| `pnpm e2e`       | not run — needs `pnpm --filter @gto-self/web e2e:install` first |
+Phase 2 final gate, 2026-08-29.
+
+| Suite                | Result                                                          |
+| -------------------- | --------------------------------------------------------------- |
+| `pnpm typecheck`     | pass                                                            |
+| `pnpm lint`          | pass                                                            |
+| `pnpm lint:licences` | pass — 131 tracked files scanned                                |
+| `pnpm test`          | pass — **47 files, 546 tests**                                  |
+| `pnpm build`         | pass                                                            |
+| `pnpm e2e`           | not run — needs `pnpm --filter @gto-self/web e2e:install` first |

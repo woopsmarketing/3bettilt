@@ -63,13 +63,17 @@ describe('everyone folds to the big blind', () => {
 
   it('rakes a walk when no-flop-no-drop is switched off', () => {
     // Configuration, not code: flipping the flag is the only change.
-    const config = { ...NO_ANTE_PRESET, rake: { ...NO_ANTE_PRESET.rake, noFlopNoDrop: false } };
+    const config = {
+      ...NO_ANTE_PRESET,
+      rake: { ...NO_ANTE_PRESET.rake, triggerPolicy: 'ALWAYS' as const },
+    };
     const f = ids();
     let hand = start(sixHanded(config), f);
     for (let i = 0; i < 5; i += 1) hand = step(hand, fold(), f);
-    // floor(1000 * 5 / 100) = 50
-    expect(hand.state.totalRake).toBe(50);
-    expect(hand.state.seats[2].stack).toBe(100450);
+    // 5% of 1000 is 50 milliBB; 50 / 20 = 2.5, a tie, rounding away from zero to
+    // 3 cents = 60. Net 940 to the big blind, which had 99500 behind.
+    expect(hand.state.totalRake).toBe(60);
+    expect(hand.state.seats[2].stack).toBe(100440);
   });
 });
 
@@ -122,9 +126,9 @@ describe('a limped pot that sees a flop', () => {
     expect(hand.state.phase).toBe('AWAITING_AWARD');
     expect(hand.state.potTotal).toBe(3000);
     hand = step(hand, awardAllTo(hand.state, 0), f);
-    // floor(3000 * 5 / 100) = 150
-    expect(hand.state.totalRake).toBe(150);
-    expect(hand.state.seats[0].stack).toBe(101850); // 99000 + 3000 - 150
+    // 5% of 3000 is 150 milliBB; 150 / 20 = 7.5, a tie -> 8 cents = 160.
+    expect(hand.state.totalRake).toBe(160);
+    expect(hand.state.seats[0].stack).toBe(101840); // 99000 + 3000 - 160
   });
 });
 
@@ -151,9 +155,11 @@ describe('the rake basis', () => {
     });
     expect(hand.events.find((e) => e.kind === 'POT_AWARDED')).toMatchObject({
       grossAmount: 11000,
-      rake: 550, // floor(11000 * 5 / 100)
-      netAmount: 10450,
+      // 5% of 11000 is 550 milliBB; 550 / 20 = 27.5, a tie -> 28 cents = 560.
+      rake: 560,
+      fee: 0,
+      netAmount: 10440,
     });
-    expect(stacks(hand.state)).toEqual({ 0: 105450, 1: 95000, 2: 99000 });
+    expect(stacks(hand.state)).toEqual({ 0: 105440, 1: 95000, 2: 99000 });
   });
 });

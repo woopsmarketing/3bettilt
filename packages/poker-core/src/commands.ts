@@ -31,7 +31,7 @@ import { autoAwardUncontested, planAwards, type PotAwardInput } from './settleme
 import { applyEvent, initialHandState } from './reduce.js';
 import { orderClockwise, type SeatIndex } from './seat.js';
 import { contenders, type HandState } from './state.js';
-import { assignBlinds } from './positions.js';
+import { assignBlinds, type BlindSeatOverride } from './positions.js';
 import { boardCardsForStreet } from './street.js';
 import { dealtInSeats, type TableState } from './table.js';
 
@@ -58,10 +58,35 @@ export type HandCommand =
       readonly cards: readonly Card[];
       readonly revealed: boolean;
     }
-  /** Must cover EVERY unawarded pot, so the per-hand rake cap is computed once. */
-  | { readonly kind: 'AWARD_POTS'; readonly awards: readonly PotAwardInput[] };
+  /**
+   * Must cover EVERY unawarded pot, so the per-hand rake cap is computed once.
+   *
+   * `fee` is the whole hand's OBSERVED splash fee. Omitted (or `null`) means none — the
+   * normal case, and the only one `fee.triggerPolicy: 'NEVER'` accepts. There is no
+   * automatic fee: CoinPoker's trigger is unknown (ADR-0032/0033).
+   */
+  | {
+      readonly kind: 'AWARD_POTS';
+      readonly awards: readonly PotAwardInput[];
+      readonly fee?: MilliBB | null;
+    };
 
 export type HandCommandKind = HandCommand['kind'];
+
+/**
+ * One EXPLICIT dead-blind post (ADR-0031). The engine never infers who owes one: missed
+ * blinds and the dead button differ per room and no CoinPoker fixture has confirmed
+ * theirs, so this is always user input. A seat that did not miss a blind simply has no
+ * entry here.
+ *
+ * Only the DEAD portion belongs here. A returning player's LIVE portion is an ordinary
+ * blind post, and no combined event exists.
+ */
+export interface DeadBlindPost {
+  readonly seat: SeatIndex;
+  /** Requested amount; the post is CLAMPED to the seat's stack, exactly like an ante. */
+  readonly amount: MilliBB;
+}
 
 export interface StartHandOptions {
   readonly handId: HandId;
@@ -69,6 +94,17 @@ export interface StartHandOptions {
   readonly buttonSeat?: SeatIndex;
   /** Defaults to `table.handNumber`. */
   readonly handNumber?: number;
+  /**
+   * Manual SB/BB assignment (ADR-0031). Omitted or `null` means the ordinary rotation,
+   * which produces byte-identical events to a build with no override at all. Persisted
+   * on `HAND_STARTED`. Heads-up it OVERRIDES `rules.headsUpButtonPostsSmallBlind`.
+   */
+  readonly blindOverride?: BlindSeatOverride | null;
+  /**
+   * Explicit dead-blind posts, at most one per seat. Omitted means none — the engine has
+   * no opinion about who "should" post one.
+   */
+  readonly deadBlinds?: readonly DeadBlindPost[];
 }
 
 /** Roster entry used by both `buildStartEvents` and strict replay. */
@@ -106,9 +142,14 @@ export const setHoleCards = (
   cards: readonly Card[],
   revealed: boolean,
 ): HandCommand => ({ kind: 'SET_HOLE_CARDS', seat, cards, revealed });
-export const awardPots = (awards: readonly PotAwardInput[]): HandCommand => ({
+/** `fee` is the hand's observed splash fee; omit it when there is none. */
+export const awardPots = (
+  awards: readonly PotAwardInput[],
+  fee: MilliBB | null = null,
+): HandCommand => ({
   kind: 'AWARD_POTS',
   awards,
+  fee,
 });
 
 // --- validation -------------------------------------------------------------
@@ -259,7 +300,7 @@ export function validateCommand(state: HandState, command: HandCommand): EngineR
           `The engine is not waiting for a winner (phase ${state.phase})`,
         );
       }
-      const plan = planAwards(state, command.awards);
+      const plan = planAwards(state, command.awards, command.fee ?? null);
       return plan.ok ? ok(null) : plan;
     }
   }
@@ -322,6 +363,9 @@ function drainCascade(emitter: Emitter, commandSeq: number, ids: IdFactory): voi
     }
     const pending = unawardedPots(state);
     if (pending.length > 0 && contenders(state).length === 1) {
+      // No fee: an uncontested pot is awarded by the engine with no user command to
+      // carry an observed amount. Under `'MANUAL'` an all-folded hand therefore records
+      // no fee in this version — a stated limitation, not an assumed site rule.
       const plan = autoAwardUncontested(state);
       invariant(plan.ok, 'an uncontested pot could not be awarded automatically');
       if (!plan.ok) return;
@@ -337,6 +381,7 @@ function drainCascade(emitter: Emitter, commandSeq: number, ids: IdFactory): voi
           kind: 'HAND_FINISHED',
           reason: contenders(state).length === 1 ? 'ALL_FOLDED' : 'SHOWDOWN',
           totalRake: state.totalRake,
+          totalFees: state.totalFees,
         },
         'ENGINE',
         commandSeq,
@@ -419,7 +464,7 @@ function userPayloadsFor(
       return [{ kind: street === 'TURN' ? 'TURN_DEALT' : 'RIVER_DEALT', card }];
     }
     case 'AWARD_POTS': {
-      const plan = planAwards(state, command.awards);
+      const plan = planAwards(state, command.awards, command.fee ?? null);
       invariant(plan.ok, 'AWARD_POTS was validated but could not be planned');
       if (!plan.ok) return [];
       return plan.value.records.map((record) => ({ kind: 'POT_AWARDED', ...record }));
@@ -461,9 +506,19 @@ export function expandCommand(
 
 /**
  * Internal. Command group 0, in the fixed order HAND_STARTED, PLAYER_DEALT_IN (ascending
- * seat), POST_ANTE (ring order from the small blind), POST_SB, POST_BB — then the same
- * engine cascade, so a table where the antes put everyone all-in lands in AWAITING_BOARD
- * rather than an impossible AWAITING_ACTION.
+ * seat), POST_ANTE (ring order from the small blind), POST_DEAD_BLIND (ring order from
+ * the small blind), POST_SB, POST_BB — then the same engine cascade, so a table where
+ * the antes put everyone all-in lands in AWAITING_BOARD rather than an impossible
+ * AWAITING_ACTION.
+ *
+ * ASSUMPTION (ADR-0031): dead blinds are posted AFTER the antes and BEFORE the live
+ * blinds, in ring order from the (effective) small blind — the same ordering convention
+ * antes already use (assumption 14). Ordering inside command group 0 is cosmetic for
+ * state but matters for a Phase 11 hand-history round trip, so it is stated rather than
+ * left to the caller's list order.
+ *
+ * `blindOverride` and `deadBlinds` are optional and default to "none", which reproduces
+ * the pre-override behaviour byte for byte.
  */
 export function composeStartEvents(
   params: {
@@ -473,6 +528,8 @@ export function composeStartEvents(
     readonly buttonSeat: SeatIndex | null;
     readonly heroSeat: SeatIndex | null;
     readonly roster: readonly RosterEntry[];
+    readonly blindOverride?: BlindSeatOverride | null;
+    readonly deadBlinds?: readonly DeadBlindPost[];
   },
   ids: IdFactory,
 ): EngineResult<readonly HandEvent[]> {
@@ -529,8 +586,43 @@ export function composeStartEvents(
       { seat: buttonSeat },
     );
   }
-  const blinds = assignBlinds(seats, buttonSeat, params.config.rules);
+  const blindOverride = params.blindOverride ?? null;
+  const blinds = assignBlinds(seats, buttonSeat, params.config.rules, blindOverride);
   if (!blinds.ok) return blinds;
+
+  const deadBlinds = params.deadBlinds ?? [];
+  const deadBySeat = new Map<SeatIndex, MilliBB>();
+  for (const post of deadBlinds) {
+    if (!seats.includes(post.seat)) {
+      return engineErr(
+        'SEAT_NOT_DEALT_IN',
+        `Seat ${post.seat} cannot post a dead blind: it is not dealt into this hand`,
+        { seat: post.seat },
+      );
+    }
+    if (deadBySeat.has(post.seat)) {
+      return engineErr(
+        'DUPLICATE_DEAD_BLIND',
+        `Seat ${post.seat} was given more than one dead blind`,
+        { seat: post.seat },
+      );
+    }
+    if (!Number.isSafeInteger(post.amount) || post.amount <= 0) {
+      return engineErr(
+        'AMOUNT_OUT_OF_RANGE',
+        `Seat ${post.seat}'s dead blind must be a positive whole number of milliBB, got ${post.amount}`,
+        { seat: post.seat, actual: post.amount },
+      );
+    }
+    if (post.amount > Money.MAX_MILLI_BB) {
+      return engineErr(
+        'AMOUNT_OUT_OF_RANGE',
+        `Seat ${post.seat}'s dead blind must be within +/-${Money.MAX_MILLI_BB} milliBB`,
+        { seat: post.seat, actual: post.amount },
+      );
+    }
+    deadBySeat.set(post.seat, post.amount);
+  }
 
   const startedPayload: HandEventPayload = {
     kind: 'HAND_STARTED',
@@ -539,6 +631,7 @@ export function composeStartEvents(
     config: params.config,
     buttonSeat,
     heroSeat: params.heroSeat !== null && seats.includes(params.heroSeat) ? params.heroSeat : null,
+    blindOverride,
   };
   const started = makeEvent(startedPayload, { seq: 0, commandSeq: 0, origin: 'USER' }, ids);
   invariant(started.kind === 'HAND_STARTED', 'HAND_STARTED payload lost its discriminant');
@@ -572,6 +665,16 @@ export function composeStartEvents(
         ids,
       );
     }
+  }
+  // Dead blinds: the ante's accounting, on an explicit list instead of a config flag.
+  // A seat the ante left with no chips posts NOTHING rather than a zero-amount event —
+  // nothing moved, and a zero post would not survive a strict replay.
+  for (const seat of orderClockwise([...deadBySeat.keys()], blinds.value.smallBlindSeat, true)) {
+    const requested = deadBySeat.get(seat);
+    if (requested === undefined) continue;
+    const amount = Money.min(requested, emitter.state.seats[seat].stack);
+    if (Money.isZero(amount)) continue;
+    emit(emitter, { kind: 'POST_DEAD_BLIND', seat, amount }, 'ENGINE', 0, ids);
   }
   emit(
     emitter,
@@ -608,7 +711,9 @@ export function composeStartEvents(
 /**
  * Result. Command group 0 for a hand dealt from `table`. Errors INVALID_CONFIG,
  * NOT_ENOUGH_PLAYERS, NO_BUTTON_SEAT, BUTTON_SEAT_NOT_DEALT_IN, STACK_NOT_POSITIVE,
- * DUPLICATE_PLAYER.
+ * DUPLICATE_PLAYER, and — for `options.blindOverride` / `options.deadBlinds` —
+ * SEAT_NOT_DEALT_IN, BLIND_OVERRIDE_INVALID, BLIND_OVERRIDE_ON_BUTTON,
+ * POSITION_LINEUP_UNSUPPORTED, DUPLICATE_DEAD_BLIND, AMOUNT_OUT_OF_RANGE.
  */
 export function buildStartEvents(
   table: TableState,
@@ -629,6 +734,8 @@ export function buildStartEvents(
       buttonSeat: options.buttonSeat ?? table.buttonSeat,
       heroSeat: table.heroSeat,
       roster,
+      blindOverride: options.blindOverride ?? null,
+      deadBlinds: options.deadBlinds ?? [],
     },
     ids,
   );

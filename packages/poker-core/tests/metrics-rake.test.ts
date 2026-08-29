@@ -9,24 +9,29 @@ import { betTo, call, dealBoard, fold, raiseTo } from '../src/commands.js';
 import { NO_ANTE_PRESET, buildTable, cards, ids, start } from '../src/testing.js';
 import { step } from './_helpers.js';
 
-const RAKE = NO_ANTE_PRESET.rake; // 5 / 100, cap 8000, floor, no-flop-no-drop
+// 5 / 100, cap 8000, quantum 20 (one cent at BB = 0.50), 'round', no-flop-no-drop.
+const RAKE = NO_ANTE_PRESET.rake;
 const FLOPPED = { sawFlop: true, contenderCount: 2 };
 
 describe('rake', () => {
-  it('takes 5% floored below the cap', () => {
+  it('takes 5%, quantized to the nearest cent, below the cap', () => {
     expect(computeRake(Money.mbb(20000), RAKE, FLOPPED)).toMatchObject({
       gross: 20000,
-      rake: 1000,
+      rake: 1000, // 5% is 1000 = 50 cents exactly
       net: 19000,
       capped: false,
       waived: false,
     });
-    // 19000 * 5 / 100 = 950 exactly.
-    expect(computeRake(Money.mbb(19000), RAKE, FLOPPED).rake).toBe(950);
-    // 19999 * 5 / 100 = 999.95 -> floors to 999, never rounds up.
-    expect(computeRake(Money.mbb(19999), RAKE, FLOPPED).rake).toBe(999);
-    // 19 * 5 / 100 = 0.95 -> 0.
+    // 19000 * 5 / 100 = 950; 950 / 20 = 47.5, a tie, rounding away from zero -> 960.
+    expect(computeRake(Money.mbb(19000), RAKE, FLOPPED).rake).toBe(960);
+    // 19999 * 5 / 100 = 999.95; 999.95 / 20 = 49.9975 -> 50 cents = 1000.
+    expect(computeRake(Money.mbb(19999), RAKE, FLOPPED).rake).toBe(1000);
+    // 19 * 5 / 100 = 0.95, well under half a cent -> 0.
     expect(computeRake(Money.mbb(19), RAKE, FLOPPED).rake).toBe(0);
+    // Every rake is a whole number of quanta.
+    for (const gross of [19, 19000, 19999, 20000, 6003]) {
+      expect(computeRake(Money.mbb(gross), RAKE, FLOPPED).rake % RAKE.quantum).toBe(0);
+    }
   });
 
   it('caps at 8 BB on a big pot', () => {
@@ -38,19 +43,23 @@ describe('rake', () => {
     });
     // 400000 * 5% = 20000, still exactly the cap.
     expect(computeRake(Money.mbb(400000), RAKE, FLOPPED).rake).toBe(8000);
-    // Just below the cap threshold (159999 * 5% = 7999.95 -> 7999).
-    expect(computeRake(Money.mbb(159_999), RAKE, FLOPPED).rake).toBe(7999);
+    // 159999 * 5% = 7999.95, which quantizes UP to 8000 — the cap value, reached
+    // without the cap binding.
+    expect(computeRake(Money.mbb(159_999), RAKE, FLOPPED)).toMatchObject({
+      rake: 8000,
+      capped: false,
+    });
   });
 
   it('waives the rake when the board never reached three cards', () => {
     expect(
       computeRake(Money.mbb(20000), RAKE, { sawFlop: false, contenderCount: 2 }),
     ).toMatchObject({ rake: 0, net: 20000, waived: true });
-    // With the flag off, the same pot is raked.
+    // Under 'ALWAYS' the same pot is raked.
     expect(
       computeRake(
         Money.mbb(20000),
-        { ...RAKE, noFlopNoDrop: false },
+        { ...RAKE, triggerPolicy: 'ALWAYS' as const },
         {
           sawFlop: false,
           contenderCount: 2,

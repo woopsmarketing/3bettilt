@@ -100,7 +100,11 @@ fold` must return `3 − 1 = 2` (the big blind's posted 1 is the highest _other_
 - **C's `POST_DEAD_BLIND` and manual SB/BB override.** Missed blinds and the dead button are
   explicitly not modelled in Phase 1; `docs/ROADMAP.md` puts "manual button/blind override" in
   Phase 8. Button override is supported now (it is just "which seat is the button"); dead
-  blinds and SB/BB override are deferred, not half-built.
+  blinds and SB/BB override are deferred, not half-built. **Superseded in Phase 2 (ADR-0031):**
+  both shipped, as neutral primitives that are always explicit user input — a `POST_DEAD_BLIND`
+  event whose accounting is identical to an ante, and a `BlindSeatOverride` persisted on
+  `HAND_STARTED`. What is still not modelled is any *automatic* missed-blind or dead-button
+  rule (7.9, 7.11, assumptions 15, 26–28).
 - **C's caller-supplied `startedAt` / `finishedAt` on events.** The engine must not know about
   time at all; `hand_events` rows carry timestamps in Phase 3.
 - **A's separate `HandError` / `ReplayError` types and B's four error types** — collapsed into
@@ -127,8 +131,9 @@ stored hands unloadable). The resolution:
   stored hand, so a corrected rule never bricks history.
 
 Correspondingly, `POT_AWARDED` stores the rake **actually applied** (ADR-0009 requires exactly
-this) and the reducer checks only `net === gross − rake` and `sum(shares) === net`, never the
-rake _policy_.
+this) — and, since Phase 2, the fee actually applied alongside it (ADR-0032) — while the reducer
+checks only `net === gross − rake − fee` and `sum(shares) === net`, never the rake or fee
+_policy_.
 
 ---
 
@@ -140,7 +145,7 @@ import uses `import type` (`verbatimModuleSyntax`).
 | File               | Responsibility                                                                                                     |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `errors.ts`        | `EngineError` vocabulary, `EngineResult`, constructors. No dependencies.                                           |
-| `config.ts`        | `TableConfig` and its parts: blinds, ante, rake, ambiguous-rule flags, display. `validateTableConfig`.             |
+| `config.ts`        | `TableConfig` and its parts: blinds, ante, rake, fee, ambiguous-rule flags, display. `validateTableConfig`.        |
 | `presets.ts`       | Shipped presets (`CP_NL50_6MAX_ANTE`, `CP_NL50_6MAX_NO_ANTE`) and preset derivation helpers.                       |
 | `seat.ts`          | `SeatIndex`, `BySeat<T>`, occupancy, and the clockwise ring primitives.                                            |
 | `table.ts`         | Session-level `TableState`: occupancy, stacks, hero, button. Not event-sourced.                                    |
@@ -151,7 +156,8 @@ import uses `import type` (`verbatimModuleSyntax`).
 | `pots.ts`          | `Pot`, layered pot derivation, uncalled-bet computation, pot denominators.                                         |
 | `betting.ts`       | Turn order, round closure, call amount, min/max raise-to, legality, `LegalActions`.                                |
 | `sizing.ts`        | Pot-fraction shortcuts (33/50/75) and the live raise preview from `docs/UX.md`.                                    |
-| `rake.ts`          | Rake computation and allocation from `RakeConfig`. Isolated per ADR-0009.                                          |
+| `rake.ts`          | Rake computation from `RakeConfig`, and the per-pot allocator `fee.ts` shares. Isolated per ADR-0009.              |
+| `fee.ts`           | Splash-fee validation and allocation from `FeeConfig`. Separate from rake end to end (ADR-0018/0032).              |
 | `settlement.ts`    | Award planning, odd-chip split, auto-award of an uncontested pot, per-seat results.                                |
 | `reduce.ts`        | The pure fold: `initialHandState`, `applyEvent`, `finalize`, `foldEvents`, `openBettingRound`, `seedPreflopRound`. |
 | `commands.ts`      | `HandCommand` union, `validateCommand`, `expandCommand` (user event + engine cascade).                             |
@@ -189,6 +195,11 @@ export type EngineErrorCode =
   | 'BUTTON_SEAT_NOT_DEALT_IN'
   | 'STACK_NOT_POSITIVE'
   | 'DUPLICATE_PLAYER'
+  // manual blind assignment / dead blinds (ADR-0031)
+  | 'BLIND_OVERRIDE_INVALID'
+  | 'BLIND_OVERRIDE_ON_BUTTON'
+  | 'POSITION_LINEUP_UNSUPPORTED'
+  | 'DUPLICATE_DEAD_BLIND'
   // table mutation
   | 'SEAT_OCCUPIED'
   | 'SEAT_EMPTY'
@@ -227,6 +238,10 @@ export type EngineErrorCode =
   | 'NO_WINNERS'
   | 'DUPLICATE_WINNER'
   | 'WINNER_NOT_ELIGIBLE'
+  | 'FEE_NOT_ALLOWED'
+  | 'FEE_NEGATIVE'
+  | 'FEE_ABOVE_CAP'
+  | 'FEE_EXCEEDS_POT'
   // log
   | 'NOTHING_TO_UNDO'
   | 'CORRUPT_LOG';
@@ -311,17 +326,59 @@ export interface AnteConfig {
 
 export type RakeAllocation = 'PROPORTIONAL' | 'MAIN_POT_FIRST';
 
+/**
+ * When a pot is raked at all.
+ * 'ALWAYS'          — every awarded pot is raked.
+ * 'NO_FLOP_NO_DROP' — the rake is waived when the board never reached three cards.
+ *
+ * A union rather than a boolean (ADR-0018/0033) so a further real trigger is additive and
+ * never touches rake arithmetic. `validateTableConfig` REJECTS a member this version
+ * cannot implement rather than defaulting to one.
+ */
+export type RakeTriggerPolicy = 'ALWAYS' | 'NO_FLOP_NO_DROP';
+
 export interface RakeConfig {
   /** Exact rational so no float percentage ever touches money. 5% => 5 / 100. */
   readonly numerator: number;
   readonly denominator: number;
-  /** Absolute per-hand cap in milliBB. NL50 preset: 8000 (8 BB). */
+  /** Absolute per-hand cap in milliBB. NL50 preset: 8000 (8 BB). Must be a multiple of
+   *  `quantum`, otherwise a capped rake would not itself be quantized. */
   readonly cap: MilliBB;
-  /** ADR-0009: rake floors. */
+  /** Settlement granularity in milliBB, and the granularity `rounding` is applied AT.
+   *  `1` means pure milliBB. NL50 preset: 20 — one currency cent at BB = 0.50 (ADR-0027).
+   *  NEVER derived from `DisplayConfig`: presentation must not determine money. */
+  readonly quantum: MilliBB;
+  /** Applied ONCE, at `quantum` granularity. NL50 preset: 'round' (ADR-0027 superseded
+   *  ADR-0009's milliBB floor for CoinPoker). Its half-way behaviour is an ASSUMPTION no
+   *  observation has distinguished (ADR-0033). */
   readonly rounding: RoundingMode;
-  /** true => a hand whose board never reached three cards is not raked. ASSUMPTION. */
-  readonly noFlopNoDrop: boolean;
+  /** When a pot is raked at all. ASSUMPTION for CoinPoker (ADR-0018). */
+  readonly triggerPolicy: RakeTriggerPolicy;
   /** How one capped total rake is split across side pots. ASSUMPTION. */
+  readonly allocation: RakeAllocation;
+}
+
+/**
+ * When a fee (CoinPoker's "Splash Fee") is deducted.
+ * 'NEVER'  — no fee is ever deducted. The shipped default.
+ * 'MANUAL' — the amount is supplied at award time by the user or, later, the parser.
+ *
+ * There is deliberately NO automatic trigger: CoinPoker's is unknown (ADR-0032/0033) and
+ * `CLAUDE.md` rule 7 forbids inventing one.
+ */
+export type FeeTriggerPolicy = 'NEVER' | 'MANUAL';
+
+/**
+ * Separate from `RakeConfig` and never collapsed into it (ADR-0018, confirmed by
+ * ADR-0032): the splash fee is its own deduction from the pot payout, recorded as its own
+ * amount all the way through settlement.
+ */
+export interface FeeConfig {
+  readonly triggerPolicy: FeeTriggerPolicy;
+  /** Ceiling on a MANUALLY supplied fee. This rejects a typo; it is not a site rule, and a
+   *  fee within it is never re-quantized or otherwise rewritten (CLAUDE.md rule 3). */
+  readonly cap: MilliBB;
+  /** How one hand's total fee is split across side pots. Same policy type as rake. */
   readonly allocation: RakeAllocation;
 }
 
@@ -371,6 +428,8 @@ export interface TableConfig {
   readonly minBet: MilliBB;
   readonly ante: AnteConfig;
   readonly rake: RakeConfig;
+  /** Splash-fee policy. Separate from `rake` and never folded into it (ADR-0018/0032). */
+  readonly fee: FeeConfig;
   readonly rules: RuleOptions;
   /** Reference buy-in; consumed by session setup and gto-core stack bucketing. */
   readonly referenceStack: MilliBB;
@@ -398,8 +457,16 @@ export const DEFAULT_RULE_OPTIONS: RuleOptions;
 
 ```ts
 /** presetId 'CP_NL50_6MAX_ANTE'. SB 500 / BB 1000, minBet 1000, ante enabled 160,
- *  rake 5/100 cap 8000 floor noFlopNoDrop PROPORTIONAL, referenceStack 100000,
- *  display { bigBlindValue: 0.5, symbol: '$' }, DEFAULT_RULE_OPTIONS. */
+ *  rake { 5/100, cap 8000, quantum 20, rounding 'round', triggerPolicy 'NO_FLOP_NO_DROP',
+ *  allocation 'PROPORTIONAL' }, fee { triggerPolicy 'NEVER', cap 8000, allocation
+ *  'PROPORTIONAL' }, referenceStack 100000, display { bigBlindValue: 0.5, symbol: '$' },
+ *  DEFAULT_RULE_OPTIONS.
+ *
+ *  Every rake and fee value here is an honest DEFAULT, not a claim about CoinPoker
+ *  (ADR-0033). Observed: a nominal 5% rate; preflop-only hands raked zero; postflop hands
+ *  raked a percentage; two recorded amounts consistent with rounding to the nearest cent.
+ *  NOT observed and therefore not asserted: the half-way tie-break, the fee trigger, and
+ *  whether the 8 BB cap varies with the dealt-in count. */
 export const CP_NL50_6MAX_ANTE: TableConfig;
 
 /** Identical with `ante.enabled === false`. presetId 'CP_NL50_6MAX'. */
@@ -407,13 +474,17 @@ export const CP_NL50_6MAX_NO_ANTE: TableConfig;
 
 export function withAnteEnabled(config: TableConfig, enabled: boolean): TableConfig;
 
-/** `docs/GTO_BASELINE.md`: NL100 must be reachable by changing the cap and the display. */
+/** `docs/GTO_BASELINE.md`: NL100 must be reachable by changing configuration only.
+ *  `rakeQuantum` is part of the patch because a different stake has a different settlement
+ *  granularity — at BB = 0.50 one cent is 20 milliBB, at BB = 1.00 it is 10. It is STATED,
+ *  never derived from `bigBlindValue`: `DisplayConfig` is presentation (ADR-0027). */
 export function withStakeDisplay(
   config: TableConfig,
   patch: {
     readonly presetId: string;
     readonly label: string;
     readonly rakeCap: MilliBB;
+    readonly rakeQuantum: MilliBB;
     readonly bigBlindValue: number;
   },
 ): TableConfig;
@@ -439,6 +510,17 @@ export const POSITIONS: readonly ['UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
 
 /** Walked BACKWARDS from the button over the non-blind dealt-in seats. */
 export const NON_BLIND_LADDER: readonly ['BTN', 'CO', 'HJ', 'UTG'];
+
+/**
+ * A manual SB/BB assignment supplied at hand start (ADR-0031). ALWAYS user input: the
+ * engine never derives one, because who owes a blind after sitting out differs per room and
+ * no fixture has confirmed CoinPoker's rule. `null`/absent means the ordinary rotation,
+ * which is byte-identical to the behaviour before overrides existed.
+ */
+export interface BlindSeatOverride {
+  readonly smallBlindSeat: SeatIndex;
+  readonly bigBlindSeat: SeatIndex;
+}
 
 export interface BlindAssignment {
   readonly buttonSeat: SeatIndex;
@@ -498,6 +580,7 @@ export interface TableState {
 import type { Card, EventId, HandId, IdFactory, MilliBB, PlayerId } from '@gto-self/shared';
 import type { SeatIndex } from './seat.js';
 import type { TableConfig } from './config.js';
+import type { BlindSeatOverride } from './positions.js';
 
 export type EventOrigin = 'USER' | 'ENGINE';
 
@@ -518,6 +601,7 @@ export type HandEventKind =
   | 'HAND_STARTED'
   | 'PLAYER_DEALT_IN'
   | 'POST_ANTE'
+  | 'POST_DEAD_BLIND'
   | 'POST_SB'
   | 'POST_BB'
   | 'HOLE_CARDS_SET'
@@ -550,6 +634,11 @@ export type HandEventPayload =
       readonly config: TableConfig;
       readonly buttonSeat: SeatIndex;
       readonly heroSeat: SeatIndex | null;
+      /** The manual SB/BB assignment this hand was started with, or `null` for the
+       *  ordinary rotation (ADR-0031). REQUIRED and persisted: positions and both action
+       *  orders are derived from it on every replay, and a hand that replayed to different
+       *  blinds would be a corrupt log. */
+      readonly blindOverride: BlindSeatOverride | null;
     }
   /** ENGINE. One per dealt-in seat, ascending physical seat order. */
   | {
@@ -561,6 +650,14 @@ export type HandEventPayload =
     }
   /** ENGINE. amount = min(config.ante.amount, stack) — the ACTUAL amount posted. */
   | { readonly kind: 'POST_ANTE'; readonly seat: SeatIndex; readonly amount: MilliBB }
+  /** ENGINE, from an EXPLICIT `StartHandOptions.deadBlinds` entry — never inferred
+   *  (ADR-0031). A neutral accounting event whose arithmetic is IDENTICAL to an ante: dead
+   *  money that reaches the pot and the side-pot layering basis but never lowers what the
+   *  seat owes to call. Only the DEAD portion of a returning player's post is modelled
+   *  here; a live portion is an ordinary blind post and there is no combined event.
+   *  amount = min(requested, stackAfterAnte) — the ACTUAL amount posted, and always > 0
+   *  (a seat the ante left with nothing posts no event at all). */
+  | { readonly kind: 'POST_DEAD_BLIND'; readonly seat: SeatIndex; readonly amount: MilliBB }
   /** ENGINE. amount = min(smallBlind, stackAfterAnte). */
   | { readonly kind: 'POST_SB'; readonly seat: SeatIndex; readonly amount: MilliBB }
   /** ENGINE. amount = min(bigBlind, stackAfterAnte). */
@@ -613,14 +710,17 @@ export type HandEventPayload =
   | { readonly kind: 'RIVER_DEALT'; readonly card: Card }
   /** Winners are USER input in Phase 1 (hand evaluation is out of scope) or ENGINE when
    *  exactly one contender remains. Amounts are always engine-computed. `rake` records the
-   *  rake ACTUALLY APPLIED (ADR-0009), so a later configuration correction never rewrites
-   *  or invalidates stored history. */
+   *  rake ACTUALLY APPLIED (ADR-0009) and `fee` the fee ACTUALLY APPLIED (ADR-0032), so a
+   *  later configuration correction never rewrites or invalidates stored history.
+   *  `fee` is REQUIRED and is ZERO when there is none — the two deductions are recorded
+   *  separately, and `netAmount === grossAmount - rake - fee`. */
   | {
       readonly kind: 'POT_AWARDED';
       readonly potIndex: number;
       readonly winners: readonly SeatIndex[];
       readonly grossAmount: MilliBB;
       readonly rake: MilliBB;
+      readonly fee: MilliBB;
       readonly netAmount: MilliBB;
       readonly shares: readonly PotShare[];
     }
@@ -629,6 +729,8 @@ export type HandEventPayload =
       readonly kind: 'HAND_FINISHED';
       readonly reason: HandEndReason;
       readonly totalRake: MilliBB;
+      /** Required, ZERO when no fee was charged. Never merged into `totalRake`. */
+      readonly totalFees: MilliBB;
     };
 
 /** Narrows correctly on `.kind`: an intersection distributes over the union. */
@@ -641,9 +743,10 @@ export const ACTION_EVENT_KINDS: readonly ['FOLD', 'CHECK', 'CALL', 'BET', 'RAIS
 export const WAGER_EVENT_KINDS: readonly ['CALL', 'BET', 'RAISE', 'ALL_IN'];
 ```
 
-Every leaf field is `number | string | boolean`, an array of those, or `TableConfig` (itself all
-primitives). No `Date`, `Map`, `Set`, `bigint`, `undefined` or class instance appears in any
-payload, so `JSON.parse(JSON.stringify(e))` is lossless.
+Every leaf field is `number | string | boolean`, an array of those, `TableConfig` or
+`BlindSeatOverride` (both themselves all primitives). No `Date`, `Map`, `Set`, `bigint`,
+`undefined` or class instance appears in any payload, so `JSON.parse(JSON.stringify(e))` is
+lossless.
 
 ### 3.9 `state.ts`
 
@@ -651,7 +754,7 @@ payload, so `JSON.parse(JSON.stringify(e))` is lossless.
 import type { Card, HandId, MilliBB, PlayerId } from '@gto-self/shared';
 import type { BySeat, SeatIndex } from './seat.js';
 import type { TableConfig } from './config.js';
-import type { BlindAssignment, Position, PositionMap } from './positions.js';
+import type { BlindAssignment, BlindSeatOverride, Position, PositionMap } from './positions.js';
 import type { Street } from './street.js';
 import type { HandEndReason, HandEventKind, PotShare } from './events.js';
 import type { Pot } from './pots.js';
@@ -689,7 +792,7 @@ export interface SeatHandState {
   readonly stack: MilliBB;
   /** Live wager on the CURRENT street. Equals contributionByStreet[state.street]. */
   readonly streetContribution: MilliBB;
-  /** Antes this hand. Dead money: never counts toward a call. */
+  /** Antes and dead blinds this hand. Dead money: never counts toward a call. */
   readonly deadContribution: MilliBB;
   /** deadContribution + every street's live contribution, net of RETURN_UNCALLED.
    *  The side-pot layering basis. */
@@ -707,8 +810,11 @@ export interface SeatHandState {
   readonly actedAtFullRaiseCount: number | null;
   readonly lastAction: HandEventKind | null;
   readonly returnedUncalled: MilliBB;
+  /** Every pot share this seat won, BEFORE its rake and fee attribution. */
   readonly wonGross: MilliBB;
   readonly rakePaid: MilliBB;
+  /** Splash fee attributed to this seat. Recorded separately from `rakePaid` (ADR-0032). */
+  readonly feePaid: MilliBB;
 }
 
 export interface BettingRound {
@@ -742,6 +848,8 @@ export interface PotAwardRecord {
   readonly winners: readonly SeatIndex[];
   readonly grossAmount: MilliBB;
   readonly rake: MilliBB;
+  /** ZERO when no fee applies. netAmount === grossAmount - rake - fee. */
+  readonly fee: MilliBB;
   readonly netAmount: MilliBB;
   readonly shares: readonly PotShare[];
 }
@@ -777,6 +885,10 @@ export interface HandState {
   readonly buttonSeat: SeatIndex;
   readonly heroSeat: SeatIndex | null;
   readonly blinds: BlindAssignment;
+  /** The manual SB/BB assignment carried on HAND_STARTED, or null for the ordinary
+   *  rotation. Held on the state because finalizeRoster runs assignBlinds lazily, once the
+   *  roster is complete, and must reach the same `blinds` on every replay. */
+  readonly blindOverride: BlindSeatOverride | null;
   /** Ascending physical seat order. Fixed once the roster is finalized. */
   readonly dealtInSeats: readonly SeatIndex[];
   readonly positions: PositionMap;
@@ -801,6 +913,8 @@ export interface HandState {
   readonly potTotal: MilliBB;
   readonly awards: readonly PotAwardRecord[];
   readonly totalRake: MilliBB;
+  /** Summed splash fee across every award. Never merged into `totalRake` (ADR-0032). */
+  readonly totalFees: MilliBB;
   readonly endReason: HandEndReason | null;
 
   readonly actions: readonly ActionRecord[];
@@ -812,7 +926,7 @@ export interface HandState {
 Standing per-seat invariant, asserted after every event:
 
 ```
-stack === startingStack − totalContribution + wonGross − rakePaid
+stack === startingStack − totalContribution + wonGross − rakePaid − feePaid
 ```
 
 ### 3.10 `pots.ts`
@@ -914,7 +1028,7 @@ export interface RaisePreview {
 }
 ```
 
-### 3.13 `rake.ts` and `settlement.ts`
+### 3.13 `rake.ts`, `fee.ts` and `settlement.ts`
 
 ```ts
 import type { MilliBB, PlayerId } from '@gto-self/shared';
@@ -930,10 +1044,23 @@ export interface RakeContext {
 export interface RakeResult {
   readonly gross: MilliBB;
   readonly rake: MilliBB;
+  /** gross - rake. PRE-FEE: a fee is a separate deduction with its own record. */
   readonly net: MilliBB;
+  /** `raw > cap`, so a raw rake landing exactly on the cap is not "capped". */
   readonly capped: boolean;
-  /** true when noFlopNoDrop suppressed the rake entirely. */
+  /** true when `triggerPolicy: 'NO_FLOP_NO_DROP'` suppressed the rake entirely. */
   readonly waived: boolean;
+}
+
+/** There is deliberately NO fee field on `RakeResult`: rake and fee stay separate all the
+ *  way down (ADR-0018/0032), and `net` above is the pre-fee net. */
+
+/** `fee.ts`. What a supplied fee has to fit inside. Both amounts are for the whole hand. */
+export interface FeeContext {
+  /** Summed gross of every pot being awarded. */
+  readonly gross: MilliBB;
+  /** The rake already being taken from that same gross. */
+  readonly rake: MilliBB;
 }
 
 export interface PotAwardInput {
@@ -945,6 +1072,8 @@ export interface PotAwardInput {
 export interface SettlementPlan {
   readonly records: readonly PotAwardRecord[];
   readonly totalRake: MilliBB;
+  /** ZERO unless a fee was supplied for this hand. Never merged into `totalRake`. */
+  readonly totalFees: MilliBB;
   readonly reason: HandEndReason;
 }
 
@@ -956,6 +1085,7 @@ export interface SeatResult {
   readonly contributed: MilliBB;
   readonly wonGross: MilliBB;
   readonly rakePaid: MilliBB;
+  readonly feePaid: MilliBB;
   /** endingStack − startingStack. */
   readonly net: MilliBB;
 }
@@ -963,12 +1093,14 @@ export interface SeatResult {
 export interface HandResult {
   readonly pots: readonly PotAwardRecord[];
   readonly totalRake: MilliBB;
+  readonly totalFees: MilliBB;
   readonly reason: HandEndReason;
   readonly seats: readonly SeatResult[];
 }
 ```
 
-Invariant asserted at `COMPLETE`: `Money.sum(seats.map(s => s.net)) + totalRake === ZERO`.
+Invariant asserted at `COMPLETE`
+(`assertSettlementBalances`): `Money.sum(seats.map(s => s.net)) + totalRake + totalFees === ZERO`.
 
 ### 3.14 `commands.ts`
 
@@ -1000,15 +1132,35 @@ export type HandCommand =
       readonly cards: readonly Card[];
       readonly revealed: boolean;
     }
-  /** Must cover EVERY unawarded pot, so the per-hand rake cap is computed once. */
-  | { readonly kind: 'AWARD_POTS'; readonly awards: readonly PotAwardInput[] };
+  /** Must cover EVERY unawarded pot, so the per-hand rake cap is computed once.
+   *  `fee` is the whole hand's OBSERVED splash fee. Omitted (or `null`) means none — the
+   *  normal case, and the only one `fee.triggerPolicy: 'NEVER'` accepts. There is no
+   *  automatic fee: CoinPoker's trigger is unknown (ADR-0032/0033). */
+  | {
+      readonly kind: 'AWARD_POTS';
+      readonly awards: readonly PotAwardInput[];
+      readonly fee?: MilliBB | null;
+    };
 
 export type HandCommandKind = HandCommand['kind'];
+
+/**
+ * One EXPLICIT dead-blind post (ADR-0031). The engine never infers who owes one: missed
+ * blinds and the dead button differ per room and no CoinPoker fixture has confirmed theirs,
+ * so this is always user input. A seat that did not miss a blind simply has no entry here.
+ * Only the DEAD portion belongs here; a returning player's LIVE portion is an ordinary
+ * blind post, and no combined event exists.
+ */
+export interface DeadBlindPost {
+  readonly seat: SeatIndex;
+  /** Requested amount; the post is CLAMPED to the seat's stack, exactly like an ante. */
+  readonly amount: MilliBB;
+}
 ```
 
 Command constructors (`fold()`, `check()`, `call()`, `allIn()`, `betTo(x)`, `raiseTo(x)`,
-`dealBoard(cards)`, `setHoleCards(seat, cards, revealed)`, `awardPots(awards)`) are exported so
-the keyboard map reads `applyCommand(hand, fold(), ids)`.
+`dealBoard(cards)`, `setHoleCards(seat, cards, revealed)`, `awardPots(awards, fee = null)`) are
+exported so the keyboard map reads `applyCommand(hand, fold(), ids)`.
 
 ### 3.15 `hand.ts`
 
@@ -1024,12 +1176,21 @@ export interface Hand {
   readonly state: HandState;
 }
 
+/** Declared in `commands.ts` (and re-exported from the barrel), shown here because
+ *  `startHand` is its main entry point. */
 export interface StartHandOptions {
   readonly handId: HandId;
   /** Defaults to table.buttonSeat. Must be an ACTIVE, dealt-in seat. */
   readonly buttonSeat?: SeatIndex;
   /** Defaults to table.handNumber. */
   readonly handNumber?: number;
+  /** Manual SB/BB assignment (ADR-0031). Omitted or `null` means the ordinary rotation,
+   *  which produces byte-identical events to a build with no override at all. Persisted on
+   *  HAND_STARTED. Heads-up it OVERRIDES `rules.headsUpButtonPostsSmallBlind`. */
+  readonly blindOverride?: BlindSeatOverride | null;
+  /** Explicit dead-blind posts, at most one per seat. Omitted means none — the engine has
+   *  no opinion about who "should" post one. */
+  readonly deadBlinds?: readonly DeadBlindPost[];
 }
 ```
 
@@ -1076,6 +1237,12 @@ export interface AwardablePot {
   readonly eligibleSeats: readonly SeatIndex[];
   /** What the rake would be if all remaining pots were awarded now. Display only. */
   readonly projectedRake: MilliBB;
+  /** What the fee would be if all remaining pots were awarded now, with NOTHING supplied.
+   *  Display only, and ZERO under every shipped `fee.triggerPolicy`: there is no automatic
+   *  fee, so none exists until an `AWARD_POTS` command carries an observed one (ADR-0032).
+   *  Computed through the real allocator rather than written as a constant, so a future
+   *  automatic trigger needs no new field here. */
+  readonly projectedFee: MilliBB;
   readonly awarded: boolean;
 }
 
@@ -1195,9 +1362,15 @@ export function rotateToSeat(seats: readonly SeatIndex[], target: SeatIndex): re
 ### 4.3 `config.ts` / `presets.ts`
 
 ```ts
-// Result. Rejects: non-positive blinds, smallBlind > bigBlind, minBet <= 0, negative ante,
-// rake denominator 0, numerator outside 0..denominator, negative cap, referenceStack <= 0,
-// and any AnteMode this version does not implement. Called by startHand and by decode.
+// Result. Rejects: non-money amounts, non-positive blinds, smallBlind > bigBlind,
+// minBet <= 0, negative ante, ante.enabled with a zero amount, rake denominator 0,
+// numerator outside 0..denominator, negative rake cap, a rake `quantum` that is not a
+// positive integer milliBB, a rake `cap` that is not an EXACT MULTIPLE of that quantum (a
+// capped rake would otherwise not be quantized and the settlement would be internally
+// inconsistent), a negative fee cap, referenceStack <= 0, a non-positive
+// display.bigBlindValue, seatCount !== 6, and any AnteMode, RakeTriggerPolicy,
+// FeeTriggerPolicy or RakeAllocation this version cannot implement.
+// Called by createTable, startHand and decode.
 // A bad preset is user data, not a programmer error -> INVALID_CONFIG.
 export function validateTableConfig(config: TableConfig): EngineResult<TableConfig>;
 
@@ -1272,27 +1445,56 @@ export function applyHandResult(table: TableState, hand: Hand): EngineResult<Tab
 
 ```ts
 // Result. dealtIn must be ascending, distinct, length 2..6, and contain buttonSeat.
-// Errors NOT_ENOUGH_PLAYERS, TOO_MANY_PLAYERS, BUTTON_SEAT_NOT_DEALT_IN.
+// Errors NOT_ENOUGH_PLAYERS, TOO_MANY_PLAYERS, BUTTON_SEAT_NOT_DEALT_IN, CORRUPT_LOG.
+//
+// `override` (ADR-0031) names the two blind seats explicitly. It is validated, never
+// trusted: both seats must be dealt in (SEAT_NOT_DEALT_IN); they must be distinct
+// (BLIND_OVERRIDE_INVALID); with THREE OR MORE dealt in neither may be the button seat
+// (BLIND_OVERRIDE_ON_BUTTON — that is the dead-button case, which stays unimplemented);
+// and the resulting lineup must be labelable by the six-member Position union
+// (POSITION_LINEUP_UNSUPPORTED, checked here via derivePositionLabels so an unlabelable
+// assignment can never reach a started hand).
+//
+// PRECEDENCE: heads-up, the override WINS over rules.headsUpButtonPostsSmallBlind — an
+// explicit user statement outranks a configured default, and heads-up is the one shape
+// where naming the button as a blind seat is legal.
 export function assignBlinds(
   dealtIn: readonly SeatIndex[],
   buttonSeat: SeatIndex,
   rules: RuleOptions,
+  override?: BlindSeatOverride | null, // default null = the ordinary rotation
 ): EngineResult<BlindAssignment>;
 
-// Total given a valid BlindAssignment. null for seats not dealt in.
+// Result. THE single place a Position label is decided, and the reason it returns a Result:
+// a lineup the six-member Position union cannot describe is REFUSED
+// (POSITION_LINEUP_UNSUPPORTED), never approximated. No label is ever invented, reused for
+// two seats, or defaulted. See Rules 7.11.
+export function derivePositionLabels(
+  dealtIn: readonly SeatIndex[],
+  blinds: BlindAssignment,
+  rules: RuleOptions,
+): EngineResult<ReadonlyMap<SeatIndex, Position>>;
+
+// Total given a BlindAssignment that came from assignBlinds. null for seats not dealt in.
+// Delegates labelling to derivePositionLabels; reaching an unlabelable lineup here means a
+// corrupt log, and the invariant is what loadHand turns into CORRUPT_LOG.
 export function assignPositions(
   dealtIn: readonly SeatIndex[],
   blinds: BlindAssignment,
   rules: RuleOptions,
 ): PositionMap;
 
-// Total. Dealt-in seats in preflop action order; index 0 acts first.
+// Total. Dealt-in seats in preflop action order; index 0 acts first. ONE rule, no special
+// cases: ring order starting immediately after the EFFECTIVE big blind, so the big blind
+// always acts last preflop — which follows a BlindSeatOverride when one is present.
 export function preflopActionOrder(
   dealtIn: readonly SeatIndex[],
   blinds: BlindAssignment,
 ): readonly SeatIndex[];
 
 // Total. Dealt-in seats in postflop action order; index 0 acts first on every street.
+// Postflop order is a BUTTON rule, not a blind rule, so a BlindSeatOverride leaves the
+// postflop SEAT order untouched; only the position labels along it move.
 export function postflopActionOrder(
   dealtIn: readonly SeatIndex[],
   blinds: BlindAssignment,
@@ -1468,13 +1670,38 @@ export function wagerToForPotFraction(
 export function previewWager(state: HandState, seat: SeatIndex, toAmount: MilliBB): RaisePreview;
 ```
 
-### 4.12 `rake.ts`
+### 4.12 `rake.ts` and `fee.ts`
 
 ```ts
-// Total. waived when !ctx.sawFlop && config.noFlopNoDrop -> rake ZERO.
-// Otherwise Money.min(Money.mulRatio(gross, numerator, denominator, rounding), cap).
-// No float ever touches rake (ADR-0001, ADR-0009).
+// Total. Rake for one hand's summed gross, in three stated steps:
+//
+//   waived = config.triggerPolicy === 'NO_FLOP_NO_DROP' && !ctx.sawFlop   -> rake ZERO
+//   raw    = Money.mulRatioQuantized(gross, numerator, denominator, quantum, rounding)
+//   rake   = Money.min(raw, config.cap)
+//
+// The rate is applied and quantized in ONE rounding step (ADR-0027). Computing the milliBB
+// rake first and quantizing it afterwards rounds TWICE, and the first rounding can push the
+// value across the half-way point of the second, landing a WHOLE QUANTUM from the exact
+// value: gross 4190 at 5/100 with quantum 20 is exactly 209.5, whose nearest multiple of 20
+// is 200 — the two-step form returns 220. `net` is gross - rake and does NOT account for a
+// fee, which is a separate deduction with its own record (ADR-0032). `capped` is
+// `raw > cap`, so a raw rake landing exactly on the cap is not "capped";
+// validateTableConfig guarantees cap is a multiple of quantum, so the capped result is
+// quantized too. No float ever touches rake (ADR-0001, ADR-0009, ADR-0027).
 export function computeRake(gross: MilliBB, config: RakeConfig, ctx: RakeContext): RakeResult;
+
+// Total. The ONE allocation algorithm, shared by rake and fee. `ceilings[i]` is the most pot
+// i can be charged — pot.amount for rake, pot.amount - rakeAlreadyTaken[i] for a fee charged
+// on top of a rake. Proportional weights are always the GROSS pot amounts, so the split does
+// not shift because an earlier deduction already took some of a pot. `label` only shapes the
+// invariant messages, so a broken rake and a broken fee do not report the same failure.
+export function allocateAcrossPots(
+  pots: readonly Pot[],
+  ceilings: readonly MilliBB[],
+  total: MilliBB,
+  allocation: RakeAllocation,
+  label: string,
+): readonly MilliBB[];
 
 // Total. One rake amount per pot, same length and order as `pots`, summing EXACTLY to
 // totalRake, and NEVER charging a pot more than it holds (asserted, so netAmount is never
@@ -1487,12 +1714,55 @@ export function allocateRake(
   totalRake: MilliBB,
   allocation: RakeAllocation,
 ): readonly MilliBB[];
+
+// --- fee.ts ---------------------------------------------------------------------------
+// `poker-core` deliberately knows no fee TRIGGER. Under 'MANUAL' the amount is an OBSERVED
+// input supplied at award time; this module validates its range and allocates it, and never
+// re-quantizes or otherwise rewrites it (CLAUDE.md rule 3).
+
+// Result. The total fee for one hand, given what the user supplied (`null` = nothing
+// supplied). Never throws; a bad fee is user data. Rejects, each with its own code:
+//   FEE_NEGATIVE     a negative fee;
+//   FEE_NOT_ALLOWED  a NON-ZERO fee supplied while triggerPolicy is 'NEVER';
+//   FEE_ABOVE_CAP    a fee above config.cap;
+//   FEE_EXCEEDS_POT  a fee that, with the rake, would exceed the pot total.
+// A fee that passes is returned UNCHANGED — not quantized, not capped, not clamped. Nothing
+// supplied gives ZERO under every policy; an explicit ZERO is accepted everywhere, because a
+// zero fee is the absence of a fee. Only charging one under 'NEVER' is the error.
+export function resolveFee(
+  supplied: MilliBB | null,
+  config: FeeConfig,
+  ctx: FeeContext,
+): EngineResult<MilliBB>;
+
+// Total. One fee amount per pot, same length and order as `pots`, summing EXACTLY to
+// totalFee. Uses the SAME allocator as the rake, with each pot's ceiling reduced by the rake
+// already taken from it, so no pot is over-charged and netAmount is never negative
+// (asserted). `rakePerPot` must already be the allocated rake for the same pots, in order.
+export function allocateFee(
+  pots: readonly Pot[],
+  rakePerPot: readonly MilliBB[],
+  totalFee: MilliBB,
+  allocation: FeeConfig['allocation'],
+): readonly MilliBB[];
 ```
+
+Money primitives this rests on, both in `@gto-self/shared`:
+
+- `Money.quantize(amount, quantum, mode)` — round `amount` to the nearest multiple of
+  `quantum` under `mode`. `quantize(x, 1, mode)` is the identity for every mode. `'round'` is
+  nearest with ties **away from zero**, symmetric about zero.
+- `Money.mulRatioQuantized(amount, numerator, denominator, quantum, mode)` —
+  `amount * numerator / denominator` rounded **once** to a multiple of `quantum`. It is
+  deliberately **not** `quantize(mulRatio(...))`: that rounds twice, and the counterexample
+  above (`4190 * 5/100` at `quantum 20`: exact `209.5`, one-step `200`, two-step `220`) is a
+  whole quantum of real money. It throws when the exact product is not representable, so a
+  silent loss of precision can never reach a settlement amount.
 
 ### 4.13 `settlement.ts`
 
 ```ts
-// Total. state.board.length >= 3.
+// Total. state.board.length >= 3. The 'NO_FLOP_NO_DROP' trigger test.
 export function sawFlop(state: HandState): boolean;
 
 // Total. rules.oddChipRule === 'FIRST_LEFT_OF_BUTTON'
@@ -1507,22 +1777,44 @@ export function splitPot(
   winners: readonly SeatIndex[],
 ): readonly PotShare[];
 
+// Total. Per-winner deduction attribution for one pot, in the same order as `shares`. The
+// event stores only the pot's total rake and total fee; this is how the reducer reproduces
+// each seat's rakePaid and feePaid so the standing per-seat chip identity holds. BOTH use
+// it, so a pot's rake and its fee are attributed by the same rule.
+export function splitRakeAcrossShares(rake: MilliBB, shareCount: number): readonly MilliBB[];
+
 // Result. `awards` must cover EVERY unawarded pot exactly once (AWARDS_INCOMPLETE,
 // POT_ALREADY_AWARDED, UNKNOWN_POT), each with >= 1 distinct winner drawn from that pot's
 // eligibleSeats (NO_WINNERS, DUPLICATE_WINNER, WINNER_NOT_ELIGIBLE). Rake is computed ONCE
 // on the summed gross with ONE per-hand cap, then allocated. reason is SHOWDOWN.
+//
+// `fee` is the whole hand's splash fee as OBSERVED by the user (or, later, the parser).
+// `null` — the normal case — means none was supplied and the hand's fee is ZERO; there is no
+// automatic trigger (ADR-0032). A supplied fee is range-checked by `resolveFee`
+// (FEE_NEGATIVE, FEE_NOT_ALLOWED, FEE_ABOVE_CAP, FEE_EXCEEDS_POT) and then used exactly as
+// entered.
 export function planAwards(
   state: HandState,
   awards: readonly PotAwardInput[],
+  fee?: MilliBB | null, // default null
 ): EngineResult<SettlementPlan>;
 
 // Result. Used when contenders(state).length === 1: the winner is derived, not asked for.
 // reason is ALL_FOLDED. Errors NOT_AWAITING_AWARD when more than one contender remains.
-export function autoAwardUncontested(state: HandState): EngineResult<SettlementPlan>;
+// `fee` behaves exactly as in planAwards. The engine cascade that calls this supplies null,
+// because an uncontested pot is awarded with no user command to carry an observed fee. The
+// parameter exists so a caller that HAS observed one (Phase 11) needs no new signature.
+export function autoAwardUncontested(
+  state: HandState,
+  fee?: MilliBB | null, // default null
+): EngineResult<SettlementPlan>;
 
 // Total at any phase; `net` is honest before COMPLETE too.
 export function handResult(state: HandState): HandResult | null;
 export function seatResult(state: HandState, seat: SeatIndex): SeatResult;
+
+// Throws. At COMPLETE, sum(seat net) + totalRake + totalFees === ZERO.
+export function assertSettlementBalances(state: HandState): void;
 ```
 
 ### 4.14 `reduce.ts`
@@ -1534,8 +1826,12 @@ export function initialHandState(started: EventOf<'HAND_STARTED'>): HandState;
 
 // Throws. Runs assignBlinds + assignPositions over the accumulated roster, stamps each
 // seat's position, and seeds the preflop round. Invoked by applyEvent the first time it
-// sees an event outside { HAND_STARTED, PLAYER_DEALT_IN } — in practice POST_ANTE or
-// POST_SB. Exported so the transition is directly testable, not an implicit side effect.
+// sees an event outside { HAND_STARTED, PLAYER_DEALT_IN } — in practice POST_ANTE,
+// POST_DEAD_BLIND or POST_SB. Exported so the transition is directly testable, not an
+// implicit side effect. state.blindOverride (from HAND_STARTED) is fed straight to
+// assignBlinds, so a replay reaches exactly the blinds the hand was played with; an
+// override the engine would refuse today throws here and surfaces as CORRUPT_LOG from
+// loadHand.
 export function finalizeRoster(state: HandState): HandState;
 
 // Total. Preflop seeding. See Rules 7.5.
@@ -1560,12 +1856,14 @@ export function finalize(state: HandState): HandState;
 // Throws. For trusted logs the engine produced itself.
 export function foldEvents(events: readonly HandEvent[]): HandState;
 
-// Throws. Money.sum(stacks) + potTotal(unawarded pots) + totalRake === Money.sum(startingStacks).
-// Holds after EVERY event, including mid-award with a mix of awarded and unawarded pots.
+// Throws. Money.sum(stacks) + potTotal(unawarded pots) + totalRake + totalFees
+//   === Money.sum(startingStacks).
+// Holds after EVERY event, including mid-award with a mix of awarded and unawarded pots,
+// and with a fee charged on some pots but not others.
 export function assertChipConservation(state: HandState): void;
 
 // Throws. The standing per-seat identity, checked after every event:
-//   stack === startingStack - totalContribution + wonGross - rakePaid
+//   stack === startingStack - totalContribution + wonGross - rakePaid - feePaid
 //   stack >= 0
 //   status === 'ALL_IN'  =>  totalContribution === startingStack   (NOT stack === ZERO:
 //     settlement credits an all-in winner's stack without un-committing it)
@@ -1592,12 +1890,17 @@ export function expandCommand(
 
 // Result. Command group 0, always in this order: HAND_STARTED, PLAYER_DEALT_IN per
 // dealt-in seat ascending, POST_ANTE per dealt-in seat in ring order from the small blind
-// (when ante.enabled), POST_SB, POST_BB — then the same engine cascade, so a table where
+// (when ante.enabled), POST_DEAD_BLIND per supplied seat in the same ring order,
+// POST_SB, POST_BB — then the same engine cascade, so a table where
 // the antes put everyone all-in lands in AWAITING_BOARD rather than an impossible
 // AWAITING_ACTION. Errors INVALID_CONFIG, NOT_ENOUGH_PLAYERS, TOO_MANY_PLAYERS,
 // NO_BUTTON_SEAT, BUTTON_SEAT_NOT_DEALT_IN, STACK_NOT_POSITIVE, DUPLICATE_PLAYER, and
 // AMOUNT_OUT_OF_RANGE — per stack AND for the roster's TOTAL, checked on plain numbers
 // before the first emit so Money.sum can never throw out of a Result-returning function.
+// For options.blindOverride and options.deadBlinds it additionally errors
+// SEAT_NOT_DEALT_IN, BLIND_OVERRIDE_INVALID, BLIND_OVERRIDE_ON_BUTTON,
+// POSITION_LINEUP_UNSUPPORTED, DUPLICATE_DEAD_BLIND and AMOUNT_OUT_OF_RANGE. A bad
+// dead-blind post rejects the WHOLE hand start; it is never silently dropped.
 export function buildStartEvents(
   table: TableState,
   options: StartHandOptions,
@@ -1722,7 +2025,7 @@ export type JsonValue =
   null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
 export const tableConfigSchema: z.ZodType<TableConfig>;
-// z.discriminatedUnion('kind', [...]) over the 18 members, with a compile-time `satisfies`
+// z.discriminatedUnion('kind', [...]) over the 19 members, with a compile-time `satisfies`
 // assertion that the inferred type is assignable to HandEvent and back. Money fields
 // validate as safe integers within +/-MAX_MILLI_BB before branding; cards as 0..51;
 // seats as 0..5.
@@ -1788,17 +2091,21 @@ export function jsonRoundTrip(events: readonly HandEvent[]): EngineResult<readon
   `origin` marks USER vs ENGINE.
 - Origin by kind — **USER:** `HAND_STARTED`, `FOLD`, `CHECK`, `CALL`, `BET`, `RAISE`, `ALL_IN`,
   `FLOP_DEALT`, `TURN_DEALT`, `RIVER_DEALT`, `HOLE_CARDS_SET`, and `POT_AWARDED` when the user
-  supplied the winners. **ENGINE:** `PLAYER_DEALT_IN`, `POST_ANTE`, `POST_SB`, `POST_BB`,
-  `RETURN_UNCALLED`, `HAND_FINISHED`, and `POT_AWARDED` when auto-awarded.
+  supplied the winners. **ENGINE:** `PLAYER_DEALT_IN`, `POST_ANTE`, `POST_DEAD_BLIND`,
+  `POST_SB`, `POST_BB`, `RETURN_UNCALLED`, `HAND_FINISHED`, and `POT_AWARDED` when
+  auto-awarded. `POST_DEAD_BLIND` is engine-emitted but never engine-*decided*: it exists
+  only for a seat the caller explicitly listed in `StartHandOptions.deadBlinds` (ADR-0031).
 - **Deliberately not stored:** no `allIn` or `fullRaise` flag on any event (all-in-ness is
   `stackAfter === 0`); no `BETTING_ROUND_CLOSED`; no `STREET_ADVANCED` (the deal event _is_ the
   transition); no `position` on `PLAYER_DEALT_IN` (positions are recomputed on every replay and
   never persisted); no timestamps (the `hand_events` row carries those in Phase 3).
 - **Deliberate redundancy, cross-checked:** wager events carry both `toAmount` and `amount`;
-  `POT_AWARDED` carries `grossAmount`, `rake`, `netAmount` and `shares`. The reducer asserts
-  only the _arithmetic_ identities (`amount === toAmount − streetContributionBefore`,
-  `net === gross − rake`, `Money.sum(shares) === net`, `gross === pot.amount`) — never
+  `POT_AWARDED` carries `grossAmount`, `rake`, `fee`, `netAmount` and `shares`. The reducer
+  asserts only the _arithmetic_ identities (`amount === toAmount − streetContributionBefore`,
+  `net === gross − rake − fee`, `Money.sum(shares) === net`, `gross === pot.amount`) — never
   rule-dependent policy, so a corrected rule cannot retroactively invalidate stored hands.
+  `HAND_FINISHED` likewise carries `totalRake` and `totalFees` as two separate amounts, and
+  the reducer asserts each against what it accumulated.
 - One `F` keystroke that ends a hand produces a four-event command group —
   `FOLD, RETURN_UNCALLED, POT_AWARDED, HAND_FINISHED` — and one `Z` removes all four.
 
@@ -2074,19 +2381,31 @@ Command group 0 is always, in this exact order:
 3. `POST_ANTE` — when `config.ante.enabled`, one per dealt-in seat in **ring order starting at
    the small-blind seat** (equivalently: from the seat left of the button; heads-up that is the
    button itself)
-4. `POST_SB`
-5. `POST_BB`
+4. `POST_DEAD_BLIND` — one per seat named in `StartHandOptions.deadBlinds`, in the **same ring
+   order from the small-blind seat**. Never inferred: a seat with no entry posts nothing
+   (ADR-0031)
+5. `POST_SB`
+6. `POST_BB`
 
 Every posted amount is `Money.min(nominal, seat.stack at that moment)`, so a seat that cannot
 cover its ante or blind simply posts less and becomes `ALL_IN` — no special case downstream.
-The **actual** amount posted is what the event records.
+The **actual** amount posted is what the event records. A dead blind is clamped the same way,
+with one addition: a seat the ante already left with nothing emits **no event at all** rather
+than a zero-amount post, because nothing moved and a zero post would not survive a strict
+replay.
 
-**Antes increase `deadContribution` and `totalContribution` but NOT `streetContribution`.**
-You do not call an ante, so it must not affect the preflop call amount — yet it must count
-toward a player's contribution level for side-pot layering, so a player all-in for part of an
-ante ends up eligible for exactly the smallest pot layer. Blinds increase `streetContribution`
-and `totalContribution`. That one split makes both behaviours fall out with no special-casing
-anywhere else.
+**Antes and dead blinds increase `deadContribution` and `totalContribution` but NOT
+`streetContribution`.** You do not call an ante, so it must not affect the preflop call amount —
+yet it must count toward a player's contribution level for side-pot layering, so a player all-in
+for part of an ante ends up eligible for exactly the smallest pot layer. Blinds increase
+`streetContribution` and `totalContribution`. That one split makes both behaviours fall out with
+no special-casing anywhere else.
+
+A dead blind takes **exactly** the ante's path through the reducer — the same `applyPost(dead:
+true)`, including the case where it takes the whole stack and leaves the seat `ALL_IN`. There is
+deliberately no config gate: a dead blind is explicit user input, not a table setting. Only the
+**dead** portion of a returning player's post is modelled; a live portion is an ordinary blind
+post, and there is no combined event.
 
 ### 7.10 The command cascade
 
@@ -2125,6 +2444,8 @@ and let `n = order.length`.
 - `n === 2` (with `rules.headsUpButtonPostsSmallBlind`, the default and universal rule):
   `smallBlindSeat = order[0]` (the button), `bigBlindSeat = order[1]`.
 
+Both are the **ordinary rotation**, used whenever no `BlindSeatOverride` is supplied.
+
 **Labels.** `order[0]` is the button. For `n >= 3`, `order[1] = 'SB'` and `order[2] = 'BB'`; the
 remaining non-blind seats take the ladder `['BTN', 'CO', 'HJ', 'UTG']` walked **backwards from
 the button**: `order[0] = 'BTN'`, `order[n-1] = 'CO'`, `order[n-2] = 'HJ'`, `order[n-3] = 'UTG'`.
@@ -2153,6 +2474,34 @@ Anchoring the late positions to the button is what keeps 5-handed `CO` meaning t
 - Preflop, `n === 2`: `order` itself — the button/small blind acts first.
 - Postflop, all `n`: `[...order.slice(1), order[0]]` — first live seat left of the button, button
   last. Heads-up this correctly yields `[BB, button]`.
+
+**Manual blind override (ADR-0031).** `StartHandOptions.blindOverride` names the SB and BB
+seats explicitly, is persisted on `HAND_STARTED`, and is fed to `assignBlinds` on every replay.
+It is always **user input**: the engine never derives one, because who owes a blind after
+sitting out differs per room and no fixture has confirmed CoinPoker's rule. It is validated,
+never trusted — both seats dealt in (`SEAT_NOT_DEALT_IN`), distinct
+(`BLIND_OVERRIDE_INVALID`), and with three or more dealt in neither may be the button
+(`BLIND_OVERRIDE_ON_BUTTON`; that is the dead-button case, still unmodelled).
+
+- **Heads-up the override wins** over `rules.headsUpButtonPostsSmallBlind`. An explicit user
+  statement outranks a configured default, and heads-up is the one shape where naming the
+  button as a blind seat is legal (there is no third seat).
+- **Labels move; the postflop seat order does not.** Postflop order is a *button* rule in every
+  rulebook; anchoring it to the small blind instead would let a seat between the button and an
+  overridden small blind act after the button. Preflop order does follow the override, because
+  its single rule is "ring order starting immediately after the **effective** big blind".
+- **The engine refuses a lineup it cannot name.** `derivePositionLabels` is the only place a
+  `Position` is decided, and it returns a `Result`: if an override yields an arrangement the
+  six-member `Position` union cannot label — a seat that would take two positions, a position
+  that would go to two seats, or a non-blind seat further from the button than `UTG` — it errors
+  `POSITION_LINEUP_UNSUPPORTED` and **the hand does not start**. No label is invented, reused or
+  defaulted. This is the load-bearing safety property of the feature: coping silently would mean
+  inventing a site rule, and an approximated label would flow straight into a solver lookup.
+- **When it _can_ name one, the names are structural, not solver-meaningful.** A non-standard
+  arrangement yields a labelling derived from the button and the stated blind seats that may
+  correspond to no real lineup. `gto-core` must treat such a hand as `UNSUPPORTED` rather than
+  approximating it to the nearest standard lineup. `seatsBeforeButton` / `seatsAfterButton` stay
+  meaningful; the `Position` **name** does not.
 
 Positions are recomputed from `HAND_STARTED` on every replay and are **never persisted**.
 `SeatPosition.seatsBeforeButton` is exported as the structural, naming-independent lineup key for
@@ -2193,33 +2542,49 @@ Because `RETURN_UNCALLED` has already reduced `totalContribution`, an uncalled b
 as a phantom side pot. Because antes are inside `totalContribution`, a player all-in from the
 ante is eligible for exactly the smallest layer.
 
-Phase 2 adds multi-way award coverage, not a representation change.
+Phase 2 added multi-way award coverage, not a representation change.
 
 **Asserted on every event:** `Money.sum(pot amounts) === Money.sum(totalContributions)`, and
-`Money.sum(stacks) + potTotal(unawarded pots) + totalRake === Money.sum(startingStacks)`.
+`Money.sum(stacks) + potTotal(unawarded pots) + totalRake + totalFees === Money.sum(startingStacks)`.
 
 ### 7.13 Rake
 
-Rake is **configuration, not code** (`docs/GTO_BASELINE.md`, ADR-0009). NL50 preset: `5 / 100`,
-cap `8000` milliBB (8 BB), `rounding: 'floor'`.
+Rake is **configuration, not code** (`docs/GTO_BASELINE.md`, ADR-0009, ADR-0027, ADR-0033).
+NL50 preset: `5 / 100`, cap `8000` milliBB (8 BB), `quantum: 20` milliBB (one currency cent at
+BB = 0.50), `rounding: 'round'`, `triggerPolicy: 'NO_FLOP_NO_DROP'`.
 
 ```
-sawFlop = state.board.length >= 3
-rakeable = !config.rake.noFlopNoDrop || sawFlop
+sawFlop  = state.board.length >= 3
+rakeable = config.rake.triggerPolicy === 'ALWAYS' || sawFlop
 
 gross     = Money.sum(amount over ALL pots being awarded)          // after uncalled returns
 totalRake = rakeable
-              ? Money.min( Money.mulRatio(gross, numerator, denominator, rounding),
+              ? Money.min( Money.mulRatioQuantized(gross, numerator, denominator,
+                                                   quantum, rounding),
                            config.rake.cap )
               : ZERO
 ```
 
-- The percentage is an **exact rational**, never a float — `Money.mulRatio` is the only rake
-  expression in the package.
+- The percentage is an **exact rational**, never a float — `Money.mulRatioQuantized` on that
+  rational is the only rake expression in the package.
+- **The rate is applied and quantized in ONE rounding step** (ADR-0027). Applying the rate to
+  milliBB and quantizing the result afterwards rounds **twice**, and the first rounding can push
+  the value across the half-way point of the second — landing a whole quantum from the exact
+  value. Gross `4190` at `5/100` with `quantum 20` is exactly `209.5`, whose nearest multiple of
+  20 is `200`; the two-step form returns `220`. That is one whole cent of real money, so the
+  one-step form is not a nicety.
+- `quantum` is a **settlement** granularity and is never derived from `DisplayConfig`:
+  presentation must not determine money. `quantum: 1` is pure milliBB and makes
+  `mulRatioQuantized` an exact identity with `mulRatio`.
 - The cap is **per hand**, applied once to the summed gross, because `AWARD_POTS` covers every
   remaining pot in one command.
 - The basis is the pot **after** the uncalled bet has been returned, which is standard and needs
   no configuration.
+- The **quantum applies to the hand's total rake**, not to each pot's share of it.
+  `allocateRake` then splits that already-quantized total across pots so the parts sum
+  **exactly**; an individual pot's share is therefore not itself a multiple of `quantum`. Only
+  the amount actually taken off the table is quantized, which is the amount a hand history
+  reports.
 - `allocateRake` splits `totalRake` across pots so the parts sum **exactly**, and asserts that
   no pot is charged more rake than it holds (so `netAmount` can never be negative):
   - `PROPORTIONAL` (default) uses `Money.mulRatio(totalRake, pot.amount, gross, 'floor')` per
@@ -2235,15 +2600,52 @@ totalRake = rakeable
     is what "main pot first" means arithmetically. It is a policy, not an accident, and it is
     why `'PROPORTIONAL'` is the default; correct it through `rake.allocation`, not through
     code (`CLAUDE.md` rule 7). Under `'PROPORTIONAL'` the same hand pays that seat `584`.
-- Each pot's `netAmount = grossAmount − rake` is split by `Money.splitEvenly` across the winners,
-  with the remainder milliBB handed out one each along `oddChipOrder` (default: first winner
-  clockwise from the button).
+- Each pot's `netAmount = grossAmount − rake − fee` is split by `Money.splitEvenly` across the
+  winners, with the remainder milliBB handed out one each along `oddChipOrder` (default: first
+  winner clockwise from the button).
 - The rake **actually applied** is recorded on `POT_AWARDED` and summed into `HAND_FINISHED`, so
   a corrected rule changes configuration and future hands, and never rewrites history.
 
-Worked examples: gross `20000` → `mulRatio(20000, 5, 100, 'floor') = 1000`, under the cap →
-rake `1000`, net `19000`. Gross `200000` → `10000` → capped to `8000`, net `192000`. Gross
-`19000` → `950`. A hand that ends preflop with `noFlopNoDrop: true` → rake `ZERO`.
+Worked examples, at the NL50 preset (`quantum 20`, `rounding 'round'`): gross `20000` →
+`mulRatioQuantized(20000, 5, 100, 20, 'round') = 1000`, under the cap → rake `1000`, net
+`19000`. Gross `200000` → `10000` → capped to `8000`, net `192000`. Gross `19000` → exact `950`,
+which is `47.5` quanta → nearest is `48` → rake **`960`**, net `18040`. A hand that ends preflop
+under `triggerPolicy: 'NO_FLOP_NO_DROP'` → rake `ZERO`, `waived: true`.
+
+**The splash fee** (ADR-0018, confirmed by ADR-0032) is a **second, separate** deduction, never
+folded into the rake:
+
+- `poker-core` knows **no fee trigger**. Under the shipped `fee.triggerPolicy: 'NEVER'` the
+  hand's fee is always ZERO; under `'MANUAL'` the whole hand's fee is an **observed** amount
+  carried on the `AWARD_POTS` command. CoinPoker's real trigger is unknown and must not be
+  invented (`CLAUDE.md` rule 7).
+- `resolveFee` range-checks that input — `FEE_NEGATIVE`, `FEE_NOT_ALLOWED` (a non-zero fee under
+  `'NEVER'`), `FEE_ABOVE_CAP`, `FEE_EXCEEDS_POT` (with the rake it would exceed the pot) — and
+  otherwise returns it **exactly as entered**: never quantized, never capped, never clamped.
+  `fee.cap` exists to catch a typo, not to state a site rule.
+- `allocateFee` uses the **same** allocator as the rake (`allocateAcrossPots`), with each pot's
+  ceiling reduced by the rake already taken from it, so no pot is over-charged and `netAmount` is
+  never negative. Proportional weights stay the **gross** pot amounts, so the split does not
+  shift because an earlier deduction already took some of a pot.
+- Within one pot, each winner's `rakePaid` and `feePaid` are attributed by the same rule
+  (`splitRakeAcrossShares`), which is how the reducer reproduces the per-seat identity from an
+  event that stores only the pot totals.
+- The fee **actually applied** is recorded on `POT_AWARDED.fee` and summed into
+  `HAND_FINISHED.totalFees`, `SettlementPlan.totalFees`, `HandResult.totalFees` and
+  `HandState.totalFees` — always as its own amount, never merged into `totalRake`.
+
+The three settlement identities, all asserted by the engine:
+
+```
+per seat, after every event:
+  stack === startingStack − totalContribution + wonGross − rakePaid − feePaid
+
+chip conservation, after every event:
+  sum(stacks) + potTotal(unawarded pots) + totalRake + totalFees === sum(startingStacks)
+
+settlement balance, at COMPLETE:
+  sum(seat net) + totalRake + totalFees === ZERO
+```
 
 ### 7.14 Effective stack and SPR
 
@@ -2267,17 +2669,25 @@ convention — that modelling choice belongs to `gto-core`. The one place a frac
 
 ## 8. Explicit assumptions
 
+### 8.1 — Poker-rule assumptions
+
 Every entry below is a real-world poker rule that was **chosen, not known**. Each names the
-configuration field that corrects it. Per `CLAUDE.md` rule 7, the orchestrator should mirror
-these into `docs/DECISIONS.md` as ADR entries.
+configuration field that corrects it, and a real fixture can falsify any of them. Per
+`CLAUDE.md` rule 7, the orchestrator should mirror these into `docs/DECISIONS.md` as ADR
+entries.
+
+**These numbers are stable and are cited by index from accepted ADRs.** An assumption is never
+renumbered and never reused: a corrected one is rewritten in place (2, 5 and 15 below), and a
+new one is appended. Phase 2's new rows therefore start at **19**, because 17 and 18 were
+already taken by 8.2.
 
 | #   | Assumption                                                                                                                                         | Default                          | Correcting field                                                       | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1   | Minimum re-raise after a **short all-in** is measured from the new current bet, not from the last full bet level.                                  | `'CURRENT_BET'`                  | `rules.shortAllInMinRaiseBasis`                                        | Real cross-site variation. Every hand containing an incomplete all-in followed by a legal re-raise settles differently under the other basis. Needs a Phase 11 fixture. Both branches must be tested.                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 2   | CoinPoker applies **no-flop-no-drop** (a pot whose board never reached three cards is not raked).                                                  | `true`                           | `rake.noFlopNoDrop`                                                    | Near-universal online but unverified. If wrong, every preflop-decided hand's settlement is off by up to 5% of a small pot — small per hand, systematic across a session.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 2   | CoinPoker applies **no-flop-no-drop** (a pot whose board never reached three cards is not raked).                                                  | `'NO_FLOP_NO_DROP'`              | `rake.triggerPolicy`                                                   | Near-universal online but unverified. If wrong, every preflop-decided hand's settlement is off by up to 5% of a small pot — small per hand, systematic across a session. Phase 2 replaced the old boolean with a named `RakeTriggerPolicy` union (ADR-0033), so a further real trigger is additive and `validateTableConfig` rejects a member it cannot implement rather than defaulting to one. The other shipped member is `'ALWAYS'`.                                                                                                                                                                                  |
 | 3   | The per-hand rake **cap** applies to the summed pot, and rake is taken **after** the uncalled bet is returned.                                     | cap-per-hand, post-return        | `rake.cap` + the single-`AWARD_POTS` design                            | Post-return is standard. Per-hand vs per-pot is unobservable in Phase 1's single-pot hands.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 4   | Rake is split across side pots **proportionally**, with the floor remainder to the main pot (spilling upward only if the main pot cannot hold it). | `'PROPORTIONAL'`                 | `rake.allocation`                                                      | The alternative `'MAIN_POT_FIRST'` drains index 0 upward and can therefore take a small main pot **in full**, awarding its winner a net of ZERO (see 7.13). That is stated policy, not a defect, and it is why `'PROPORTIONAL'` is the default. Needs a Phase 11 fixture.                                                                                                                                                                                                                                                                                                                                                            |
-| 5   | Rake **floors** (ADR-0009).                                                                                                                        | `'floor'`                        | `rake.rounding`                                                        | Already flagged in ADR-0009.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 5   | Rake **floors** at milliBB granularity (ADR-0009). **KNOWN WRONG for CoinPoker — superseded by ADR-0027 and by rows 19–21 below. This is NOT the shipped default; it is retained only so the numbering stays stable.** | ~~`'floor'`~~ — shipped default is now `'round'` at `quantum: 20` | `rake.rounding` + `rake.quantum` (rows 19–21)                          | Real NL50 lines record ₮0.27 on a ₮5.37 pot where a milliBB floor yields ₮0.2685: CoinPoker settles in whole currency cents (20 mBB), not milliBB. `'floor'` remains a valid `RoundingMode` for a config that asks for it; it is no longer a claim about CoinPoker, and no shipped preset uses it. What replaces it is rows 19–21: an explicit settlement quantum, nearest-rounding at that quantum, and an explicitly **undetermined** half-way tie-break. ADR-0027's findings stand; only its "blocked, waiting for the fixture" status is retired (ADR-0033).                                                                                         |
 | 6   | A big blind all-in for **less than a full big blind** still sets the price to call at the nominal big blind.                                       | `true`                           | `rules.shortBlindSetsFullLevel`                                        | Standard, but rare enough that it may go untested against a real hand until Phase 11. It sets a **price**, not an obligation: a seat that has already matched every live opponent is not put on the clock by it (7.6). So a small blind folded around to behind a 0.4 BB all-in blind never calls at all — its 0.5 BB is already ahead, 0.1 BB is returned, and the board runs. A small blind that _does_ face live action still pays the nominal 1 BB and gets the overcall back. (An earlier draft of this table asserted the phantom 1 BB call and a 0.6 BB return; the money was always identical, the recorded action was not.) |
 | 7   | Position labels below six-handed drop the **earliest** seats (5-handed's first actor is `HJ`, not `UTG`).                                          | ladder backwards from the button | _(scheme is fixed; `seatsBeforeButton` is the naming-independent key)_ | All three proposals agreed on this table. If Phase 9's baseline disagrees, stored hands are unaffected (positions are derived, never persisted) but lineup-sensitive tests and UI copy change. `gto-core` should key on `seatsBeforeButton`.                                                                                                                                                                                                                                                                                                                                                                                         |
 | 8   | The heads-up button seat is labelled **`BTN`**.                                                                                                    | `'BTN'`                          | `rules.headsUpButtonLabel`                                             | Genuinely contested (some solver sets label it `SB`). `blinds.smallBlindSeat` and `SeatView.isSmallBlind` are always exposed separately, so this is presentation only. The label applies to a heads-up button that posts the **small** blind; under `headsUpButtonPostsSmallBlind: false` the button posts the big blind and is labelled `'BB'`, so `position` and `blindRole` always agree (7.11).                                                                                                                                                                                                                                  |
@@ -2287,30 +2697,73 @@ these into `docs/DECISIONS.md` as ADR entries.
 | 12  | The **odd chip** on a split pot goes to the first winner clockwise from the button.                                                                | `'FIRST_LEFT_OF_BUTTON'`         | `rules.oddChipRule`                                                    | At milliBB granularity this may not correspond to how the site rounds real currency at all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 13  | The ante is **per dealt-in player** (0.16 BB), not a big-blind ante.                                                                               | `'PER_DEALT_IN_PLAYER'`          | `ante.mode`                                                            | `AnteMode` is a union so `BIG_BLIND_ANTE` is additive; `validateTableConfig` **rejects** any mode it does not implement rather than half-implementing it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 14  | Antes are posted in ring order starting at the small blind, before the blinds.                                                                     | fixed                            | _(none — change `buildStartEvents`)_                                   | Ordering is cosmetic for state but matters for hand-history round-tripping in Phase 11.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 15  | The **button moves simply** to the next dealt-in-eligible seat. Dead button and missed blinds are **not modelled**.                                | fixed                            | `setButtonSeat` (manual override)                                      | Real-site behaviour differs per room and must not be guessed. The user corrects with the manual override; SB/BB override and dead blinds are Phase 8/2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 15  | The **button moves simply** to the next dealt-in-eligible seat. **Automatic** dead-button and missed-blind rules are **not modelled**.             | fixed                            | `setButtonSeat`, `blindOverride`, `deadBlinds`                         | Real-site behaviour differs per room and must not be guessed (ADR-0031). Phase 2 added the **manual correction path** and nothing more: an explicit `BlindSeatOverride` at hand start (rows 27–28) and explicit `POST_DEAD_BLIND` posts (row 26), both always user input. `advanceButton` still just walks to the next eligible seat, and no rule infers who owes a blind. **Phase 8** owns the user-facing override UX.                                                                                                                                                                                                             |
 | 16  | A hand needs **at least two** dealt-in seats and every dealt-in stack must be **> 0**.                                                             | fixed                            | `NOT_ENOUGH_PLAYERS`, `STACK_NOT_POSITIVE`                             | If Phase 8's dirty-stack flow can leave a stack at zero or unknown, this constraint needs revisiting.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 17  | `HOLE_CARDS_SET { seat, cards, revealed }` replaces `docs/ARCHITECTURE.md`'s `SHOW_CARD`.                                                          | —                                | _(doc change)_                                                         | One event covers hero's own entry (`revealed: false`) and a showdown reveal (`revealed: true`). Two events for one state field would be worse. **The orchestrator should update the event list in `docs/ARCHITECTURE.md`**, which also implies a street-transition event that this design deliberately drops as derivable.                                                                                                                                                                                                                                                                                                           |
-| 18  | The engine knows **nothing about time**.                                                                                                           | fixed                            | _(none)_                                                               | `hand_events` rows carry timestamps in Phase 3.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 19  | CoinPoker settles rake in whole currency **cents** — 20 milliBB at BB = ₮0.50.                                                                     | `quantum: 20`                    | `rake.quantum`                                                         | ADR-0027; two real hands are consistent with it. **Never derived from `display.bigBlindValue`** — `DisplayConfig` is presentation, and money must not move when a formatting choice does. `withStakeDisplay` therefore takes `rakeQuantum` in its patch (at BB = 1.00 one cent is 10 milliBB).                                                                                                                                                                                                                                                                                                                                       |
+| 20  | The rake rate is **quantized to nearest**, not floored or ceiled.                                                                                  | `rounding: 'round'`              | `rake.rounding`                                                        | ADR-0027 falsified ADR-0009's milliBB floor: ₮5.37 → ₮0.27 rules out floor-at-cent, ₮6.87 → ₮0.34 rules out ceil-at-cent. Applied **once**, at `quantum` granularity, via `Money.mulRatioQuantized` — quantizing a milliBB rake afterwards rounds twice and can land a whole quantum out (7.13).                                                                                                                                                                                                                                                                                                                                     |
+| 21  | Half-way ties round **away from zero**.                                                                                                            | `'round'`                        | `rake.rounding`                                                        | **No observation distinguishes this** (ADR-0027, ADR-0033): no real hand in evidence is an exact half-cent tie. It is a property of the `RoundingMode`, not a claim about CoinPoker, and must not be presented as one. A fixture containing a tie settles it; until then it stays undetermined.                                                                                                                                                                                                                                                                                                                                      |
+| 22  | The per-hand cap is a flat **8 BB** regardless of the dealt-in count.                                                                              | `cap: 8000`                      | `rake.cap`                                                             | ADR-0027 open question: rooms commonly run a short-handed cap schedule. Not invented here — the flat cap is the honest default, not an observation. `validateTableConfig` requires the cap to be an exact multiple of `rake.quantum`, so a capped rake is quantized too.                                                                                                                                                                                                                                                                                                                                                             |
+| 23  | The splash fee has **no automatic trigger**.                                                                                                       | `fee.triggerPolicy: 'NEVER'`     | `fee.triggerPolicy`                                                    | ADR-0032: the **accounting shape** is confirmed, the **trigger** is not. `'MANUAL'` takes the amount as observed input on `AWARD_POTS`; the engine never derives one, and `'NEVER'` rejects a non-zero supplied fee outright (`FEE_NOT_ALLOWED`).                                                                                                                                                                                                                                                                                                                                                                                    |
+| 24  | A manually supplied fee is bounded only to catch a typo.                                                                                           | `fee.cap: 8000`                  | `fee.cap`                                                              | Not a site rule. Within the cap the amount is stored **exactly as entered** — never re-quantized, capped or clamped (`CLAUDE.md` rule 3). `FEE_ABOVE_CAP` and `FEE_EXCEEDS_POT` reject rather than silently correct.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 25  | One hand's fee is split across side pots **proportionally**, weighted on gross pot amounts.                                                        | `fee.allocation: 'PROPORTIONAL'` | `fee.allocation`                                                       | Same allocator as the rake (`allocateAcrossPots`), with each pot's ceiling reduced by the rake already taken from it. Weights stay the **gross** amounts, so the split does not shift because an earlier deduction took part of a pot. `'MAIN_POT_FIRST'` carries the same stated consequence as it does for rake (7.13).                                                                                                                                                                                                                                                                                                            |
+| 26  | Dead blinds are posted **after the antes and before the live blinds**, in ring order from the small blind.                                         | fixed                            | _(none — change `composeStartEvents`)_                                 | Same status as assumption 14: cosmetic for state, load-bearing for hand-history round-tripping later. Group 0 is `HAND_STARTED`, `PLAYER_DEALT_IN`, `POST_ANTE`, `POST_DEAD_BLIND`, `POST_SB`, `POST_BB` (7.9). A dead blind is never inferred — only a seat listed in `StartHandOptions.deadBlinds` posts one (ADR-0031).                                                                                                                                                                                                                                                                                                           |
+| 27  | Heads-up, an explicit `BlindSeatOverride` **outranks** `rules.headsUpButtonPostsSmallBlind`.                                                       | the override wins                | `StartHandOptions.blindOverride`                                       | An explicit user statement outranks a configured default, and heads-up is the one shape where naming the button as a blind seat is legal (there is no third seat). With **three or more** dealt in, naming the button is `BLIND_OVERRIDE_ON_BUTTON`: that is the dead button, which stays unmodelled (ADR-0031, assumption 15).                                                                                                                                                                                                                                                                                                      |
+| 28  | A non-standard blind arrangement yields a purely **structural** position labelling, not a solver lineup.                                           | refuse, or label structurally    | `POSITION_LINEUP_UNSUPPORTED` + `seatsBeforeButton`                    | `derivePositionLabels` **refuses** any lineup the six-member `Position` union cannot name — the hand does not start, rather than a label being invented (7.11). When it can name one, the names come from the button and the stated blind seats and may match no real lineup: **`gto-core` must treat such a hand as `UNSUPPORTED`**, never approximate it to the nearest standard lineup. `seatsBeforeButton` / `seatsAfterButton` stay meaningful; the `Position` NAME does not (ADR-0031). **The refusal is unreachable for every input `assignBlinds` accepts today** (BTN/SB/BB are always three distinct seats for `n >= 3`, and the heads-up labels are always distinct): it is defence in depth for a future lineup rule, not a gate on present-day input.                                                                                                                                        |
+
+### 8.2 — Architecture and model decisions
+
+These are deliberate design decisions about our own model, **not** unknown real-world poker
+rules. No fixture can falsify them; only a design change can revise them.
+
+| #   | Assumption                                                                                | Default | Correcting field | Notes                                                                                                                                                                                                                                                                                                                      |
+| --- | ----------------------------------------------------------------------------------------- | ------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 17  | `HOLE_CARDS_SET { seat, cards, revealed }` replaces `docs/ARCHITECTURE.md`'s `SHOW_CARD`. | —       | _(doc change)_   | One event covers hero's own entry (`revealed: false`) and a showdown reveal (`revealed: true`). Two events for one state field would be worse. **The orchestrator should update the event list in `docs/ARCHITECTURE.md`**, which also implies a street-transition event that this design deliberately drops as derivable. |
+| 18  | The engine knows **nothing about time**.                                                  | fixed   | _(none)_         | `hand_events` rows carry timestamps in Phase 3.                                                                                                                                                                                                                                                                            |
 
 ---
 
-## 9. Deferred to Phase 2 (and later)
+## 9. What Phase 2 shipped, and what stays deferred
 
 The architecture must not preclude any of these. None of them is stubbed, and none of them
 requires a representation change.
 
-**Phase 2 — poker core edge cases**
+**Phase 2 — poker core edge cases: shipped**
 
-- **Multi-way side-pot award coverage.** The pot model is already a list with eligible sets and
-  `computePots` already implements the full layering; what Phase 2 adds is award-time validation
-  across several pots, the `rake.allocation` branches under a real multi-pot hand, and breadth of
-  test coverage.
-- **Odd-chip behaviour under multiple simultaneous splits.** `splitPot` and `oddChipRule` exist;
-  the multi-pot interaction is untested in Phase 1.
-- **Missed blinds, the dead button, and dead-blind posts.** Needs a `POST_DEAD_BLIND` event
-  (accounting identical to an ante) and a manual SB/BB override on `HAND_STARTED`. Deliberately
-  omitted rather than guessed.
-- **Auto top-up boundaries** between hands.
+- **Multi-way side-pot award coverage — shipped.** `planAwards` validates awards across every
+  unawarded pot in one command, and both `rake.allocation` branches are exercised end to end
+  through real multi-pot hands (`settlement.ts`, `rake.ts`; `tests/side-pots.test.ts`,
+  `tests/multiway-awards.test.ts`, `tests/rake-allocation-branches.test.ts`).
+- **Odd-chip behaviour under multiple simultaneous splits — shipped.** `splitPot` +
+  `oddChipOrder` in `settlement.ts`, with per-winner deduction attribution through
+  `splitRakeAcrossShares`.
+- **Dead-blind posts and the manual SB/BB override — shipped as neutral primitives
+  (ADR-0031).** `POST_DEAD_BLIND` (`events.ts`, accounting identical to an ante),
+  `BlindSeatOverride` persisted on `HAND_STARTED` (`positions.ts`), and
+  `StartHandOptions.blindOverride` / `.deadBlinds` (`commands.ts`). Both are **always explicit
+  user input**; `POSITION_LINEUP_UNSUPPORTED` refuses any lineup the `Position` union cannot
+  name rather than inventing a label (7.9, 7.11, `tests/dead-blinds.test.ts`).
+- **Auto top-up boundaries between hands — shipped.** `AutoTopUpPolicy`, `topUpPlan` and
+  `applyAutoTopUp` in `table.ts` (`tests/auto-top-up.test.ts`). The intended between-hands
+  sequence is `applyHandResult` → `applyAutoTopUp` → `advanceButton`, run once per completed
+  hand; top-up before the button search matters, because a seat the policy revives must be
+  eligible again when the button looks for the next dealt-in seat.
+- **The settlement policy surface — shipped (ADR-0027, ADR-0032, ADR-0033).**
+  `rake.triggerPolicy`, `rake.quantum`, `rake.rounding`, a `FeeConfig` separate from
+  `RakeConfig`, rake and fees recorded separately end to end, and chip conservation including
+  fees. Every unknown is now a named, validated, defaulted policy field, so the fixture — when
+  it arrives — is a configuration change and a fixture test, never a code change. See 7.13 and
+  assumptions 19–25.
+
+**Still deferred, deliberately**
+
+- **Automatic missed-blind and dead-button rules.** Explicitly **not** implemented (ADR-0031,
+  assumption 15). Real behaviour differs per room and no CoinPoker fixture confirms theirs, so
+  implementing them would mean inventing site behaviour. The manual primitives above are the
+  correction path; **Phase 8** owns the user-facing override UX. With three or more dealt in,
+  naming the button as a blind seat is refused (`BLIND_OVERRIDE_ON_BUTTON`) rather than coped
+  with.
+- **Straddles**, **run-it-twice** and **hand evaluation** all remain deferred — see the Phase 9+
+  and Phase 11 entries below.
 
 **Phase 3 — persistence**
 
@@ -2332,13 +2785,37 @@ requires a representation change.
   `currentBetBefore`, `amount`, `toAmount` and `effectiveStackBefore`; `gto-core` picks the
   convention.
 
-**Phase 11 — parser**
+**Phase 11 — parser (deferred past the first usable MVP, ADR-0033)**
 
-- Straddles, run-it-twice, and the CoinPoker **splash fee**. Run-it-twice in particular is _not_
-  a field: it would make `board` a list of boards and give `POT_AWARDED` a run index, and it
-  needs a real design pass before Phase 11 rather than a retrofit. The splash fee may be a
-  separate charge, a jackpot drop, or part of the rake — it is deliberately not modelled, and if
-  it turns out to be a pot deduction then `PotAwardRecord` gains a third money field.
+Phase 11 is **not a dependency of Phases 2–10**. The real CoinPoker hand-history export is not
+being provided, and waiting for it would stall the whole product behind a detail that affects
+only the last decimal of a raked pot. The MVP loop — engine, session setup, table, action UX,
+card entry, observe mode, GTO scaffolding, strategy UI — needs no parsed hand history. Player
+identity stays manual nicknames plus our own observations, and persistent opponent identity is
+**never** derived from CoinPoker hand-history IDs. Nothing below is cancelled; it is
+rescheduled, and no further forensic reconstruction happens without the fixture.
+
+- **Straddles.** Still not modelled in Phase 1 or the MVP parser. No representation exists
+  yet, and none is guessed ahead of a real design pass.
+- **Run-it-twice.** The MVP parser MUST parse and preserve run-it-twice text losslessly, in
+  a neutral representation — nothing in the source text is discarded. The MVP parser MUST
+  NOT require the current single-board `poker-core` to replay a run-it-twice hand: single-run
+  hands are replayed through `poker-core`; run-it-twice hands are preserved but not replayed.
+  A true multi-board engine — making `board` a list of boards and giving `POT_AWARDED` a run
+  index — requires a separate, explicit design decision before any implementation. It is not
+  a retrofit, and it is not in the MVP parser's scope.
+- **The CoinPoker splash fee.** Real hand-history arithmetic confirms only that the splash fee
+  is a separate deduction from the pot payout, and that it is separate from rake. Its trigger
+  and its economic purpose remain **unknown** — nothing in the evidence says what it funds. Per
+  ADR-0018 it is modelled as its own `FeeConfig`, kept separate from `RakeConfig` and never
+  collapsed into it. Ownership is split, and the **Phase 2 half has shipped**: `FeeConfig`,
+  `resolveFee` / `allocateFee`, `POT_AWARDED.fee`, `HAND_FINISHED.totalFees`,
+  `SeatResult.feePaid` and a chip-conservation invariant that includes fees are all in
+  `poker-core` (7.13, assumptions 23–25). **Phase 11** still owns parsing the observed fee
+  amount out of CoinPoker hand-history text. The fee's **trigger** semantics — when it applies,
+  and how it interacts with the rake cap — remain unknown and are not to be invented, which is
+  why the shipped default is `fee.triggerPolicy: 'NEVER'` and `'MANUAL'` takes the amount as
+  observed input.
 - A lenient ingest path for logs that are legal poker but not canonical under this encoding. The
   `replayCommands` route avoids the problem entirely as long as the parser produces commands
   rather than reconstructing events.

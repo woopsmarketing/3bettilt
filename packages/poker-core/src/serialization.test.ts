@@ -61,7 +61,9 @@ function shoveLog() {
 }
 
 describe('every event shape survives JSON', () => {
-  it('round-trips every one of the eighteen event kinds', () => {
+  // POST_DEAD_BLIND is the nineteenth kind and no ordinary hand emits one; it has its
+  // own coverage in tests/dead-blinds.test.ts.
+  it('round-trips every one of the eighteen event kinds an ordinary hand emits', () => {
     const events = fullLog();
     const shove = shoveLog();
     const kinds = new Set([...events, ...shove].map((e) => e.kind));
@@ -86,6 +88,55 @@ describe('every event shape survives JSON', () => {
     expect(kinds.size).toBe(18);
     expect(unwrap(jsonRoundTrip(events))).toEqual(events);
     expect(unwrap(jsonRoundTrip(shove))).toEqual(shove);
+  });
+
+  it('decodes POST_DEAD_BLIND and a non-null HAND_STARTED blindOverride', () => {
+    const dead = {
+      id: 'e1',
+      seq: 7,
+      commandSeq: 0,
+      origin: 'ENGINE',
+      kind: 'POST_DEAD_BLIND',
+      seat: 4,
+      amount: 1000,
+    };
+    const decoded = decodeHandEvent(dead);
+    expect(errCode(decoded)).toBeUndefined();
+    expect(unwrap(decoded)).toEqual(dead);
+
+    const started = {
+      id: 'e0',
+      seq: 0,
+      commandSeq: 0,
+      origin: 'USER',
+      kind: 'HAND_STARTED',
+      handId: 'h1',
+      handNumber: 1,
+      config: CP_NL50_6MAX_ANTE,
+      buttonSeat: 0,
+      heroSeat: null,
+      blindOverride: { smallBlindSeat: 3, bigBlindSeat: 4 },
+    };
+    expect(errCode(decodeHandEvent(started))).toBeUndefined();
+  });
+
+  it('refuses a HAND_STARTED with no blindOverride field at all', () => {
+    // Required with no default: silently reading it as `null` would let a log replay to
+    // blinds it was never played with.
+    const { blindOverride: _dropped, ...withoutField } = {
+      id: 'e0',
+      seq: 0,
+      commandSeq: 0,
+      origin: 'USER',
+      kind: 'HAND_STARTED',
+      handId: 'h1',
+      handNumber: 1,
+      config: CP_NL50_6MAX_ANTE,
+      buttonSeat: 0,
+      heroSeat: null,
+      blindOverride: null,
+    };
+    expect(errCode(decodeHandEvent(withoutField))).toBe('CORRUPT_LOG');
   });
 
   it('encode is a structural clone: JSON.stringify is lossless', () => {
@@ -153,6 +204,77 @@ describe('decoding is a Result, never a throw', () => {
     expect(handEventSchema.safeParse(encodeHandEvent(first)).success).toBe(true);
     expect(tableConfigSchema.safeParse(CP_NL50_6MAX_ANTE).success).toBe(true);
     expect(tableConfigSchema.safeParse({ ...CP_NL50_6MAX_ANTE, seatCount: 9 }).success).toBe(false);
+  });
+
+  it('REJECTS a POT_AWARDED with no fee rather than defaulting it to zero', () => {
+    // Nothing is persisted anywhere yet, so a log without this field cannot legitimately
+    // exist. Filling one in silently would fabricate a money value (CLAUDE.md rule 5).
+    const encoded = encodeHandEvents(fullLog()) as Record<string, unknown>[];
+    const index = encoded.findIndex((event) => event['kind'] === 'POT_AWARDED');
+    expect(index).toBeGreaterThan(0);
+    const award = { ...encoded[index] };
+    expect(award['fee']).toBe(0);
+    delete award['fee'];
+    expect(errCode(decodeHandEvent(award))).toBe('CORRUPT_LOG');
+
+    const broken = [...encoded];
+    broken[index] = award;
+    expect(errCode(decodeHandEvents(broken))).toBe('CORRUPT_LOG');
+  });
+
+  it('REJECTS a HAND_FINISHED with no totalFees', () => {
+    const encoded = encodeHandEvents(fullLog()) as Record<string, unknown>[];
+    const index = encoded.findIndex((event) => event['kind'] === 'HAND_FINISHED');
+    expect(index).toBeGreaterThan(0);
+    const finished = { ...encoded[index] };
+    expect(finished['totalFees']).toBe(0);
+    delete finished['totalFees'];
+    expect(errCode(decodeHandEvent(finished))).toBe('CORRUPT_LOG');
+  });
+
+  it('REJECTS an embedded config missing the settlement quantum, trigger or fee', () => {
+    const started = encodeHandEvents(fullLog())[0] as Record<string, unknown>;
+    expect(started['kind']).toBe('HAND_STARTED');
+    const config = started['config'] as Record<string, unknown>;
+    const rake = config['rake'] as Record<string, unknown>;
+
+    const withoutQuantum = { ...rake };
+    delete withoutQuantum['quantum'];
+    expect(
+      errCode(decodeHandEvent({ ...started, config: { ...config, rake: withoutQuantum } })),
+    ).toBe('CORRUPT_LOG');
+
+    const withoutTrigger = { ...rake };
+    delete withoutTrigger['triggerPolicy'];
+    expect(
+      errCode(decodeHandEvent({ ...started, config: { ...config, rake: withoutTrigger } })),
+    ).toBe('CORRUPT_LOG');
+
+    const withoutFee = { ...config };
+    delete withoutFee['fee'];
+    expect(errCode(decodeHandEvent({ ...started, config: withoutFee }))).toBe('CORRUPT_LOG');
+
+    // The old boolean is not accepted in place of the named policy either.
+    const legacy: Record<string, unknown> = { ...rake, noFlopNoDrop: true };
+    delete legacy['triggerPolicy'];
+    expect(errCode(decodeHandEvent({ ...started, config: { ...config, rake: legacy } }))).toBe(
+      'CORRUPT_LOG',
+    );
+  });
+
+  it('rejects a trigger or allocation policy this version cannot implement', () => {
+    expect(
+      tableConfigSchema.safeParse({
+        ...CP_NL50_6MAX_ANTE,
+        rake: { ...CP_NL50_6MAX_ANTE.rake, triggerPolicy: 'FLOP_SEEN' },
+      }).success,
+    ).toBe(false);
+    expect(
+      tableConfigSchema.safeParse({
+        ...CP_NL50_6MAX_ANTE,
+        fee: { ...CP_NL50_6MAX_ANTE.fee, triggerPolicy: 'AUTOMATIC' },
+      }).success,
+    ).toBe(false);
   });
 
   it('reports which event failed', () => {

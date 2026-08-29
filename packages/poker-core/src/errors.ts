@@ -18,6 +18,11 @@ export type EngineErrorCode =
   | 'BUTTON_SEAT_NOT_DEALT_IN'
   | 'STACK_NOT_POSITIVE'
   | 'DUPLICATE_PLAYER'
+  // manual blind assignment / dead blinds (ADR-0031)
+  | 'BLIND_OVERRIDE_INVALID'
+  | 'BLIND_OVERRIDE_ON_BUTTON'
+  | 'POSITION_LINEUP_UNSUPPORTED'
+  | 'DUPLICATE_DEAD_BLIND'
   // table mutation
   | 'SEAT_OCCUPIED'
   | 'SEAT_EMPTY'
@@ -56,6 +61,10 @@ export type EngineErrorCode =
   | 'NO_WINNERS'
   | 'DUPLICATE_WINNER'
   | 'WINNER_NOT_ELIGIBLE'
+  | 'FEE_NOT_ALLOWED'
+  | 'FEE_NEGATIVE'
+  | 'FEE_ABOVE_CAP'
+  | 'FEE_EXCEEDS_POT'
   // log
   | 'NOTHING_TO_UNDO'
   | 'CORRUPT_LOG';

@@ -30,6 +30,7 @@ describe('the empty seat', () => {
       returnedUncalled: Money.ZERO,
       wonGross: Money.ZERO,
       rakePaid: Money.ZERO,
+      feePaid: Money.ZERO,
     });
     expect(ZERO_BY_STREET).toEqual({
       PREFLOP: Money.ZERO,

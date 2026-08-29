@@ -65,7 +65,9 @@ describe('the actor lives inside the phase', () => {
         kind: 'MAIN',
         amount: BB(3),
         eligibleSeats: [0, 1, 2],
-        projectedRake: Money.mbb(150),
+        projectedRake: Money.mbb(160),
+        // No automatic fee exists, so nothing can be projected until an award supplies one.
+        projectedFee: Money.ZERO,
         awarded: false,
       },
     ]);
@@ -196,7 +198,8 @@ describe('the view is a pure projection', () => {
     const view = toView(hand);
     if (view.phase.kind !== 'COMPLETE') throw new Error('not complete');
     expect(view.phase.result.reason).toBe('SHOWDOWN');
-    expect(view.phase.result.totalRake).toBe(Money.mbb(150));
+    expect(view.phase.result.totalRake).toBe(Money.mbb(160));
+    expect(view.phase.result.totalFees).toBe(Money.ZERO);
     expect(view.board).toHaveLength(5);
   });
 });

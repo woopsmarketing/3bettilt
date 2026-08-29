@@ -72,6 +72,7 @@ export function initialHandState(started: EventOf<'HAND_STARTED'>): HandState {
     config,
     buttonSeat: started.buttonSeat,
     heroSeat: started.heroSeat,
+    blindOverride: started.blindOverride,
     blinds: {
       buttonSeat: started.buttonSeat,
       smallBlindSeat: started.buttonSeat,
@@ -102,6 +103,7 @@ export function initialHandState(started: EventOf<'HAND_STARTED'>): HandState {
     potTotal: Money.ZERO,
     awards: [],
     totalRake: Money.ZERO,
+    totalFees: Money.ZERO,
     endReason: null,
     actions: [],
     eventCount: 1,
@@ -161,12 +163,23 @@ export function openBettingRound(state: HandState, street: Street): BettingRound
 /**
  * Throws. Runs `assignBlinds` + `assignPositions` over the accumulated roster and seeds
  * the preflop round. `applyEvent` invokes it the first time it sees an event outside
- * `{ HAND_STARTED, PLAYER_DEALT_IN }` — in practice POST_ANTE or POST_SB. Exported so
- * the transition is directly testable rather than an implicit side effect.
+ * `{ HAND_STARTED, PLAYER_DEALT_IN }` — in practice POST_ANTE, POST_DEAD_BLIND or
+ * POST_SB. Exported so the transition is directly testable rather than an implicit side
+ * effect.
+ *
+ * `state.blindOverride` (from `HAND_STARTED`) is fed straight to `assignBlinds`, so a
+ * replay reaches exactly the blinds the hand was played with. An override the engine
+ * would refuse today therefore throws here and surfaces as `CORRUPT_LOG` from
+ * `loadHand` — the same shape as a `HAND_STARTED` whose button is not dealt in.
  */
 export function finalizeRoster(state: HandState): HandState {
   invariant(state.phase === 'SETUP', 'finalizeRoster must run exactly once, from SETUP');
-  const blindsResult = assignBlinds(state.dealtInSeats, state.buttonSeat, state.config.rules);
+  const blindsResult = assignBlinds(
+    state.dealtInSeats,
+    state.buttonSeat,
+    state.config.rules,
+    state.blindOverride,
+  );
   invariant(
     blindsResult.ok,
     `roster cannot be finalized: ${blindsResult.ok ? '' : blindsResult.error.message}`,
@@ -310,6 +323,18 @@ function applyPost(
 ): HandState {
   const seat = event.seat;
   const s = state.seats[seat];
+  // Every post belongs to the hand start. `applyPost` ends by re-seeding the preflop
+  // round, which is correct while group 0 is still accumulating blinds and ruinous
+  // afterwards: a post spliced into a log after RIVER_DEALT would silently reset the
+  // street to PREFLOP and reopen action for every seat. Dead money touches neither
+  // `streetContribution` nor `contributionByStreet`, so the ledger and conservation
+  // identities stay satisfied and would NOT catch it — this guard is what does.
+  // `replayHand` already rejects such a log (its group head is an ENGINE event);
+  // `loadHand`, the DB path, reaches here instead and turns this into CORRUPT_LOG.
+  invariant(
+    event.commandSeq === 0,
+    `${event.kind} at seq ${event.seq} is outside command group 0; posts belong to the hand start`,
+  );
   invariant(state.dealtInSeats.includes(seat), `${event.kind} for seat ${seat}, not dealt in`);
   invariant(event.amount >= 0, `${event.kind} posts a negative amount`);
   invariant(
@@ -322,8 +347,8 @@ function applyPost(
       ...seatState,
       stack,
       status: Money.isZero(stack) ? 'ALL_IN' : seatState.status,
-      // Antes are DEAD money: they never raise the price to call, but they do count
-      // toward the side-pot layering basis.
+      // Antes and dead blinds are DEAD money: they never raise the price to call, but
+      // they do count toward the side-pot layering basis.
       streetContribution: dead
         ? seatState.streetContribution
         : Money.add(seatState.streetContribution, event.amount),
@@ -389,9 +414,10 @@ function applyAward(state: HandState, event: EventOf<'POT_AWARDED'>): HandState 
     `POT_AWARDED gross ${event.grossAmount} != pot amount ${pot.amount}`,
   );
   invariant(
-    event.netAmount === Money.sub(event.grossAmount, event.rake),
-    'POT_AWARDED net must equal gross - rake',
+    event.netAmount === Money.sub(Money.sub(event.grossAmount, event.rake), event.fee),
+    'POT_AWARDED net must equal gross - rake - fee',
   );
+  invariant(event.rake >= 0 && event.fee >= 0, 'POT_AWARDED rake and fee must not be negative');
   invariant(
     Money.sum(event.shares.map((share) => share.amount)) === event.netAmount,
     'POT_AWARDED shares must sum to the net amount',
@@ -407,14 +433,22 @@ function applyAward(state: HandState, event: EventOf<'POT_AWARDED'>): HandState 
   }
 
   const rakeShares = splitRakeAcrossShares(event.rake, event.shares.length);
+  const feeShares = splitRakeAcrossShares(event.fee, event.shares.length);
   let next: HandState = state;
   event.shares.forEach((share, index) => {
     const rakePart = rakeShares[index] ?? Money.ZERO;
+    const feePart = feeShares[index] ?? Money.ZERO;
     next = withSeat(next, share.seat, (seatState) => ({
       ...seatState,
       stack: Money.add(seatState.stack, share.amount),
-      wonGross: Money.add(seatState.wonGross, Money.add(share.amount, rakePart)),
+      // `wonGross` is what the seat won BEFORE both deductions, so the seat ledger
+      // identity stays `stack = start - contributed + wonGross - rakePaid - feePaid`.
+      wonGross: Money.add(
+        seatState.wonGross,
+        Money.add(share.amount, Money.add(rakePart, feePart)),
+      ),
       rakePaid: Money.add(seatState.rakePaid, rakePart),
+      feePaid: Money.add(seatState.feePaid, feePart),
     }));
   });
 
@@ -427,11 +461,13 @@ function applyAward(state: HandState, event: EventOf<'POT_AWARDED'>): HandState 
         winners: event.winners,
         grossAmount: event.grossAmount,
         rake: event.rake,
+        fee: event.fee,
         netAmount: event.netAmount,
         shares: event.shares,
       },
     ],
     totalRake: Money.add(next.totalRake, event.rake),
+    totalFees: Money.add(next.totalFees, event.fee),
   };
 }
 
@@ -482,6 +518,12 @@ export function applyEvent(state: HandState, event: HandEvent): HandState {
     }
     case 'POST_ANTE':
       invariant(base.config.ante.enabled, 'POST_ANTE with the ante disabled');
+      return finalize(counted(applyPost(base, event, true)));
+    // A dead blind is an ante for accounting purposes and shares its exact path: the
+    // SAME `applyPost(dead: true)`, including the case where it takes the whole stack
+    // and leaves the seat ALL_IN. There is deliberately no config gate — a dead blind is
+    // explicit user input, not a table setting.
+    case 'POST_DEAD_BLIND':
       return finalize(counted(applyPost(base, event, true)));
     case 'POST_SB':
       invariant(
@@ -613,6 +655,10 @@ export function applyEvent(state: HandState, event: HandEvent): HandState {
         base.totalRake === event.totalRake,
         `HAND_FINISHED rake ${event.totalRake} != accumulated ${base.totalRake}`,
       );
+      invariant(
+        base.totalFees === event.totalFees,
+        `HAND_FINISHED fees ${event.totalFees} != accumulated ${base.totalFees}`,
+      );
       return finalize(counted({ ...base, endReason: event.reason }));
     }
   }
@@ -696,13 +742,16 @@ export function finalize(state: HandState): HandState {
   return settled;
 }
 
-/** Throws. The standing per-seat identity from the spec, checked after every event. */
+/**
+ * Throws. The standing per-seat identity from the spec, checked after every event:
+ * `stack === startingStack - totalContribution + wonGross - rakePaid - feePaid`.
+ */
 export function assertSeatLedgers(state: HandState): void {
   for (const seat of state.dealtInSeats) {
     const s = state.seats[seat];
     const expected = Money.add(
       Money.sub(s.startingStack, s.totalContribution),
-      Money.sub(s.wonGross, s.rakePaid),
+      Money.sub(s.wonGross, Money.add(s.rakePaid, s.feePaid)),
     );
     invariant(s.stack === expected, `seat ${seat} ledger broken: stack ${s.stack} != ${expected}`);
     invariant(s.stack >= 0, `seat ${seat} has a negative stack`);
@@ -725,17 +774,19 @@ export function assertSeatLedgers(state: HandState): void {
 }
 
 /**
- * Throws. `sum(stacks) + potTotal(unawarded pots) + totalRake === sum(startingStacks)`.
- * Holds after EVERY event, including mid-award with a mix of awarded and unawarded pots.
+ * Throws. `sum(stacks) + potTotal(unawarded pots) + totalRake + totalFees ===
+ * sum(startingStacks)`. Holds after EVERY event, including mid-award with a mix of
+ * awarded and unawarded pots, and with a fee charged on some pots but not others.
  */
 export function assertChipConservation(state: HandState): void {
   const stacks = Money.sum(state.dealtInSeats.map((seat) => state.seats[seat].stack));
   const live = potTotal(unawardedPots(state));
   const starting = Money.sum(state.dealtInSeats.map((seat) => state.seats[seat].startingStack));
-  const total = Money.add(Money.add(stacks, live), state.totalRake);
+  const deducted = Money.add(state.totalRake, state.totalFees);
+  const total = Money.add(Money.add(stacks, live), deducted);
   invariant(
     total === starting,
-    `chip conservation broken: ${stacks} behind + ${live} in pots + ${state.totalRake} rake != ${starting} started`,
+    `chip conservation broken: ${stacks} behind + ${live} in pots + ${state.totalRake} rake + ${state.totalFees} fees != ${starting} started`,
   );
 }
 

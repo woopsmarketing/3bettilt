@@ -108,6 +108,71 @@ export function mulRatio(
   return guard(applyRounding((a * numerator) / denominator, mode));
 }
 
+function assertQuantum(quantum: number): void {
+  if (!Number.isSafeInteger(quantum) || quantum <= 0) {
+    throw new Error(`quantum must be a positive safe integer, got ${quantum}`);
+  }
+}
+
+/**
+ * Round `amount` to the nearest multiple of `quantum` under `mode`. Total (throws only
+ * on a bad `quantum`, an out-of-range result, or `'exact'` given a non-multiple).
+ *
+ * `quantum` is a SETTLEMENT granularity, not a display choice: `quantize(x, 1, mode)` is
+ * the identity for every mode because `x` is already an integer milliBB.
+ *
+ * Half-way and negative behaviour, stated because money must never round implicitly —
+ * this is exactly what `applyRounding` does, applied to `amount / quantum`:
+ *  - `'floor'` — toward -Infinity. `quantize(-30, 20, 'floor') === -40`.
+ *  - `'ceil'`  — toward +Infinity. `quantize(-30, 20, 'ceil') === -20`.
+ *  - `'round'` — nearest, ties away from zero, symmetric about zero.
+ *    `quantize(30, 20, 'round') === 40` and `quantize(-30, 20, 'round') === -40`.
+ *  - `'exact'` — throws unless `amount` is already a multiple of `quantum`.
+ */
+export function quantize(amount: MilliBB, quantum: number, mode: RoundingMode): MilliBB {
+  assertQuantum(quantum);
+  return guard(applyRounding(amount / quantum, mode) * quantum);
+}
+
+/**
+ * `amount * numerator / denominator`, rounded ONCE to a multiple of `quantum`.
+ *
+ * This is NOT `quantize(mulRatio(...))`. That rounds twice, and the first rounding can
+ * push the value across the half-way point of the second, landing a WHOLE QUANTUM away
+ * from the exact product: with `amount = 4190`, `5/100` and `quantum = 20` the exact
+ * value is 209.5, whose nearest multiple of 20 is 200 — the two-step form returns 220.
+ * Rake is computed with this function for exactly that reason (ADR-0027).
+ *
+ * `quantum === 1` is an exact identity with `mulRatio`. The half-way and negative
+ * behaviour of each `mode` is the one documented on `quantize`.
+ *
+ * Throws when the exact product `amount * numerator` is not representable, so a silent
+ * loss of precision can never reach a settlement amount.
+ */
+export function mulRatioQuantized(
+  amount: MilliBB,
+  numerator: number,
+  denominator: number,
+  quantum: number,
+  mode: RoundingMode,
+): MilliBB {
+  if (denominator === 0) throw new Error('mulRatioQuantized denominator must be non-zero');
+  assertQuantum(quantum);
+  const product = amount * numerator;
+  if (!Number.isSafeInteger(product)) {
+    throw new Error(
+      `mulRatioQuantized product ${amount} * ${numerator} is not exactly representable`,
+    );
+  }
+  const divisor = denominator * quantum;
+  if (!Number.isSafeInteger(divisor)) {
+    throw new Error(
+      `mulRatioQuantized divisor ${denominator} * ${quantum} is not exactly representable`,
+    );
+  }
+  return guard(applyRounding(product / divisor, mode) * quantum);
+}
+
 /**
  * Multiply by an arbitrary (float) fraction such as a solver sizing 0.33.
  * Rounding is explicit for the same reason as `mulRatio`.

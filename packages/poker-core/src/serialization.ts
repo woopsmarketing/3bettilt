@@ -41,6 +41,7 @@ const handId = z.string().transform((value) => asId<'Hand'>(value));
 const playerId = z.string().transform((value) => asId<'Player'>(value));
 
 const roundingMode = z.enum(['floor', 'ceil', 'round', 'exact']);
+const allocationPolicy = z.enum(['PROPORTIONAL', 'MAIN_POT_FIRST']);
 
 const tableConfigShape = z.object({
   presetId: z.string(),
@@ -57,9 +58,18 @@ const tableConfigShape = z.object({
     numerator: z.number().int(),
     denominator: z.number().int(),
     cap: money,
+    quantum: money,
     rounding: roundingMode,
-    noFlopNoDrop: z.boolean(),
-    allocation: z.enum(['PROPORTIONAL', 'MAIN_POT_FIRST']),
+    triggerPolicy: z.enum(['ALWAYS', 'NO_FLOP_NO_DROP']),
+    allocation: allocationPolicy,
+  }),
+  // REQUIRED, with no default. There is no persisted data anywhere yet, so a log written
+  // before this field existed cannot exist; silently defaulting a money policy would be
+  // exactly the fake implementation CLAUDE.md rule 5 forbids.
+  fee: z.object({
+    triggerPolicy: z.enum(['NEVER', 'MANUAL']),
+    cap: money,
+    allocation: allocationPolicy,
   }),
   rules: z.object({
     shortAllInMinRaiseBasis: z.enum(['CURRENT_BET', 'LAST_FULL_RAISE']),
@@ -97,6 +107,10 @@ const handEventUnion = z.discriminatedUnion('kind', [
     config: tableConfigShape,
     buttonSeat: seat,
     heroSeat: seat.nullable(),
+    // REQUIRED, `null` when the hand used the ordinary rotation. Not optional and not
+    // defaulted: positions and both action orders are derived from it, so a log that
+    // omitted it would replay to different blinds (ADR-0031, CLAUDE.md rule 5).
+    blindOverride: z.object({ smallBlindSeat: seat, bigBlindSeat: seat }).nullable(),
   }),
   z.object({
     ...meta,
@@ -106,6 +120,7 @@ const handEventUnion = z.discriminatedUnion('kind', [
     startingStack: money,
   }),
   z.object({ ...meta, kind: z.literal('POST_ANTE'), seat, amount: money }),
+  z.object({ ...meta, kind: z.literal('POST_DEAD_BLIND'), seat, amount: money }),
   z.object({ ...meta, kind: z.literal('POST_SB'), seat, amount: money }),
   z.object({ ...meta, kind: z.literal('POST_BB'), seat, amount: money }),
   z.object({
@@ -132,6 +147,9 @@ const handEventUnion = z.discriminatedUnion('kind', [
     winners: z.array(seat),
     grossAmount: money,
     rake: money,
+    // REQUIRED, ZERO when there is none: a decoded log must state its fee, never inherit
+    // a default (CLAUDE.md rule 5). Nothing is persisted yet, so no shim is owed.
+    fee: money,
     netAmount: money,
     shares: z.array(potShare),
   }),
@@ -140,6 +158,7 @@ const handEventUnion = z.discriminatedUnion('kind', [
     kind: z.literal('HAND_FINISHED'),
     reason: z.enum(['ALL_FOLDED', 'SHOWDOWN']),
     totalRake: money,
+    totalFees: money,
   }),
 ]);
 

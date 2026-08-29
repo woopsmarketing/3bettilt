@@ -160,10 +160,10 @@ correct short-all-in-does-not-reopen rule.
 reference and differential test oracle. Do not adopt it as a dependency and do not wrap it.
 
 **Why.** It solves a different problem: a server-authoritative, async, card-dealing backend
-for *running* live games. We are building a synchronous, manual-entry engine for a table we
+for _running_ live games. We are building a synchronous, manual-entry engine for a table we
 do not control. Four of our hard requirements — sitting out, auto top-up, the dirty-stack /
 observe resync flow, and a configurable CoinPoker rake — are absent, and they must live
-*inside* the state machine, so no wrapper buys them. Its `stackBefore` invariant is directly
+_inside_ the state machine, so no wrapper buys them. Its `stackBefore` invariant is directly
 hostile to Phase 8. Its money type is a bare `type Chips = number` with runtime-only integer
 checking, which would degrade our compile-time `MilliBB` guarantee (ADR-0001) at the
 dependency boundary. Its complete replay path is private and async, conflicting with the
@@ -171,7 +171,7 @@ dependency boundary. Its complete replay path is private and async, conflicting 
 
 **This recommendation is falsifiable.** Revisit if: (a) a differential run shows our
 side-pot or min-raise logic is wrong where theirs is right; (b) it grows sit-out, top-up,
-dirty-stack and configurable rake *and* exports a synchronous replay; (c) the `stackBefore`
+dirty-stack and configurable rake _and_ exports a synchronous replay; (c) the `stackBefore`
 invariant becomes opt-out; (d) Phase 2 overruns its estimate by a large multiple. Bus
 factor, star count and release cadence are **not** on that list — under MIT they are
 manageable by forking, and they are not the reason for this decision.
@@ -183,7 +183,7 @@ manageable by forking, and they are not the reason for this decision.
 **Date:** 2026-08-28 · **Phase:** OSS spike · **Status:** accepted
 
 **Context.** Several evaluated engines are useful as independent checks on our arithmetic.
-Whether their *output* may be committed as fixtures is an unsettled legal question
+Whether their _output_ may be committed as fixtures is an unsettled legal question
 (`OPEN_SOURCE_EVALUATION.md` §7 marks it unverified).
 
 **Decision.** We may run permissively licensed engines locally as oracles, in a scratch area
@@ -233,7 +233,8 @@ It does **not** attempt a 6-max NLHE baseline. Phase 14 remains blocked, and is 
 understood to be not yet scopeable rather than merely pending.
 
 **Two landmines recorded now, from the spike:**
-- Kuhn poker has a *continuum* of equilibria parameterised by α ∈ (0, 1/3]. Asserting a
+
+- Kuhn poker has a _continuum_ of equilibria parameterised by α ∈ (0, 1/3]. Asserting a
   point strategy value is therefore wrong; assert the algebraic invariant between infosets
   (`P(call Q at "12|pb") = α + 1/3`) instead.
 - In `amaster97/poker_solver` the DCFR **docstrings** write the strategy-sum update with the
@@ -253,6 +254,7 @@ understood to be not yet scopeable rather than merely pending.
 `uoftcprg/pokerkit` MIT. All five may be read for ideas with no obligation.
 
 **Named blocklist — never copy, vendor, or paste from these:**
+
 - `b-inary/postflop-solver` — **AGPL-3.0**
 - `bupticybee/TexasSolver` — **AGPL-3.0**
 - `24parida/shark-2.0` — **unlicensed** (no grant at all; worse than AGPL for us)
@@ -282,6 +284,7 @@ rs-poker's `examples/configs/preflop_6max_rfi.json` ("6Max-RFI-GTO", no cited so
 asset format. Two data-integrity defects in it map directly onto rules we already have.
 
 **Adopted into the Phase 9 design:**
+
 1. `action_tree_hash` on `gto_solution_sets` — makes "action-tree structure exact"
    (matching criterion 4) a single indexed comparison rather than a tree walk.
 2. `board_signature` on `gto_spots`, stored **alongside** the actual board, never instead
@@ -297,8 +300,8 @@ asset format. Two data-integrity defects in it map directly onto rules we alread
    ADR/architecture forbids.
 6. **An explicit `unreached` flag on every strategy row.** 4.9% of their shipped rows
    (1,540 of 31,434) are a uniform `1/n` fallback emitted when an infoset was never
-   reached, and in the serialised asset that is *byte-indistinguishable from a genuine
-   50/50 mixed strategy*. A UI would render "50% call" for `72o` facing a 4-bet as if it
+   reached, and in the serialised asset that is _byte-indistinguishable from a genuine
+   50/50 mixed strategy_. A UI would render "50% call" for `72o` facing a 4-bet as if it
    were solved output. Unreached must be **typed**, not inferred.
 7. A manifest with per-shard sha256, verified on load, for any externally produced payload.
 
@@ -366,7 +369,7 @@ never as a universal poker rule, and never as something poker-core knows about C
 
 **Consequences.** Every CoinPoker-specific assumption is confined to a preset value, and
 `docs/STATE.md` carries the open question until a real fixture settles it. Splash-fee
-*trigger* semantics remain unknown; the config models the amount without inventing when it
+_trigger_ semantics remain unknown; the config models the amount without inventing when it
 applies.
 
 ---
@@ -389,7 +392,7 @@ CP_NL50_ANTE_100BB_HU_POSTFLOP_SRP_V1
 Format: `<site>_<stake>_<ante>_<stack>_<coverage>_V<n>`, where coverage names the lineup,
 street scope and pot type actually solved. `..._BASELINE_V1` is retired as a name.
 
-**Consequences.** A spot outside a dataset's coverage is a *miss* the matcher can detect
+**Consequences.** A spot outside a dataset's coverage is a _miss_ the matcher can detect
 from the identifier, which is what lets the UI say "no exact solution for this lineup"
 instead of silently presenting a six-handed answer for a four-handed spot. Immutability
 (one version, never regenerated) is unchanged.
@@ -411,7 +414,7 @@ in writing, all six of:
 4. **Splash Fee treatment** — when it applies, how it interacts with the cap, and whether it
    belongs in the solved game at all or only in settlement.
 5. **Solver validation thresholds** — the exploitability targets that count as converged, per
-   game size, decided *before* any solve so the bar cannot be moved to fit a result.
+   game size, decided _before_ any solve so the bar cannot be moved to fit a result.
 6. **Solver reproducibility requirements** — seed, iteration count, abstraction, code version
    and hardware recorded such that a dataset can be regenerated bit-identically.
 
@@ -479,7 +482,7 @@ criteria are untouched. The aim is removing duplicate verification, not verifica
 
 **Context.** Two rules that are individually obvious collide. ADR-0021: `gto-core` must
 never depend on `player-core`, so player statistics can never influence baseline solution
-data. The product spec: `ADAPTIVE` is by definition a function of the baseline *and* a
+data. The product spec: `ADAPTIVE` is by definition a function of the baseline _and_ a
 player's tendencies. If strategy policy lived inside `gto-core` — as
 `docs/ARCHITECTURE.md` originally said — then implementing `ADAPTIVE` would require
 `gto-core` to import `player-core`, breaking the first rule at exactly the moment the
@@ -545,7 +548,7 @@ spec §7.13 and as assumption 4. Do not invent a minimum-payout floor.
 **Why not "fix" it.** Draining the main pot first is literally what the policy name means,
 `PROPORTIONAL` is the shipped default, and CLAUDE.md rule 7 forbids inventing poker
 behaviour where we have no evidence. A floor would be a fabricated rule dressed as a bug
-fix. The genuine latent defect next to it *was* fixed: `PROPORTIONAL` now spills its floor
+fix. The genuine latent defect next to it _was_ fixed: `PROPORTIONAL` now spills its floor
 remainder past a main pot too small to hold it, and `allocateRake` asserts that no pot is
 ever charged more than it contains.
 
@@ -569,3 +572,242 @@ confusing failure in the first task each of `gto-core`, `player-core`, `db`,
 required to run a verification it could not otherwise pass, and reported the config change
 as a deliberate divergence instead of making it silently — which is the behaviour the
 delegation rules are meant to produce.
+
+---
+
+## ADR-0027 — CoinPoker settles in currency cents; ADR-0009's milliBB floor is superseded for CoinPoker
+
+**Date:** 2026-08-29 · **Phase:** 2 input · **Status:** accepted (the exact rule is a bounded
+Phase-2 evidence task; supersedes ADR-0009 for CoinPoker settlement)
+
+**Context.** ADR-0009 chose `floor` at milliBB granularity and flagged it as an assumption to
+verify against a real hand history. Real CoinPoker hand-history lines now contradict it. Two
+NL50 examples, where BB = ₮0.50, so 1 milliBB = ₮0.0005 and **one cent = 20 milliBB**:
+
+| pot                | 5% of pot         | ADR-0009 milliBB floor | hand history records |
+| ------------------ | ----------------- | ---------------------- | -------------------- |
+| ₮5.37 (10 740 mBB) | ₮0.2685 (537 mBB) | 537 mBB = ₮0.2685      | **₮0.27** (540 mBB)  |
+| ₮6.87 (13 740 mBB) | ₮0.3435 (687 mBB) | 687 mBB = ₮0.3435      | **₮0.34** (680 mBB)  |
+
+The site does not settle at milliBB granularity at all — it settles in whole currency cents.
+The first row additionally rules out _flooring_ at cent granularity (that would record ₮0.26);
+the second rules out _ceiling_ (that would record ₮0.35). Both are consistent with rounding to
+the nearest cent. Neither is an exact half-cent tie, so **the tie-breaking rule is not
+determined by this evidence and must not be invented.**
+
+**Decision.**
+
+1. ADR-0009's floor rule is **superseded for CoinPoker settlement**. `'floor'` remains a
+   perfectly good `RoundingMode` for a configuration that asks for it; it stops being stated as
+   a fact about CoinPoker. ADR-0017's normalising adapter for `pokerkit` comparisons is
+   unaffected in mechanism, but the direction it normalises _towards_ is now itself under review.
+2. **Settlement quantum becomes explicit configuration on `RakeConfig`** — a `MilliBB`
+   granularity that settlement money is quantized to (NL50: 20 mBB = ₮0.01), together with the
+   rounding mode applied at that granularity.
+3. **The settlement quantum is NOT derived from `DisplayConfig`.** `DisplayConfig`
+   (`bigBlindValue`, `symbol`) is presentation. Deriving settlement money from a presentation
+   field would let a formatting change silently alter recorded money.
+4. The rake **rate stays an exact rational** (`numerator`/`denominator`) and the **cap stays
+   `MilliBB`** (ADR-0018). Neither becomes a float, and neither becomes a currency amount.
+
+**Bounded Phase-2 evidence task**, blocked until a real fixture is present (see `docs/STATE.md`):
+analyze the complete fixture; infer the observed settlement quantum; determine the observed
+rounding rule as far as the data permits; leave anything the fixture cannot distinguish —
+tie-breaking in particular — explicitly undetermined rather than choosing a plausible answer;
+add regression cases derived from real hands. The **pot basis** (before or after the uncalled bet
+is returned, and pre- or post-fee) is part of what the fixture must settle, not an input to
+assume; it is assumption 3 in `docs/POKER_CORE_API.md`.
+
+**Consequences.** `POT_AWARDED` stores the rake _actually applied_ (ADR-0009), so no stored hand
+becomes unloadable when the rule is corrected. Assumption 5 in `docs/POKER_CORE_API.md` is now
+**known wrong for CoinPoker** rather than merely unverified. Two data points are enough to
+falsify the old rule; they are not enough to fix the new one.
+
+**Open question, deliberately not decided here.** The 8 BB cap may be valid only for the
+dealt-in count currently targeted. Rooms commonly run a short-handed cap schedule. Do not invent
+one — recorded in `docs/STATE.md` under known issues.
+
+---
+
+## ADR-0028 — Baseline identifiers name the lineup (amends ADR-0019)
+
+**Date:** 2026-08-29 · **Phase:** 9 input · **Status:** accepted
+
+**Context.** ADR-0019 required an identifier to state its coverage, and offered
+`CP_NL50_ANTE_100BB_PREFLOP_V1` as the example. That name still omits the thing that most often
+makes a solution inapplicable to a spot: **how many players are in the lineup**. A six-handed
+preflop dataset and a four-handed preflop dataset are different solutions, and under ADR-0019's
+format as written they collide on one identifier — reintroducing precisely the failure ADR-0019
+exists to prevent.
+
+**Decision.** The lineup is part of the identifier:
+
+```
+CP_NL50_6MAX_ANTE_100BB_PREFLOP_V1
+CP_NL50_HU_ANTE_100BB_POSTFLOP_SRP_V1
+```
+
+Format: `<site>_<stake>_<lineup>_<ante>_<stack>_<coverage>_V<n>`.
+
+**Consequences.** ADR-0019 otherwise stands in full: coverage must still be stated and
+`..._BASELINE_V1` stays retired. This fixes only _where the lineup lives_, moving it out of the
+coverage segment (ADR-0019's `..._HU_POSTFLOP_SRP_V1`) into its own segment, so lineup is always
+present rather than present only when someone remembered it. Identifiers written down before
+today — in `docs/GTO_BASELINE.md` and `docs/OPEN_SOURCE_EVALUATION.md` — predate this. The
+reasoning is note G in `docs/GTO_DESIGN_NOTES.md`.
+
+---
+
+## ADR-0029 — The product is independent practice and post-hoc review, never live assistance
+
+**Date:** 2026-08-29 · **Phase:** operating rule · **Status:** accepted
+
+**Context.** `CLAUDE.md` already forbids any connection to a poker client. But UX wording had
+drifted into implying the app is used _alongside a live real-money hand_ — "the user is
+mid-session at a poker table". That framing misdescribes the product and quietly invites exactly
+the features the hard boundary forbids.
+
+**Decision.** The application is an independent practice / simulation / replay tool. There are
+two modes of use and no third:
+
+1. **Independently simulated practice hands.** The user enters a hand into our own training
+   table. Strategy **may** be shown during such a hand — no real-money hand is in progress.
+2. **Imported or recorded real hands.** Reviewed **after the fact**.
+
+Never: live-client integration, live screen reading, live automation, or concurrent decision
+assistance during a real-money hand in progress elsewhere.
+
+**Consequences.** UX copy must not imply the user is sitting at a live table while using the app.
+The interaction design is unchanged — inline, non-blocking correction is still right — but its
+justification is that modals are slow and destroy flow, not that the user is under a real-money
+action clock.
+
+---
+
+## ADR-0030 — Run-it-twice is preserved losslessly, not replayed, in the MVP parser
+
+**Date:** 2026-08-29 · **Phase:** 11 input · **Status:** accepted
+
+**Context.** `poker-core` is single-board by construction. `docs/POKER_CORE_API.md` §9 noted that
+supporting run-it-twice would make `board` a list of boards and give `POT_AWARDED` a run index.
+Meanwhile `fixtures/coinpoker/README.md` lists run-it-twice among required fixture coverage and
+ROADMAP Phase 11 lists it as parser scope. Those were never reconciled, and "the parser covers
+RIT" was on track to be read as "the engine replays RIT".
+
+**Decision.** For the MVP parser:
+
+- RIT text is **parsed and preserved losslessly** in a neutral representation. Nothing in the
+  source text is discarded (`CLAUDE.md` rule 3).
+- The single-board engine is **not required to replay a RIT hand**. Single-run hands are replayed
+  through `poker-core`; RIT hands are preserved and explicitly marked not-engine-replayable.
+- A true multi-board engine is a **separate design decision, taken before any implementation** —
+  not a retrofit discovered midway through Phase 11.
+
+**Consequences.** Phase 11 can finish against a real fixture containing RIT hands without either
+fabricating multi-board semantics or silently dropping those hands. The round-trip guarantee
+(`replayHand` re-validating every action) covers single-run hands; a RIT hand carries a visible
+"preserved, not replayed" status instead of an invisible gap.
+
+---
+
+## ADR-0031 — Missed blinds and the dead button stay unimplemented until a fixture verifies them
+
+**Date:** 2026-08-29 · **Phase:** 2 input · **Status:** accepted
+
+**Context.** ROADMAP Phase 2 and `docs/STATE.md` both listed "missed blinds, dead button" as
+Phase-2 work. Real behaviour for both differs per room, and no CoinPoker fixture has confirmed
+CoinPoker's. Implementing them in Phase 2 would mean inventing site behaviour — `CLAUDE.md`
+rule 7.
+
+**Decision.** Phase 2 may implement only what is neutral:
+
+- `POST_DEAD_BLIND` as a **neutral accounting event** (accounting identical to an ante), if and
+  only if it is actually needed.
+- A **manual SB/BB assignment override** at hand start.
+- The engine primitives the later UI will need.
+
+Phase 2 must **not** implement automatic CoinPoker missed-blind or dead-button rules. **Phase 8**
+owns the user-facing override UX. Site-specific automatic behaviour stays unimplemented until a
+fixture verifies it.
+
+**Consequences.** Assumption 15 in `docs/POKER_CORE_API.md` — the button moves simply; dead
+button and missed blinds are not modelled — is still true after Phase 2. Phase 2 adds the manual
+correction path, not an automatic rule.
+
+---
+
+## ADR-0032 — Splash Fee is confirmed a separate pot deduction (closes one ADR-0018 observation)
+
+**Date:** 2026-08-29 · **Phase:** 2 input · **Status:** accepted; ADR-0018 unchanged and
+authoritative
+
+**Context.** ADR-0018 recorded three things as _observed fixture behaviour awaiting
+verification_, and decided to model the splash fee separately from rake on that basis. Working
+through the real hand-history arithmetic has since **confirmed observation 3**: the Splash Fee
+is a separate deduction from the pot payout, not a component of the rake and not a display
+artefact. Recorded because a fresh agent reading only ADR-0018 would still treat it as
+unverified and might "tidy" the two into one number.
+
+**Decision.** ADR-0018 stands exactly as written — this changes none of it, and confirms the
+modelling choice it made. Concretely:
+
+- Splash fee is `FeeConfig`, separate from `RakeConfig`. Never collapsed into rake.
+- Settlement records **`totalFees` as its own amount**, alongside the rake actually applied.
+- The chip-conservation invariant must account for fees, not just rake and payouts.
+- Ownership: the **Phase-2 ADR-0018 follow-up** owns `FeeConfig`, the recorded total, the
+  settlement accounting and the conservation invariant. **Phase 11** owns parsing the observed
+  fee amount out of CoinPoker hand-history text.
+
+**Still unknown, still not to be invented.** _When_ the splash fee applies and how it interacts
+with the rake cap. ADR-0020's pre-13 checkpoint item 4 ("Splash Fee treatment") is therefore
+only partly settled: the _accounting shape_ is confirmed, the _trigger_ is not.
+
+**Consequences.** ADR-0018's observations 1 (preflop `Rake = 0`) and 2 (percentage rake
+rounding) remain open — and observation 2 has since been falsified in its ADR-0009 form by
+ADR-0027.
+
+---
+
+## ADR-0033 — The fixture is not coming; settlement correctness becomes a configuration surface
+
+**Date:** 2026-08-29 · **Phase:** 2 input · **Status:** accepted; supersedes the *scheduling*
+of ADR-0027's evidence task, not its findings
+
+**Context.** ADR-0027 recorded a bounded Phase-2 task: analyse the complete real CoinPoker
+hand-history export, infer the settlement quantum, and determine the rounding rule. That task
+was blocked on the export being placed in the repository. The export will not be provided now,
+and waiting for it would stall the whole product behind a detail that affects only the last
+decimal of a raked pot.
+
+The product goal is an **independent practice / simulation MVP** a person can actually open and
+run hands in (ADR-0029). Nothing in that loop needs a parsed hand history: not the engine, not
+player identity, not session setup, not the table, not the action UX, not card entry, not
+observe mode, not the GTO provider scaffolding, not the strategy UI.
+
+**Decision.**
+
+1. **Phase 11 (hand-history parser) is deferred** until after the first usable MVP, and is not
+   a dependency of Phases 2–10. Player identity stays manual nicknames plus our own
+   observations; persistent opponent identity is **never** derived from CoinPoker hand-history
+   IDs.
+2. **No further forensic reconstruction without the fixture.** What ADR-0018, ADR-0027 and
+   ADR-0032 already record is preserved verbatim and is enough to design against:
+   a nominal 5% rate; observed preflop-only hands raked zero; observed postflop hands raked a
+   percentage; observed amounts consistent with currency-quantized nearest-cent rounding;
+   **tie-breaking unknown**; splash fee a separate payout deduction; **splash-fee trigger
+   unknown**. Guessing past that is forbidden, as before.
+3. **Phase 2 builds the configuration surface instead of the answer.** Every unknown becomes an
+   explicit, validated, named policy field with a documented default, so that when the fixture
+   eventually arrives the correction is a **configuration change and a fixture test — never a
+   code change**. Concretely: a named rake `triggerPolicy` replacing the `noFlopNoDrop` boolean;
+   an explicit settlement `quantum` and `rounding` on `RakeConfig`; `FeeConfig` separate from
+   `RakeConfig`; rake and fees accounted and recorded separately; chip conservation including
+   fees.
+4. **The exact CoinPoker settlement model stays a pre-Phase-13 validation item.** It is a
+   precondition for claiming a real GTO baseline (ADR-0020), not for shipping a practice tool.
+
+**Consequences.** The engine's defaults are honest configuration, not claims about CoinPoker:
+the shipped NL50 preset quantizes settlement to `₮0.01` (20 milliBB) and rounds to nearest, with
+half-way behaviour flagged as an assumption no observation has yet distinguished. `docs/STATE.md`
+must keep listing the unknowns; a preset value is not evidence. ADR-0027's findings are
+untouched — only its "blocked, waiting" status is retired.

@@ -24,22 +24,30 @@ A mock provider is permitted for UI development on these conditions:
 ## Baseline identity and versioning
 
 ```
-CP_NL50_ANTE_100BB_PREFLOP_V1
-CP_NL50_ANTE_100BB_HU_POSTFLOP_SRP_V1
- ^   ^     ^     ^      ^          ^
- |   |     |     |      coverage   version
- |   |     |     stack depth
- |   |     ante mode
+CP_NL50_6MAX_ANTE_100BB_PREFLOP_V1
+CP_NL50_HU_ANTE_100BB_POSTFLOP_SRP_V1
+ ^   ^    ^     ^     ^      ^         ^
+ |   |    |     |     |      coverage  version
+ |   |    |     |     stack depth
+ |   |    |     ante mode
+ |   |    lineup
  |   stake preset
  site style
 ```
 
+Format: `<site>_<stake>_<lineup>_<ante>_<stack>_<coverage>_V<n>`.
+
+**The identifier must name its lineup** (ADR-0028). Without it a six-handed preflop dataset
+and a four-handed preflop dataset collide on one name — reintroducing exactly the failure
+ADR-0019 exists to prevent. Lineup gets its own segment rather than being folded into
+coverage, so it is always present instead of present only when someone remembered it.
+
 **The identifier must state its coverage** (ADR-0019). A name like
 `..._BASELINE_V1` implies a dataset covering the whole game; per ADR-0014 no such dataset
-is reachable, so the name would be a claim we cannot meet. Coverage names the lineup,
-street scope and pot type actually solved — which is what lets the matcher detect a miss
-and the UI say "no exact solution for this lineup" instead of silently presenting a
-six-handed answer for a four-handed spot.
+is reachable, so the name would be a claim we cannot meet. Coverage names the **street scope
+and pot type** actually solved; the lineup segment carries the lineup. Together they are what
+lets the matcher detect a miss and the UI say "no exact solution for this lineup" instead of
+silently presenting a six-handed answer for a four-handed spot.
 
 Every solution dataset is versioned and immutable. **Never regenerate under an
 existing version.** A changed action tree, a changed rake model, a changed sizing set
@@ -47,20 +55,27 @@ or a re-solve all produce a new version.
 
 ## Preset (MVP)
 
-| Field           | Value                                             |
-| --------------- | ------------------------------------------------- |
-| Site style      | CoinPoker                                         |
-| Game            | NLHE cash                                         |
-| Seats           | 6 max                                             |
-| Stake           | NL50                                              |
-| SB / BB         | 0.5 / 1 BB                                        |
-| Reference stack | 100 BB                                            |
-| Ante            | 0.16 BB per dealt-in player, when ante mode is on |
-| Rake            | 5%                                                |
-| Rake cap        | 8 BB                                              |
+| Field              | Value                                             |
+| ------------------ | ------------------------------------------------- |
+| Site style         | CoinPoker                                         |
+| Game               | NLHE cash                                         |
+| Seats              | 6 max                                             |
+| Stake              | NL50                                              |
+| SB / BB            | 0.5 / 1 BB                                        |
+| Reference stack    | 100 BB                                            |
+| Ante               | 0.16 BB per dealt-in player, when ante mode is on |
+| Rake               | 5% (exact rational 5/100, never a float)          |
+| Rake cap           | 8 BB — see the open question below                |
+| Settlement quantum | ₮0.01 = 20 milliBB at NL50 (ADR-0027)             |
 
-Rake is configuration, not code. NL100 should be reachable by changing the cap and the
-monetary display config.
+Rake is configuration, not code. NL100 should be reachable by changing the cap, the
+settlement quantum and the monetary display config — three separate fields. The settlement
+quantum is **not** derived from the display config (ADR-0027): display is presentation, and
+recorded money must not move when a formatting choice does.
+
+**Open question — the cap may be lineup-dependent.** The 8 BB cap is confirmed only for the
+dealt-in count currently targeted. Many rooms run a short-handed cap schedule. Do not invent
+one, and do not claim exact CoinPoker short-handed settlement until a fixture verifies it.
 
 ## Long-term pipeline (Phases 13-14, gated)
 
@@ -86,7 +101,7 @@ Rules for the spike:
   deliverable as a validated method plus a cost curve, not a baseline.
 - Validate any CFR implementation on Kuhn and Leduc poker first, with published
   equilibrium values as the check. **Two landmines, found during the open-source
-  evaluation:** (1) Kuhn poker has a *continuum* of equilibria parameterised by
+  evaluation:** (1) Kuhn poker has a _continuum_ of equilibria parameterised by
   alpha in (0, 1/3], so asserting a point strategy value is wrong — assert the algebraic
   invariant between infosets instead. (2) At least one published open-source DCFR
   implementation has docstrings that write the strategy-sum update with the opponent's
@@ -100,10 +115,15 @@ Rules for the spike:
   for "open source poker solver" surfaces first. `pnpm lint:licences` is the standing
   tripwire.
 - Never import an unprovenanced strategy chart as baseline data, whatever its licence.
-  A permissive licence makes copying *legal*, not the numbers *true*.
+  A permissive licence makes copying _legal_, not the numbers _true_.
 - Never claim NLHE solving works unless it has actually been validated.
 
 ## Strategy policy layer
+
+Lives in **`packages/strategy-policy`** from Phase 10, not in `gto-core` (ADR-0023). `gto-core`
+may hold the pure `GTO` and `SAFE_GTO` primitives — they need no player data — but the
+cross-domain composition and `ADAPTIVE` sit in the layer above, which is the only package
+allowed to depend on both `gto-core` and `player-core`.
 
 Three modes. Default `SAFE_GTO`.
 
@@ -120,3 +140,7 @@ Three modes. Default `SAFE_GTO`.
   - `SAFE_GTO` is not "fold more".
 - **ADAPTIVE** — interface and scaffolding only during MVP. No fake exploit logic.
   Player statistics must never mutate baseline solution data.
+
+Phase 9's binding design constraints — stack profiles, sizing formulas, match-result typing,
+unreached-strategy typing, quality metrics, the adapter seam and baseline identity — are in
+`docs/GTO_DESIGN_NOTES.md`.

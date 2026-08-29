@@ -191,19 +191,21 @@ describe('a player all-in from the ante itself', () => {
     expect(Money.sum(rest.map((p) => p.amount))).toBe(1300);
     for (const pot of rest) expect(pot.eligibleSeats).toEqual([2]);
 
-    // Total gross 1900, saw a flop -> rake floor(95) = 95, split proportionally.
+    // Total gross 1900, saw a flop -> 5% = 95 milliBB -> 95 / 20 = 4.75 -> 5 cents = 100,
+    // split proportionally: floor(100 * 600 / 1900) = 31 and floor(100 * 1300 / 1900) = 68
+    // sum to 99, so the 1 milliBB floor remainder lands on the main pot -> 32.
     const awards = pots.map((p) => ({
       potIndex: p.index,
       winners: [(p.index === 0 ? 4 : 2) as SeatIndex],
     }));
     hand = step(hand, { kind: 'AWARD_POTS', awards }, f);
-    expect(hand.state.totalRake).toBe(95);
+    expect(hand.state.totalRake).toBe(100);
     expect(stacks(hand.state)).toEqual({
       0: 99840,
       1: 99340,
-      2: 100575,
+      2: 100572, // 99340 + (1300 - 68)
       3: 99840,
-      4: 570, // 600 - 30 proportional rake
+      4: 568, // 600 - 32 proportional rake
       5: 99840,
     });
   });

@@ -34,15 +34,16 @@ describe('an all-in contender who wins the pot', () => {
     // 500 (folded SB) + 20000 + 20000 = 40500
     expect(hand.state.potTotal).toBe(40500);
 
-    // rake = floor(40500 * 5 / 100) = 2025, net 38475.
+    // 5% of 40500 is 2025 milliBB; 2025 / 20 = 101.25 -> 101 cents = 2020. Net 38480.
     hand = step(hand, awardAllTo(hand.state, 3), f);
     expect(hand.state.phase).toBe('COMPLETE');
-    expect(hand.state.totalRake).toBe(2025);
+    expect(hand.state.totalRake).toBe(2020);
+    expect(hand.state.totalFees).toBe(0);
     expect(stacks(hand.state)).toEqual({
       0: 100000,
       1: 99500,
       2: 80000,
-      3: 38475,
+      3: 38480,
       4: 100000,
       5: 100000,
     });
@@ -76,13 +77,14 @@ describe('an all-in contender who wins the pot', () => {
     hand = step(hand, dealBoard(cards('2d')), f);
     hand = step(hand, dealBoard(cards('Js')), f);
 
-    // rake = floor(80500 * 5 / 100) = 4025, net 76475 to the all-in big blind.
+    // 5% of 80500 is 4025 milliBB; 4025 / 20 = 201.25 -> 201 cents = 4020.
+    // Net 76480 to the all-in big blind.
     hand = step(hand, awardAllTo(hand.state, 2), f);
-    expect(hand.state.totalRake).toBe(4025);
+    expect(hand.state.totalRake).toBe(4020);
     expect(stacks(hand.state)).toEqual({
       0: 100000,
       1: 99500,
-      2: 76475,
+      2: 76480,
       3: 60000,
       4: 100000,
       5: 100000,

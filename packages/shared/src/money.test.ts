@@ -86,6 +86,113 @@ describe('arithmetic', () => {
   });
 });
 
+describe('quantize — settlement granularity', () => {
+  // NL50: BB = 0.50 currency units, so one cent is 20 milliBB (ADR-0027).
+  const CENT = 20;
+
+  it('is the identity at quantum 1 under every mode', () => {
+    for (const mode of ['floor', 'ceil', 'round', 'exact'] as const) {
+      for (const value of [0, 1, 537, -537, 999_999]) {
+        expect(M.quantize(M.mbb(value), 1, mode)).toBe(value);
+      }
+    }
+  });
+
+  it('rounds to the nearest cent under each mode', () => {
+    expect(M.quantize(M.mbb(537), CENT, 'floor')).toBe(520);
+    expect(M.quantize(M.mbb(537), CENT, 'ceil')).toBe(540);
+    expect(M.quantize(M.mbb(537), CENT, 'round')).toBe(540);
+    expect(M.quantize(M.mbb(687), CENT, 'floor')).toBe(680);
+    expect(M.quantize(M.mbb(687), CENT, 'ceil')).toBe(700);
+    expect(M.quantize(M.mbb(687), CENT, 'round')).toBe(680);
+    expect(M.quantize(M.mbb(540), CENT, 'exact')).toBe(540);
+    expect(() => M.quantize(M.mbb(537), CENT, 'exact')).toThrow(/Non-integral/);
+  });
+
+  it('pins the half-way case: ties go AWAY FROM ZERO, symmetrically', () => {
+    // 10 is exactly half of the 20 milliBB quantum. `applyRounding('round')` is
+    // half-away-from-zero, so 10 -> 20 and -10 -> -20 (not banker's rounding).
+    expect(M.quantize(M.mbb(10), CENT, 'round')).toBe(20);
+    expect(M.quantize(M.mbb(-10), CENT, 'round')).toBe(-20);
+    expect(M.quantize(M.mbb(30), CENT, 'round')).toBe(40);
+    expect(M.quantize(M.mbb(-30), CENT, 'round')).toBe(-40);
+  });
+
+  it('takes floor/ceil toward -Infinity / +Infinity, not toward zero', () => {
+    expect(M.quantize(M.mbb(-30), CENT, 'floor')).toBe(-40);
+    expect(M.quantize(M.mbb(-30), CENT, 'ceil')).toBe(-20);
+  });
+
+  it('rejects a quantum that is not a positive integer', () => {
+    for (const bad of [0, -20, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => M.quantize(M.mbb(100), bad, 'round')).toThrow(/quantum/);
+    }
+  });
+});
+
+describe('mulRatioQuantized — one rounding step, never two', () => {
+  const CENT = 20;
+
+  it('is exactly mulRatio at quantum 1', () => {
+    for (const mode of ['floor', 'ceil', 'round'] as const) {
+      for (const value of [13_500, 4130, 19_999, 6003, 1]) {
+        expect(M.mulRatioQuantized(M.mbb(value), 5, 100, 1, mode)).toBe(
+          M.mulRatio(M.mbb(value), 5, 100, mode),
+        );
+      }
+    }
+  });
+
+  it('rounds ONCE — the naive quantize(mulRatio(x)) is a whole quantum wrong here', () => {
+    // 5% of 4190 is exactly 209.5 milliBB. The nearest multiple of 20 is 200
+    // (distance 9.5) rather than 220 (distance 10.5).
+    const once = M.mulRatioQuantized(M.mbb(4190), 5, 100, CENT, 'round');
+    expect(once).toBe(200);
+
+    // Two-step: 209.5 rounds to 210, and 210 / 20 = 10.5 rounds AWAY from zero to 11,
+    // giving 220 — one full cent above the correct answer. This assertion is the
+    // regression guard: if `mulRatioQuantized` is ever reimplemented as two steps it
+    // starts returning `twoStep` and the line above fails.
+    const twoStep = M.quantize(M.mulRatio(M.mbb(4190), 5, 100, 'round'), CENT, 'round');
+    expect(twoStep).toBe(220);
+    expect(once).not.toBe(twoStep);
+  });
+
+  it('reproduces both real CoinPoker rake observations (ADR-0027)', () => {
+    // Pot 5.37 -> 5% = 537 milliBB -> hand history records 0.27 = 540 milliBB.
+    expect(M.mulRatioQuantized(M.mbb(10_740), 5, 100, CENT, 'round')).toBe(540);
+    // Pot 6.87 -> 5% = 687 milliBB -> hand history records 0.34 = 680 milliBB.
+    expect(M.mulRatioQuantized(M.mbb(13_740), 5, 100, CENT, 'round')).toBe(680);
+    // Neither is reproduced by flooring or ceiling at cent granularity.
+    expect(M.mulRatioQuantized(M.mbb(10_740), 5, 100, CENT, 'floor')).toBe(520);
+    expect(M.mulRatioQuantized(M.mbb(13_740), 5, 100, CENT, 'ceil')).toBe(700);
+  });
+
+  it('is symmetric about zero under round', () => {
+    expect(M.mulRatioQuantized(M.mbb(-4190), 5, 100, CENT, 'round')).toBe(-200);
+    expect(M.mulRatioQuantized(M.mbb(4200), 5, 100, CENT, 'round')).toBe(220); // 210 -> tie -> away
+    expect(M.mulRatioQuantized(M.mbb(-4200), 5, 100, CENT, 'round')).toBe(-220);
+  });
+
+  it("throws under 'exact' when the product is not a whole number of quanta", () => {
+    expect(M.mulRatioQuantized(M.mbb(4000), 5, 100, CENT, 'exact')).toBe(200);
+    expect(() => M.mulRatioQuantized(M.mbb(4190), 5, 100, CENT, 'exact')).toThrow(/Non-integral/);
+  });
+
+  it('rejects a zero denominator and a bad quantum, and guards the product', () => {
+    expect(() => M.mulRatioQuantized(M.mbb(100), 5, 0, CENT, 'round')).toThrow(/denominator/);
+    expect(() => M.mulRatioQuantized(M.mbb(100), 5, 100, 0, 'round')).toThrow(/quantum/);
+    expect(() => M.mulRatioQuantized(M.mbb(100), 5, 100, 2.5, 'round')).toThrow(/quantum/);
+    // The exact product must stay representable, and the RESULT must stay in money range.
+    expect(() =>
+      M.mulRatioQuantized(M.mbb(M.MAX_MILLI_BB), Number.MAX_SAFE_INTEGER, 1, CENT, 'round'),
+    ).toThrow(/not exactly representable/);
+    expect(() => M.mulRatioQuantized(M.mbb(M.MAX_MILLI_BB), 3, 1, CENT, 'round')).toThrow(
+      /out of range/,
+    );
+  });
+});
+
 describe('parseBB', () => {
   it('accepts plain numbers, leading dots and thousands separators', () => {
     expect(M.parseBB('2.37')).toEqual({ ok: true, value: 2370 });

@@ -213,9 +213,9 @@ describe('an all-in seat that wins a pot', () => {
     const beforeAward = hand.events.length;
     hand = step(hand, awardPots([{ potIndex: 0, winners: [3] }]), f);
 
-    // rake floor(40500 * 5 / 100) = 2025, net 38475.
-    expect(hand.state.totalRake).toBe(2025);
-    expect(hand.state.seats[3].stack).toBe(38475);
+    // 5% of 40500 is 2025 milliBB -> 2025 / 20 = 101.25 -> 101 cents = 2020, net 38480.
+    expect(hand.state.totalRake).toBe(2020);
+    expect(hand.state.seats[3].stack).toBe(38480);
     expect(hand.state.seats[3].status).toBe('ALL_IN');
     expect(hand.state.phase).toBe('COMPLETE');
 
@@ -259,11 +259,13 @@ describe('an all-in seat that wins a pot', () => {
       f,
     );
 
-    // gross 140500 -> 5% = 7025, under the 8000 cap.
-    // PROPORTIONAL: floor(7025 * 60500 / 140500) = 3025, floor(7025 * 80000 / 140500) = 4000.
-    expect(hand.state.totalRake).toBe(7025);
-    expect(hand.state.seats[3].stack).toBe(60500 - 3025);
-    expect(hand.state.seats[0].stack).toBe(40000 + 80000 - 4000);
+    // gross 140500 -> 5% = 7025 milliBB -> 351.25 cents -> 351 cents = 7020, under the cap.
+    // PROPORTIONAL: floor(7020 * 60500 / 140500) = 3022 and
+    // floor(7020 * 80000 / 140500) = 3997 sum to 7019; the 1 milliBB remainder goes to
+    // the main pot, making it 3023.
+    expect(hand.state.totalRake).toBe(7020);
+    expect(hand.state.seats[3].stack).toBe(60500 - 3023);
+    expect(hand.state.seats[0].stack).toBe(40000 + 80000 - 3997);
     expect(hand.state.seats[3].status).toBe('ALL_IN');
     expect(hand.state.seats[2].status).toBe('ALL_IN');
 

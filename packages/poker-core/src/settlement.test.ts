@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Money } from '@gto-self/shared';
 import { allIn, awardPots, betTo, call, check, dealBoard, fold, raiseTo } from './commands.js';
-import { applyCommand } from './hand.js';
+import { applyCommand, replayHand } from './hand.js';
+import type { TableConfig } from './config.js';
+import type { HandEvent } from './events.js';
+import { assertChipConservation, assertSeatLedgers, foldEvents } from './reduce.js';
+import { jsonRoundTrip } from './serialization.js';
 import {
   autoAwardUncontested,
   handResult,
@@ -67,31 +71,35 @@ describe('user-supplied award at showdown', () => {
     expect(hand.state.phase).toBe('AWAITING_AWARD');
     expect(hand.state.potTotal).toBe(BB(3));
     const done = play(hand, [awardPots([{ potIndex: 0, winners: [1] }])], factory);
-    // 5% of 3 BB = 0.15 BB, floored to 150 milliBB.
-    expect(done.state.totalRake).toBe(Money.mbb(150));
+    // 5% of 3 BB is 150 milliBB, quantized to the nearest 20: 150 / 20 = 7.5, a tie,
+    // which rounds AWAY from zero to 8 cents = 160. Fee ZERO under the shipped policy.
+    expect(done.state.totalRake).toBe(Money.mbb(160));
+    expect(done.state.totalFees).toBe(Money.ZERO);
     expect(done.state.awards[0]).toMatchObject({
       potIndex: 0,
       winners: [1],
       grossAmount: BB(3),
-      rake: Money.mbb(150),
-      netAmount: Money.mbb(2850),
+      rake: Money.mbb(160),
+      fee: Money.ZERO,
+      netAmount: Money.mbb(2840),
     });
-    expect(done.state.seats[1].stack).toBe(Money.mbb(100_000 - 1000 + 2850));
+    expect(done.state.seats[1].stack).toBe(Money.mbb(100_000 - 1000 + 2840));
     expect(done.state.endReason).toBe('SHOWDOWN');
     expect(done.state.phase).toBe('COMPLETE');
   });
 
   it('splits a chopped pot evenly and hands the odd milliBB out clockwise from the button', () => {
     const { hand, factory } = toShowdown();
-    // Pot 3000, rake 150, net 2850. Split three ways: 950 each, no remainder.
+    // Pot 3000, rake 160, net 2840. Split three ways: 946 each with 2 milliBB over,
+    // handed out one each clockwise from the button.
     const done = play(hand, [awardPots([{ potIndex: 0, winners: [0, 1, 2] }])], factory);
     expect(done.state.awards[0]?.shares).toEqual([
-      { seat: 1, amount: Money.mbb(950) },
-      { seat: 2, amount: Money.mbb(950) },
-      { seat: 0, amount: Money.mbb(950) },
+      { seat: 1, amount: Money.mbb(947) },
+      { seat: 2, amount: Money.mbb(947) },
+      { seat: 0, amount: Money.mbb(946) },
     ]);
     expect(Money.sum(done.state.awards[0]?.shares.map((s) => s.amount) ?? [])).toBe(
-      Money.mbb(2850),
+      Money.mbb(2840),
     );
   });
 
@@ -236,7 +244,8 @@ describe('rake basis and no-flop-no-drop end to end', () => {
     hand = play(hand, [dealBoard(cards('As Kd 7c')), check(), betTo(BB(4)), fold()], factory);
     // BB bet 4 and BTN folded: the 4 is returned, so the raked pot is 6.5, not 10.5.
     expect(hand.state.awards[0]?.grossAmount).toBe(BB(6.5));
-    expect(hand.state.totalRake).toBe(Money.mbb(325));
+    // 5% of 6500 is 325 milliBB; 325 / 20 = 16.25 -> 16 cents = 320.
+    expect(hand.state.totalRake).toBe(Money.mbb(320));
   });
 });
 
@@ -247,7 +256,8 @@ describe('hand and seat results', () => {
     const result = handResult(done.state);
     expect(result).not.toBeNull();
     if (result === null) throw new Error('no result');
-    expect(Money.add(Money.sum(result.seats.map((s) => s.net)), result.totalRake)).toBe(Money.ZERO);
+    const deducted = Money.add(result.totalRake, result.totalFees);
+    expect(Money.add(Money.sum(result.seats.map((s) => s.net)), deducted)).toBe(Money.ZERO);
     expect(result.reason).toBe('SHOWDOWN');
   });
 
@@ -258,18 +268,22 @@ describe('hand and seat results', () => {
       startingStack: BB(100),
       contributed: BB(1),
       wonGross: BB(3),
-      rakePaid: Money.mbb(150),
-      net: Money.mbb(1850),
+      rakePaid: Money.mbb(160),
+      feePaid: Money.ZERO,
+      net: Money.mbb(1840),
     });
     expect(seatResult(done.state, 0).rakePaid).toBe(Money.ZERO);
+    expect(seatResult(done.state, 0).feePaid).toBe(Money.ZERO);
   });
 
   it('splits the rake attribution across joint winners', () => {
     const { hand, factory } = toShowdown();
     const done = play(hand, [awardPots([{ potIndex: 0, winners: [0, 1, 2] }])], factory);
     const rakes = done.state.dealtInSeats.map((s) => done.state.seats[s].rakePaid);
-    expect(Money.sum(rakes)).toBe(Money.mbb(150));
-    expect(rakes).toEqual([Money.mbb(50), Money.mbb(50), Money.mbb(50)]);
+    // 160 across three winners is 53 each with 1 over; the odd milliBB follows the same
+    // clockwise order as the pot shares, so seat 1 carries it.
+    expect(Money.sum(rakes)).toBe(Money.mbb(160));
+    expect(rakes).toEqual([Money.mbb(53), Money.mbb(54), Money.mbb(53)]);
   });
 
   it('reports an honest net before the hand is complete', () => {
@@ -278,5 +292,244 @@ describe('hand and seat results', () => {
     const result = handResult(hand.state);
     expect(result?.totalRake).toBe(Money.ZERO);
     expect(result?.seats.find((s) => s.seat === 1)?.net).toBe(BB(-1));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Splash fee. A SEPARATE deduction from the pot payout, never folded into the rake
+// (ADR-0018, confirmed by ADR-0032). There is no automatic trigger, so every fee below
+// is supplied by the caller exactly as the user observed it.
+// ---------------------------------------------------------------------------
+
+const MANUAL_FEE: TableConfig = {
+  ...NO_ANTE_PRESET,
+  fee: { ...NO_ANTE_PRESET.fee, triggerPolicy: 'MANUAL' },
+};
+
+/** Three limped stacks to a checked-down river: one 3 BB pot, flop seen. */
+function limpedShowdown(config: TableConfig) {
+  const factory = ids();
+  const table = buildTable({
+    config,
+    stacks: { 0: BB(100), 1: BB(100), 2: BB(100) },
+    buttonSeat: 0,
+  });
+  let hand = start(table, factory);
+  hand = play(hand, [call(), call(), check()], factory);
+  hand = play(hand, [dealBoard(cards('As Kd 7c')), check(), check(), check()], factory);
+  hand = play(hand, [dealBoard(cards('2h')), check(), check(), check()], factory);
+  hand = play(hand, [dealBoard(cards('9s')), check(), check(), check()], factory);
+  return { hand, factory };
+}
+
+/** Every prefix of the log must satisfy both standing money identities. */
+function assertEveryPrefixBalances(events: readonly HandEvent[]): void {
+  for (let length = 1; length <= events.length; length += 1) {
+    const state = foldEvents(events.slice(0, length));
+    assertSeatLedgers(state);
+    assertChipConservation(state);
+  }
+}
+
+describe('a hand settled with a manually supplied fee', () => {
+  it('records the fee separately from the rake and pays the difference', () => {
+    const { hand, factory } = limpedShowdown(MANUAL_FEE);
+    expect(hand.state.potTotal).toBe(BB(3));
+    // 5% of 3000 is 150 -> 8 cents = 160 rake. The user then reports a 250 milliBB fee.
+    const done = play(hand, [awardPots([{ potIndex: 0, winners: [1] }], Money.mbb(250))], factory);
+
+    expect(done.state.totalRake).toBe(Money.mbb(160));
+    expect(done.state.totalFees).toBe(Money.mbb(250));
+    expect(done.state.awards[0]).toMatchObject({
+      grossAmount: BB(3),
+      rake: Money.mbb(160),
+      fee: Money.mbb(250),
+      netAmount: Money.mbb(3000 - 160 - 250),
+    });
+    // The fee is kept EXACTLY as entered even though it is not a whole cent.
+    expect(Money.mbb(250) % MANUAL_FEE.rake.quantum).not.toBe(0);
+  });
+
+  it('keeps the seat ledger and chip conservation after EVERY event', () => {
+    const { hand, factory } = limpedShowdown(MANUAL_FEE);
+    const done = play(hand, [awardPots([{ potIndex: 0, winners: [1] }], Money.mbb(250))], factory);
+    expect(() => assertEveryPrefixBalances(done.events)).not.toThrow();
+
+    const winner = seatResult(done.state, 1);
+    expect(winner).toMatchObject({
+      contributed: BB(1),
+      wonGross: BB(3),
+      rakePaid: Money.mbb(160),
+      feePaid: Money.mbb(250),
+      net: Money.mbb(3000 - 1000 - 160 - 250),
+    });
+    // stack === startingStack - contributed + wonGross - rakePaid - feePaid
+    expect(done.state.seats[1].stack).toBe(Money.mbb(100_000 - 1000 + 3000 - 160 - 250));
+  });
+
+  it('balances: seat nets plus rake plus fees sum to zero', () => {
+    const { hand, factory } = limpedShowdown(MANUAL_FEE);
+    const done = play(hand, [awardPots([{ potIndex: 0, winners: [1] }], Money.mbb(250))], factory);
+    const result = handResult(done.state);
+    if (result === null) throw new Error('no result');
+    const nets = Money.sum(result.seats.map((seat) => seat.net));
+    expect(Money.add(nets, Money.add(result.totalRake, result.totalFees))).toBe(Money.ZERO);
+    // Dropping the fee from the identity would NOT balance — the two are distinct money.
+    expect(Money.add(nets, result.totalRake)).not.toBe(Money.ZERO);
+  });
+
+  it('survives STRICT replay: the fee is recovered from the recorded per-pot amounts', () => {
+    const { hand, factory } = limpedShowdown(MANUAL_FEE);
+    const done = play(hand, [awardPots([{ potIndex: 0, winners: [1] }], Money.mbb(250))], factory);
+    // `replayHand` re-derives the AWARD_POTS command from the log and re-validates it.
+    // If the reconstructed command dropped the fee, the re-emitted events would differ.
+    const replayed = replayHand(done.events);
+    expect(replayed.ok).toBe(true);
+    if (!replayed.ok) throw new Error(replayed.error.message);
+    expect(replayed.value.state.totalFees).toBe(Money.mbb(250));
+    expect(replayed.value.state.totalRake).toBe(Money.mbb(160));
+
+    // A hand with NO fee replays too, even though 'NEVER' would reject a supplied one.
+    const plainSetup = limpedShowdown(NO_ANTE_PRESET);
+    const plain = play(
+      plainSetup.hand,
+      [awardPots([{ potIndex: 0, winners: [1] }])],
+      plainSetup.factory,
+    );
+    const replayedPlain = replayHand(plain.events);
+    expect(replayedPlain.ok).toBe(true);
+    if (!replayedPlain.ok) throw new Error(replayedPlain.error.message);
+    expect(replayedPlain.value.state.totalFees).toBe(Money.ZERO);
+  });
+
+  it('records the fee in HAND_FINISHED and survives a JSON round trip', () => {
+    const { hand, factory } = limpedShowdown(MANUAL_FEE);
+    const done = play(hand, [awardPots([{ potIndex: 0, winners: [1] }], Money.mbb(250))], factory);
+    expect(done.events.find((event) => event.kind === 'HAND_FINISHED')).toMatchObject({
+      totalRake: Money.mbb(160),
+      totalFees: Money.mbb(250),
+    });
+    const round = jsonRoundTrip(done.events);
+    expect(round.ok).toBe(true);
+    if (!round.ok) throw new Error(round.error.message);
+    expect(foldEvents(round.value).totalFees).toBe(Money.mbb(250));
+  });
+
+  it('splits one hand fee across side pots without over-charging any of them', () => {
+    const factory = ids();
+    // BTN 100 BB covers everyone; the SB is all-in for 20 and the BB for 60, so the
+    // BTN's excess over 60 comes back and two pots form.
+    const table = buildTable({
+      config: MANUAL_FEE,
+      stacks: { 0: BB(100), 1: BB(20), 2: BB(60) },
+      buttonSeat: 0,
+    });
+    let hand = start(table, factory);
+    hand = play(hand, [allIn(), allIn(), allIn()], factory);
+    hand = play(hand, [dealBoard(cards('As Kd 7c')), dealBoard(cards('2h'))], factory);
+    hand = play(hand, [dealBoard(cards('9s'))], factory);
+
+    // main 3 x 20000 = 60000 (all three eligible); side 2 x 40000 = 80000 ({0, 2}).
+    expect(hand.state.pots.map((pot) => pot.amount)).toEqual([BB(60), BB(80)]);
+    expect(hand.state.potTotal).toBe(BB(140));
+
+    const done = play(
+      hand,
+      [
+        awardPots(
+          [
+            { potIndex: 0, winners: [1] },
+            { potIndex: 1, winners: [0] },
+          ],
+          Money.mbb(5000),
+        ),
+      ],
+      factory,
+    );
+
+    // 5% of 140000 is 7000 = 350 cents exactly; proportional 3000 / 4000.
+    expect(done.state.totalRake).toBe(Money.mbb(7000));
+    // Fee 5000 proportional on the GROSS amounts: floor(5000 * 60000 / 140000) = 2142 and
+    // floor(5000 * 80000 / 140000) = 2857 sum to 4999, so the 1 milliBB floor remainder
+    // lands on the main pot -> 2143.
+    expect(done.state.totalFees).toBe(Money.mbb(5000));
+    expect(done.state.awards.map((award) => [award.rake, award.fee])).toEqual([
+      [Money.mbb(3000), Money.mbb(2143)],
+      [Money.mbb(4000), Money.mbb(2857)],
+    ]);
+    // No pot is charged more than it holds, so no net award is ever negative.
+    for (const award of done.state.awards) {
+      expect(Money.add(award.rake, award.fee)).toBeLessThanOrEqual(award.grossAmount);
+      expect(award.netAmount).toBe(Money.sub(award.grossAmount, Money.add(award.rake, award.fee)));
+      expect(award.netAmount).toBeGreaterThan(0);
+    }
+    expect(done.state.seats[1].stack).toBe(Money.mbb(60_000 - 3000 - 2143));
+    expect(done.state.seats[0].stack).toBe(Money.mbb(40_000 + 80_000 - 4000 - 2857));
+    expect(() => assertEveryPrefixBalances(done.events)).not.toThrow();
+  });
+});
+
+describe('every fee rejection path is a Result, and the hand is left untouched', () => {
+  const supplyFee = (config: TableConfig, fee: number) => {
+    const { hand, factory } = limpedShowdown(config);
+    const result = applyCommand(
+      hand,
+      awardPots([{ potIndex: 0, winners: [1] }], Money.mbb(fee)),
+      factory,
+    );
+    return { hand, result };
+  };
+
+  it("refuses a fee while the policy is 'NEVER'", () => {
+    const { hand, result } = supplyFee(NO_ANTE_PRESET, 250);
+    expect(errCode(result)).toBe('FEE_NOT_ALLOWED');
+    expect(hand.state.phase).toBe('AWAITING_AWARD');
+    expect(hand.state.totalFees).toBe(Money.ZERO);
+  });
+
+  it('refuses a negative fee', () => {
+    expect(errCode(supplyFee(MANUAL_FEE, -1).result)).toBe('FEE_NEGATIVE');
+    expect(errCode(supplyFee(NO_ANTE_PRESET, -1).result)).toBe('FEE_NEGATIVE');
+  });
+
+  it('refuses a fee above the configured cap', () => {
+    expect(MANUAL_FEE.fee.cap).toBe(Money.mbb(8000));
+    expect(errCode(supplyFee(MANUAL_FEE, 8001).result)).toBe('FEE_ABOVE_CAP');
+  });
+
+  it('refuses a fee that, with the rake, would exceed the pot', () => {
+    // Pot 3000, rake 160 -> 2840 is all that is left to take.
+    expect(errCode(supplyFee(MANUAL_FEE, 2841).result)).toBe('FEE_EXCEEDS_POT');
+    expect(supplyFee(MANUAL_FEE, 2840).result.ok).toBe(true);
+  });
+
+  it('accepts an explicit zero fee under every policy, because zero is not a fee', () => {
+    expect(supplyFee(MANUAL_FEE, 0).result.ok).toBe(true);
+    expect(supplyFee(NO_ANTE_PRESET, 0).result.ok).toBe(true);
+  });
+
+  it('records no fee when an uncontested pot is auto-awarded, and says so', () => {
+    // The engine cascade has no user command to carry an observed fee, so an all-folded
+    // hand under 'MANUAL' settles with totalFees ZERO. Stated limitation, not a rule.
+    const factory = ids();
+    const done = play(
+      start(sixHanded(MANUAL_FEE), factory),
+      [fold(), fold(), fold(), fold(), fold()],
+      factory,
+    );
+    expect(done.state.phase).toBe('COMPLETE');
+    expect(done.state.totalFees).toBe(Money.ZERO);
+
+    // ...and the planner itself does accept one, so a caller that HAS observed a fee
+    // (Phase 11) needs no new signature. Replaying the log up to the point just before
+    // the automatic award reproduces exactly the state the cascade planned from.
+    const awardIndex = done.events.findIndex((event) => event.kind === 'POT_AWARDED');
+    expect(awardIndex).toBeGreaterThan(0);
+    const beforeAward = foldEvents(done.events.slice(0, awardIndex));
+    const plan = autoAwardUncontested(beforeAward, Money.mbb(100));
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) throw new Error(plan.error.message);
+    expect(plan.value.totalFees).toBe(Money.mbb(100));
+    expect(plan.value.records[0]?.fee).toBe(Money.mbb(100));
   });
 });

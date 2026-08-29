@@ -18,10 +18,17 @@ import {
   sequentialIdFactory,
   type Card,
   type HandId,
+  type MilliBB,
   type PlayerId,
+  type RoundingMode,
 } from '@gto-self/shared';
 import { legalActions } from '../src/betting.js';
-import type { OddChipRule, RakeAllocation, ShortAllInMinRaiseBasis } from '../src/config.js';
+import type {
+  OddChipRule,
+  RakeAllocation,
+  RakeTriggerPolicy,
+  ShortAllInMinRaiseBasis,
+} from '../src/config.js';
 import {
   allIn,
   awardPots,
@@ -67,7 +74,10 @@ function configFor(next: () => number) {
     rake: {
       ...base.rake,
       allocation: pick<RakeAllocation>(next, ['MAIN_POT_FIRST', 'PROPORTIONAL']),
-      noFlopNoDrop: next() < 0.5,
+      triggerPolicy: pick<RakeTriggerPolicy>(next, ['ALWAYS', 'NO_FLOP_NO_DROP']),
+      // 8000 is a multiple of every one of these, as validateTableConfig requires.
+      quantum: pick<MilliBB>(next, [Money.mbb(1), Money.mbb(20), Money.mbb(100)]),
+      rounding: pick<RoundingMode>(next, ['floor', 'ceil', 'round']),
     },
     rules: {
       ...base.rules,

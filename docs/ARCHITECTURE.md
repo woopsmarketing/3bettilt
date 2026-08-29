@@ -18,8 +18,10 @@ GTO-SELF/
   packages/
     shared/                 milliBB money, cards, ids, Result   (no deps)
     poker-core/             pure NLHE state engine              (-> shared)
-    gto-core/               solutions, provider, matcher, policy(-> shared)
-    player-core/            players, HUD snapshots, observations(-> shared)
+    gto-core/               solutions, provider, matcher         (-> shared)
+    player-core/            players, HUD snapshots, observations (-> shared)
+    strategy-policy/        GTO / SAFE_GTO / ADAPTIVE composition
+                            (-> gto-core + player-core)   [PHASE 10, not yet created]
     db/                     Drizzle + SQLite persistence        (-> domain pkgs)
     coinpoker-parser/       hand-history text -> domain events  (-> poker-core)
   solver-lab/               CFR research sandbox, never shipped (-> shared)
@@ -46,10 +48,16 @@ event-sourced undo/replay.
 ### B. GTO Engine — `@gto-self/gto-core`
 
 Owns: solver config models, versioned solution sets, spots, nodes, action
-frequencies, optional action EV, the `GTOProvider` interface, the
-`NearestSolutionMatcher`, and the strategy policy layer.
+frequencies, optional action EV, the `GTOProvider` interface, and the
+`NearestSolutionMatcher`.
 
 Knows nothing about individual players. Never mutated by player statistics.
+
+It does **not** own the strategy-policy layer (ADR-0023). It may contain the pure
+`GTO` and `SAFE_GTO` primitives, because those need no player data at all — but the
+cross-domain composition sits above it, in `strategy-policy`.
+
+Phase 9 design constraints are recorded in `docs/GTO_DESIGN_NOTES.md`.
 
 ### C. Player Engine — `@gto-self/player-core`
 
@@ -59,7 +67,11 @@ notes, our own observations, and context-scoped confidence.
 Manual HUD snapshots and our own observations are permanently separate record types.
 Manual snapshots are never auto-overwritten.
 
-### D. Strategy Policy — a composition layer above `gto-core` and `player-core`
+### D. Strategy Policy — `@gto-self/strategy-policy` (Phase 10)
+
+A composition layer above `gto-core` and `player-core`, and its own workspace package.
+
+Owns: cross-domain composition of a baseline solution with player data, and `ADAPTIVE`.
 
 Three presentation modes: `GTO`, `SAFE_GTO` (default), `ADAPTIVE` (scaffolding only).
 
@@ -82,8 +94,11 @@ them (ADR-0023):
 ```
 
 During MVP, `GTO` and `SAFE_GTO` need no player data and may be implemented inside
-`gto-core`. `ADAPTIVE` is what forces the split, and the split happens before any adaptive
-logic is written — not after.
+`gto-core` as pure primitives. `ADAPTIVE` is what forces the split, and the split happens
+before any adaptive logic is written — not after.
+
+`packages/strategy-policy` is created when Phase 10 begins, with its own ESLint entry. It
+is **not implemented yet**; this section records where it goes, not that it exists.
 
 ## Money
 
@@ -98,7 +113,13 @@ One unit: **milliBB**, an integer. `1 BB = 1000 milliBB`.
 
 `packages/shared/src/money.ts` is the only place money arithmetic is defined. Every
 operation that can lose precision takes an explicit `RoundingMode` — there is no
-implicit rounding anywhere in the codebase. Rake floors. Sizing targets round.
+implicit rounding anywhere in the codebase. Sizing targets round.
+
+**Rake rounding is configuration, not a constant.** ADR-0009's milliBB `floor` is
+superseded for CoinPoker by **ADR-0027**: real hand histories settle in whole currency
+cents (NL50: 20 mBB = 1 cent), which milliBB flooring cannot reproduce. The settlement
+quantum is explicit on `RakeConfig` and is **never derived from `DisplayConfig`** — that
+field is presentation, and money must not follow a formatting change.
 
 ## Event model
 
@@ -137,6 +158,11 @@ effective stack 93.7 BB    stack bucket 100 BB
 HJ open 2.37 BB            HJ open 2.5 BB
 ```
 
+A **scalar** effective stack describes a two-player relationship and is not sufficient for
+6-max preflop, where one open faces five stack relationships at once. Phase 9 carries a
+per-position stack profile — actual and normalized — and reduces to a pairwise effective
+stack only where the dataset's coverage is heads-up (note A in `docs/GTO_DESIGN_NOTES.md`).
+
 Matching priority, in order — earlier criteria must match before later ones are
 approximated:
 
@@ -149,8 +175,14 @@ approximated:
 6. nearest stack bucket
 7. nearest bet sizing
 
-Sizing comparison: preflop by raise-to size in BB; postflop by bet size as a fraction
-of the pot **before** the action. Ties break deterministically and are tested.
+Sizing comparison: preflop by raise-to size in BB. Postflop needs **two** formulas, not
+one — `bet / potBefore` for a first bet, `raiseIncrement / potAfterCall` for a raise.
+Applying the first formula to a raise produces a number that means nothing. See note B in
+`docs/GTO_DESIGN_NOTES.md`. Ties break deterministically and are tested.
+
+A match is never silently approximate: the matcher returns `EXACT` / `APPROXIMATE` /
+`UNSUPPORTED`, and criteria 6 and 7 carry explicit maximum tolerances, so a distant
+nearest candidate is a miss rather than a confident wrong answer (note C).
 
 ## Persistence
 

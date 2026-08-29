@@ -94,11 +94,12 @@ describe('a three-way all-in', () => {
     hand = step(hand, dealBoard(cards('Ah Kd 7c')), f);
     hand = step(hand, dealBoard(cards('2d')), f);
     hand = step(hand, dealBoard(cards('Js')), f);
-    // gross 140500 -> 5% = 7025, under the 8000 cap.
+    // gross 140500 -> 5% = 7025 milliBB -> 7025 / 20 = 351.25 -> 351 cents = 7020,
+    // under the 8000 cap.
     hand = step(hand, awardAllTo(hand.state, 0), f);
-    expect(hand.state.totalRake).toBe(7025);
+    expect(hand.state.totalRake).toBe(7020);
     expect(stacks(hand.state)).toEqual({
-      0: 173475, // 40000 + 140500 - 7025
+      0: 173480, // 40000 + 140500 - 7020
       1: 99500,
       2: 0,
       3: 0,
@@ -120,13 +121,15 @@ describe('a three-way all-in', () => {
     }));
     hand = step(hand, { kind: 'AWARD_POTS', awards }, f);
 
-    // Total rake 7025 allocated proportionally: 60500 -> 3025, 80000 -> 4000.
-    expect(hand.state.totalRake).toBe(7025);
+    // Total rake 7020 allocated proportionally:
+    //   floor(7020 * 60500 / 140500) = 3022, floor(7020 * 80000 / 140500) = 3997,
+    // which sums to 7019; the 1 milliBB floor remainder goes to the main pot -> 3023.
+    expect(hand.state.totalRake).toBe(7020);
     expect(stacks(hand.state)).toEqual({
-      0: 116000, // 40000 + 80000 - 4000
+      0: 116003, // 40000 + 80000 - 3997
       1: 99500,
       2: 0,
-      3: 57475, // 60500 - 3025
+      3: 57477, // 60500 - 3023
       4: 100000,
       5: 100000,
     });

@@ -5,13 +5,14 @@
  * from scratch rather than patching, so "state is a pure fold over events" stays
  * literally true and there is nowhere for drift to hide.
  */
-import { invariant, ok, type IdFactory } from '@gto-self/shared';
+import { invariant, Money, ok, type IdFactory, type MilliBB } from '@gto-self/shared';
 import { engineErr, type EngineResult } from './errors.js';
 import {
   buildStartEvents,
   composeStartEvents,
   expandCommand,
   validateCommand,
+  type DeadBlindPost,
   type HandCommand,
   type RosterEntry,
   type StartHandOptions,
@@ -217,12 +218,18 @@ function commandForGroup(group: readonly HandEvent[]): EngineResult<HandCommand>
       return ok({ kind: 'DEAL_BOARD', cards: [head.card] });
     case 'POT_AWARDED': {
       const awards: PotAwardInput[] = [];
+      const fees: MilliBB[] = [];
       for (const event of group) {
         if (event.kind === 'POT_AWARDED' && event.origin === 'USER') {
           awards.push({ potIndex: event.potIndex, winners: event.winners });
+          fees.push(event.fee);
         }
       }
-      return ok({ kind: 'AWARD_POTS', awards });
+      // The per-pot fees sum EXACTLY to the hand's fee (asserted by the allocator), so
+      // this recovers the amount the original command supplied. ZERO becomes `null`
+      // ("none supplied") so a hand recorded under `'NEVER'` still replays.
+      const total = Money.sum(fees);
+      return ok({ kind: 'AWARD_POTS', awards, fee: Money.isZero(total) ? null : total });
     }
     default:
       return engineErr('CORRUPT_LOG', `${head.kind} cannot start a command group`, {
@@ -282,6 +289,10 @@ export function replayHand(events: readonly HandEvent[]): EngineResult<Hand> {
   }
 
   const roster: RosterEntry[] = [];
+  // The dead blinds are recovered from the log's own POST_DEAD_BLIND events, at the
+  // ACTUAL (already clamped) amounts. Re-clamping is idempotent and the emission order
+  // is canonical, so the rebuilt group matches payload for payload.
+  const deadBlinds: DeadBlindPost[] = [];
   for (const event of startGroup) {
     if (event.kind === 'PLAYER_DEALT_IN') {
       roster.push({
@@ -289,6 +300,9 @@ export function replayHand(events: readonly HandEvent[]): EngineResult<Hand> {
         playerId: event.playerId,
         startingStack: event.startingStack,
       });
+    }
+    if (event.kind === 'POST_DEAD_BLIND') {
+      deadBlinds.push({ seat: event.seat, amount: event.amount });
     }
   }
 
@@ -302,6 +316,8 @@ export function replayHand(events: readonly HandEvent[]): EngineResult<Hand> {
         buttonSeat: started.buttonSeat,
         heroSeat: started.heroSeat,
         roster,
+        blindOverride: started.blindOverride,
+        deadBlinds,
       },
       ids,
     );
