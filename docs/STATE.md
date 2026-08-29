@@ -3,7 +3,7 @@
 Single source of truth for where the project is. The orchestrator updates this after
 every phase; phase agents report, they do not edit it.
 
-**Last updated:** 2026-08-29, after Phase 2 (MVP priority update, ADR-0033).
+**Last updated:** 2026-08-29, after Phase 3 (database and player domain).
 
 ## Completed
 
@@ -85,9 +85,33 @@ every phase; phase agents report, they do not edit it.
     and simultaneous-odd-chip suites, including ADR-0025's documented `MAIN_POT_FIRST`
     zero-payout consequence asserted as intended behaviour.
 
+- **Phase 3 — Database and player domain.** `packages/player-core` + `packages/db`,
+  **59 test files / 725 tests passing workspace-wide** (up from 47 / 546). Two work packages
+  and an independent review:
+  - **`player-core` (3a).** Player identity by manually entered nickname with a separately
+    stored normalized form (ADR-0034); manual HUD snapshots as integer `CentiPercent` plus the
+    verbatim entered text; our own observations as counts with rates derived, never stored
+    (ADR-0035); append-only notes; context-scoped confidence with an explicit `INSUFFICIENT`
+    member (ADR-0036). No `zod` — validation follows `poker-core`'s hand-written `Result`
+    idiom. Imports `@gto-self/shared` and nothing else.
+  - **`db` (3b).** Drizzle + SQLite. Eleven tables, real foreign keys with
+    `PRAGMA foreign_keys = ON` set per connection, `CHECK` constraints, partial unique
+    indexes. `TableConfig` persists as one validated JSON document and a session keeps its own
+    copy (ADR-0038); the event log is authoritative and `hands.hand_number` is a re-derived
+    projection (ADR-0039); the load path is `loadHand`, never `replayHand`. Integration tests
+    run against a real in-memory SQLite, not mocks.
+  - **Independent review.** No blockers. Two MAJOR findings, both fixed: the "insert-only"
+    guarantee for manually entered records was a repository *convention* that the exported
+    Drizzle tables let any caller bypass — now enforced by database triggers (ADR-0037); and
+    the ESLint layering rules matched only bare specifiers, so every subpath import bypassed
+    them, with four boundaries unguarded entirely (ADR-0042). Five MINOR findings also fixed:
+    integrality `CHECK`s (ADR-0041), a silently trimmed nickname on read, a `hand_number`
+    projection the comment claimed was checked and was not, a `closeSession` that could move
+    `updated_at` backwards, and a `formatPercent` that truncated instead of rounding.
+
 ## Current
 
-- Nothing in flight. Phases 1 and 2 are **accepted** — neither is reopened or reimplemented.
+- Nothing in flight. Phases 1, 2 and 3 are **accepted** — none is reopened or reimplemented.
 - **MVP priority update (ADR-0033), 2026-08-29.** The real CoinPoker hand-history export will
   not be provided, and this is **not** a blocker. Phase 11 (parser) is deferred past the first
   usable MVP; delivery order is **2 -> 10, then 12**. Phase 2 does no further rake forensics —
@@ -99,21 +123,43 @@ every phase; phase agents report, they do not edit it.
 
 ## Next
 
-- **Phase 3 — Database and player domain** (`packages/db`, `packages/player-core`), fresh
-  agent. Drizzle + SQLite, migrations, players, HUD snapshots, sessions, seats, hands, events,
-  notes. Manual HUD snapshots are never auto-overwritten. `serialization.ts` and `jsonRoundTrip`
-  are the seam; the event log gained fields in Phase 2, so the schema must be written against
-  the CURRENT event shape.
-- **Then Phases 4 -> 10 in order, then 12.** The milestone is the loop in `docs/UX.md`:
+- **Phase 4 — Session setup UX** (`apps/web`), fresh agent. Six seats, nickname
+  search/autocomplete over `searchPlayersByNicknamePrefix`, existing-player reuse, new-player
+  HUD entry, stack input, Hero selection, active/sitting-out/empty. The persistence seam it
+  builds on is `packages/db`'s repositories, which return domain types, not rows.
+- **Then Phases 5 -> 10 in order, then 12.** The milestone is the loop in `docs/UX.md`:
   session setup -> seats/stacks -> start hand -> hero cards -> rapid F/C/R/A -> automatic
   pot/stack/action order -> board entry -> undo -> hero fold / observe -> Skip Rest / dirty
   resync -> next hand -> MOCK-labelled strategy. Phase 11 is deferred past it (ADR-0033).
 
 ## Known issues / explicit TODOs
 
-- `packages/{gto-core,player-core,db,coinpoker-parser}/src/index.ts` are Phase 0
-  placeholders with a wiring test each. Each implementing phase must delete its
-  `placeholder.test.ts`. (`poker-core`'s was deleted in Phase 1.)
+- `packages/{gto-core,coinpoker-parser}/src/index.ts` are still Phase 0 placeholders with a
+  wiring test each. Each implementing phase must delete its `placeholder.test.ts`.
+  (`poker-core`'s went in Phase 1; `player-core`'s and `db`'s in Phase 3.)
+- **`0001_insert_only_guards.sql` is hand-maintained.** `drizzle-kit` does not generate
+  triggers, so adding another insert-only table will NOT update it automatically. The
+  trigger-list assertion in `packages/db/tests/insert-only.test.ts` is the only tripwire
+  (ADR-0037).
+- **A trigger abort is classified `STORAGE_FAILURE`, not `CONSTRAINT_VIOLATION`.** SQLite
+  surfaces `RAISE(ABORT, ...)` as a plain error whose message contains "is insert-only", and
+  `attempt()` in `packages/db/src/errors.ts` has no marker for it. Harmless today because no
+  repository path can reach a trigger; if a later phase needs a typed code, `CONSTRAINT_MARKERS`
+  needs the entry.
+- **Integrality `CHECK`s cover the enumerated categories only** (money, counts, centipercent,
+  epoch-ms). `seat`, `seq`, `command_seq`, `ordinal`, `hand_number` and `archived` still rely on
+  their range/enum checks plus the decoders: a fractional value there is caught on read, not
+  rejected on write (ADR-0041).
+- **`hand_players` is an index, not a checked projection.** Unlike `hands.hand_number`, the seat
+  rows are taken from the caller-supplied state and are never re-derived from the log.
+  `loadStoredHand` never reads them, so they cannot corrupt a rehydrated hand — but they can go
+  stale relative to the log (ADR-0039).
+- **`packages/db` declares `@gto-self/gto-core` and `zod` as dependencies but imports neither**;
+  `packages/player-core` declares `zod` and does not import it. Left in place because Phase 9
+  will need `gto-core` in `db`; the manifests currently overstate what the packages need.
+- **Persisted undo does not exist.** `poker-core`'s undo drops the last command group, but
+  `packages/db` has no `truncateHandEventsAfter`. Phase 5/6 will need it; deliberately not
+  built in Phase 3.
 - `MAIN_POT_FIRST` rake allocation can pay a winner a net of zero. Documented policy, not
   a bug (ADR-0025); `PROPORTIONAL` is the shipped default.
 - `docs/POKER_CORE_API.md` §8 splits its numbered entries into **poker-rule assumptions**
@@ -161,6 +207,11 @@ every phase; phase agents report, they do not edit it.
   which exists in `errors.ts` and is live; and §3.9 plus §1 label a formula `mayAggress` where
   `betting.ts` computes it as `mayReopen` (`mayAggress` is strictly narrower). The source is
   right and the doc is wrong in both cases.
+- **`player_aggregates` and the `gto_*` tables do not exist yet.** `docs/ARCHITECTURE.md`
+  lists them; Phase 3 built only the ten tables its scope named (plus
+  `player_hud_snapshot_stats`, needed to keep an entered value and its verbatim text in
+  separate columns). The `gto_*` set belongs to Phase 9; `player_aggregates` has no domain type
+  because aggregating positional observation buckets double-counts and needs a design pass.
 - No GTO data of any kind exists. The only permitted provider until Phase 14 is a
   mock that labels itself.
 - `open_spiel` and `pokerkit` received only a _partial_ evaluation in the spike — no
@@ -172,13 +223,19 @@ every phase; phase agents report, they do not edit it.
 
 ## Test status
 
-Phase 2 final gate, 2026-08-29.
+Phase 3 gate, 2026-08-29, run after the review fixes landed.
 
 | Suite                | Result                                                          |
 | -------------------- | --------------------------------------------------------------- |
 | `pnpm typecheck`     | pass                                                            |
 | `pnpm lint`          | pass                                                            |
-| `pnpm lint:licences` | pass — 131 tracked files scanned                                |
-| `pnpm test`          | pass — **47 files, 546 tests**                                  |
+| `pnpm lint:licences` | pass                                                            |
+| `pnpm test`          | pass — **59 files, 725 tests**                                  |
 | `pnpm build`         | pass                                                            |
 | `pnpm e2e`           | not run — needs `pnpm --filter @gto-self/web e2e:install` first |
+
+Every layering rule in `eslint.config.js` was proved non-vacuous by a probe asserting that a
+forbidden import errors and a permitted one does not (15 cases). The insert-only triggers were
+verified independently of the test suite by applying the committed migrations to a scratch
+database and attempting a raw `UPDATE` and `DELETE`: both were rejected and the original row
+survived.

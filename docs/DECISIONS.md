@@ -811,3 +811,230 @@ the shipped NL50 preset quantizes settlement to `₮0.01` (20 milliBB) and round
 half-way behaviour flagged as an assumption no observation has yet distinguished. `docs/STATE.md`
 must keep listing the unknowns; a preset value is not evidence. ADR-0027's findings are
 untouched — only its "blocked, waiting" status is retired.
+
+---
+
+## ADR-0034 — Player identity is a manually entered nickname; normalization is stored alongside it
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted
+
+**Context.** The product is not connected to any poker client (ADR-0029) and the CoinPoker
+hand-history export is not coming (ADR-0033), so there is no external identifier to key a
+player on. Identity has to come from what the user types. But a typed nickname is not a
+usable key on its own: `"Dan"`, `"dan "` and `"ＤＡＮ"` are the same opponent to a person and
+three different strings to a database.
+
+**Decision.** A `Player` carries both the nickname **as entered** and a separately stored
+`normalizedNickname`. Normalization is NFKC → trim → collapse internal whitespace →
+locale-independent lowercase. The **normalized** column carries the unique index; the entered
+column is never rewritten to match it (CLAUDE.md rule 3). Players are archived, never deleted,
+so an archived nickname stays reserved and the snapshots, notes and observations that
+reference the player keep their subject.
+
+**Consequences.** Two columns, permanently, and every rename must recompute both. Locale-
+independent lowercasing is deliberate: `toLocaleLowerCase` under a Turkish locale maps `I` to
+`ı` and would make identity depend on the machine's locale. Identity is **never** derived from
+a poker client, a hand-history ID, or anything scraped — that boundary is ADR-0029 and is not
+reopened by any later phase.
+
+---
+
+## ADR-0035 — HUD testimony and our own observations are separate record types with separate representations
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted
+
+**Context.** `docs/ARCHITECTURE.md` already required manual HUD snapshots and our own
+observations to be permanently separate record types. Phase 3 had to decide what each one
+actually stores, and the two answers are not the same shape.
+
+**Decision.**
+
+- A **manual HUD snapshot** is testimony about what a third-party HUD displayed. It stores
+  what the user typed: a `CentiPercent` integer (hundredths of a percentage point) **and** the
+  verbatim `enteredText`, in two separate columns. `parsePercent` **rejects** a third decimal
+  rather than rounding it away, exactly as `Money.parseBB` rejects a fourth milliBB decimal.
+  Re-parsing `enteredText` must reproduce the stored integer; a row where it does not is
+  `CORRUPT_ROW`, never a silently coerced object.
+- An **observation** is our own count. It stores `opportunities` and `actions` and **never a
+  rate column**. The rate is derived on demand.
+- The two are never averaged, never merged into one table, and never joined into a view that
+  presents a single number.
+
+**Consequences.** Percentages are integers for the same reason money is, but they are *not*
+`MilliBB` — milliBB carries a currency meaning a frequency does not have, and mixing them
+would let a percentage reach an arithmetic path expecting chips. HUD stats are frequency-only
+for MVP; aggression factor and other unbounded ratios are excluded rather than forced into a
+0..100 type. Observation context is `metric + position` with `position: null` a **distinct
+bucket**, explicitly not the sum of the six positional buckets — adding them double-counts.
+`ObservedPosition` duplicates `poker-core`'s `Position` because `player-core` may not import
+`poker-core` (ADR-0021); the app maps at its boundary, and the drift risk is accepted.
+
+---
+
+## ADR-0036 — Confidence is a named level with an explicit `INSUFFICIENT` member
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted
+
+**Context.** A statistic from six observed hands and one from six hundred must not present
+the same way. The tempting shape — a confidence number in 0..1 — makes a tiny sample look
+like a small amount of knowledge rather than none.
+
+**Decision.** `ConfidenceLevel` is `INSUFFICIENT | LOW | MEDIUM | HIGH`. Below the low
+threshold the answer is the distinct member `INSUFFICIENT`, not a low number; an unknown
+sample size (`null`) is also `INSUFFICIENT`. Thresholds are **configuration** with documented
+defaults (30 / 100 / 500), anchored to the binomial 95% margin of error at p=0.5
+(`1.96·√(0.25/n)` → roughly ±18pp / ±10pp / ±4.4pp), and validated rather than assumed
+ordered.
+
+**Consequences.** The defaults are **display thresholds, not poker claims** — they say how
+wide the error bar is, not that 100 hands is enough to read someone. This is the same posture
+as CLAUDE.md rule 2: we do not dress an unknown up as a number. A caller that wants a
+different cut passes its own thresholds.
+
+---
+
+## ADR-0037 — Manually entered records are insert-only, enforced by database triggers
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted · supersedes the repository-
+convention approach it replaces
+
+**Context.** CLAUDE.md rule 3 says user input is never destroyed. Phase 3 first implemented
+that as a **convention**: the HUD and note repositories simply exported no update function.
+The independent review broke it in one line. The package barrel re-exports the raw Drizzle
+table objects, so `db.update(playerNotes).set({ body: '…' })` — using barrel imports only —
+overwrote a note body with no error and no surviving version. Overwriting a HUD reading's
+`enteredText` and value *together* even passed the read-time re-parse check, because that
+check compares the two clobbered columns against each other. The test that claimed to prove
+the guarantee was a **regex over exported method names**; a method called `saveNote` would
+have passed it.
+
+**Decision.** The guarantee moves into the database. `player_notes`, `player_hud_snapshots`
+and `player_hud_snapshot_stats` carry `BEFORE UPDATE` and `BEFORE DELETE` triggers that
+`RAISE(ABORT, …)`. A note revision is a new row linked by `rootId`/`supersedesId`; a new HUD
+reading is a new snapshot. The table objects stay exported — later phases legitimately need
+them for reads — because the trigger, not the export list, is now the guarantee. The test that
+proves this performs a real raw `update` and `delete` through barrel imports and asserts both
+are rejected with the original row intact.
+
+**Consequences.** `drizzle-kit` does not generate triggers, so `0001_insert_only_guards.sql`
+is a hand-maintained custom migration: adding another insert-only table will not update it
+automatically, and the trigger-list assertion is the only tripwire. A trigger abort surfaces
+as a generic storage failure rather than a typed constraint violation, which is acceptable
+only because no repository path can reach it. **A rule enforced by convention is not
+enforced.** Where a CLAUDE.md non-negotiable can be given a structural guarantee, it gets one.
+
+---
+
+## ADR-0038 — `TableConfig` persists as one validated JSON document, and a session keeps its own copy
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted
+
+**Context.** A session's table configuration contains the rake rate as an exact rational, the
+settlement `quantum` and `rounding` (ADR-0027), the `triggerPolicy` and a separate `FeeConfig`
+(ADR-0018, ADR-0033). Flattening that into columns would re-encode money policy inside the
+persistence layer, where it could drift from `packages/poker-core/src/config.ts`.
+
+**Decision.** `TableConfig` is stored as a single JSON document and validated on read through
+**both** the zod codec and `validateTableConfig` — the same validation the engine uses. A
+session stores its **own copy** of the config it was played under, with `preset_id` recording
+provenance only.
+
+**Consequences.** Editing a preset never retroactively changes an already-played session; a
+hand's money is interpretable years later against the policy it was actually played under.
+The cost is that the config is not queryable by column in SQLite; under PostgreSQL it becomes
+`jsonb` and is. The DB holds no second opinion about rake, fees or rounding — `config.ts`
+remains the only definition.
+
+---
+
+## ADR-0039 — The event log is authoritative; header columns are checked projections; the load path is `loadHand`
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted
+
+**Context.** A hand can be reconstructed from its event log alone, but listing a session's
+hands would then mean decoding every log. Some duplication is needed, and duplicated state
+drifts unless something checks it.
+
+**Decision.** `hand_events` is the authoritative record. `hands.hand_number` and the
+`hand_players` rows are **projections** written in the same transaction, existing only so list
+queries need not decode logs. `insertHand` re-derives `hand_number` from the log's own
+`HAND_STARTED` event and refuses a disagreeing header. The rehydration path uses `loadHand`
+(structural), **never** `replayHand` (re-validating). `hand_events.kind` carries no `CHECK`
+constraint: the engine's zod codec is the vocabulary, so a new event kind is not a migration.
+
+**Consequences.** A later corrected poker rule cannot make already-stored history unloadable —
+the DB reads what was recorded, and re-validation is a separate, explicit act. `hand_players`
+is an index only and is **not** re-derived from the log; `loadStoredHand` never reads it. The
+per-hand uniqueness of `event_id` is scoped to the hand, not global.
+
+---
+
+## ADR-0040 — The persistence layer reads no clock and generates no ids
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted; extends ADR-0007
+
+**Context.** ADR-0007 made ids injected rather than generated inline, so that a replay is
+reproducible. Time is the same problem: a `CURRENT_TIMESTAMP` default makes a row's meaning
+depend on when it was written rather than on what happened.
+
+**Decision.** Timestamps are a caller-supplied branded `Timestamp` — an integer count of epoch
+milliseconds, in an INTEGER column. No `CURRENT_TIMESTAMP` default and no `AUTOINCREMENT`
+column exists anywhere in the schema, asserted by a test over `sqlite_master`. A timestamp
+that moves backwards on a record is a typed error, not an accepted write. `db` adopts
+`player-core`'s `Timestamp` as the canonical type because `poker-core` has none — the engine
+must not know about time at all.
+
+**Consequences.** Every caller must pass a clock reading, which is what makes a test able to
+pin one. ISO strings are never stored. Under PostgreSQL these columns need `bigint`, not
+`integer`.
+
+---
+
+## ADR-0041 — Integer columns carry an explicit integrality `CHECK`
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted
+
+**Context.** CLAUDE.md rule 1 makes money an integer count of milliBB. The schema declares
+those columns `INTEGER` — but SQLite's INTEGER *affinity* does not enforce integrality: a
+value that cannot be converted losslessly is simply stored as REAL. `update session_seats set
+stack = 93701.5` succeeded. The read path caught it, so nothing lossy was ever returned, but
+the write produced a permanently unreadable row instead of being rejected.
+
+**Decision.** Every money, count, centipercent and epoch-ms column folds `typeof(col) =
+'integer'` into its `CHECK` constraint. The rejection happens at the constraint, not at the
+decoder.
+
+**Consequences.** A fractional write now fails where it is made rather than where it is read.
+The enumerated categories are covered; `seat`, `seq`, `command_seq`, `ordinal`, `hand_number`
+and `archived` still rely on their range and enum checks plus the decoders. Under PostgreSQL
+the check is redundant — a real `integer`/`bigint` column cannot hold a fraction — and can be
+dropped when that port happens. **A declared type is not a constraint** unless the engine
+enforces it.
+
+---
+
+## ADR-0042 — ESLint layering rules use `patterns`, and every block spells out its full list
+
+**Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted; fixes a hole in ADR-0006
+
+**Context.** ADR-0006 made ESLint the enforcement for the layering rules, and CLAUDE.md rule 4
+states plainly that "ESLint enforces all of this". The independent review found it did not.
+`no-restricted-imports` with `paths` matches the **exact** module specifier only, and every
+workspace package declares a `"./*"` export, so `@gto-self/db` was blocked while
+`@gto-self/db/client.js` linted clean. Four boundaries had no rule at all: `shared`,
+`coinpoker-parser`, `db`, and "nothing imports `solver-lab`".
+
+**Decision.** Every layering block uses `patterns` covering both the bare specifier and its
+subpath form, and each boundary named in CLAUDE.md has a block: `poker-core`, `gto-core`,
+`player-core`, `shared` (the root, importing no workspace package), `db` (may import the
+domain, never React or Next), `coinpoker-parser`, `solver-lab` (depends on `shared` alone),
+and a ban on importing `solver-lab` from anywhere in the product. Each block spells out its
+**full** pattern list, composed from shared constants in JavaScript, because flat config
+resolves a rule by last-match-wins rather than by merging — a later broad block matching the
+same files would silently **replace** a narrower block's patterns. That failure was observed
+while writing this: adding a broad `packages/**/*.ts` block disabled every per-package rule,
+and a probe caught it.
+
+**Consequences.** Each rule is proved non-vacuous by a probe that asserts a forbidden import
+errors and a permitted one does not. A layering rule with a hole is worse than no rule,
+because the documentation then claims an enforcement that does not exist.

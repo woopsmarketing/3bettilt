@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788001004137,
+      "tag": "0000_fair_stark_industries",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788001010160,
+      "tag": "0001_insert_only_guards",
+      "breakpoints": true
+    }
+  ]
+}
