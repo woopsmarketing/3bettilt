@@ -84,6 +84,7 @@ describe('presets and sessions', () => {
         createdAt: T0,
         updatedAt: T0,
         closedAt: null,
+        autoTopUp: null,
       }),
     );
 
@@ -119,6 +120,7 @@ describe('presets and sessions', () => {
         createdAt: T0,
         updatedAt: T0,
         closedAt: null,
+        autoTopUp: null,
       }),
     );
     expect(handle.db.select().from(sessionSeats).all()).toHaveLength(6);
@@ -135,6 +137,7 @@ describe('presets and sessions', () => {
         createdAt: T0,
         updatedAt: T0,
         closedAt: null,
+        autoTopUp: null,
       }),
     );
     unwrap(
@@ -161,6 +164,7 @@ describe('presets and sessions', () => {
         createdAt: T0,
         updatedAt: T0,
         closedAt: null,
+        autoTopUp: null,
       }),
     );
     const advanced = { ...table, handNumber: 7, buttonSeat: 1 as const };
@@ -194,6 +198,7 @@ describe('presets and sessions', () => {
         createdAt: T0,
         updatedAt: T0,
         closedAt: null,
+        autoTopUp: null,
       }),
     );
     unwrap(sessionRepository.updateSessionTable(handle.db, SESSION, table, T1));
@@ -236,6 +241,7 @@ describe('presets and sessions', () => {
       createdAt: T0,
       updatedAt: T0,
       closedAt: null,
+      autoTopUp: null,
     });
     expect(written.ok).toBe(false);
     if (!written.ok) expect(written.error.code).toBe('CONSTRAINT_VIOLATION');
@@ -251,11 +257,164 @@ describe('presets and sessions', () => {
         createdAt: T0,
         updatedAt: T0,
         closedAt: null,
+        autoTopUp: null,
       }),
     );
     handle.sqlite.prepare(`update sessions set config_json = '{"nope":1}'`).run();
     const loaded = sessionRepository.getSession(handle.db, SESSION);
     expect(loaded.ok).toBe(false);
     if (!loaded.ok) expect(loaded.error.code).toBe('CORRUPT_ROW');
+  });
+  /**
+   * The auto top-up policy (Phase 4, migration `0002`). `threshold` has no column yet: it
+   * is `targetStack` by construction, and a policy that disagrees is REFUSED rather than
+   * written with the threshold dropped.
+   */
+  describe('auto top-up policy', () => {
+    it('round-trips enabled + target stack, and re-derives threshold from the target', () => {
+      const policy = {
+        enabled: true,
+        targetStack: Money.mbb(100_000),
+        threshold: Money.mbb(100_000),
+      };
+      unwrap(
+        sessionRepository.insertSession(handle.db, {
+          id: SESSION,
+          label: null,
+          presetId: null,
+          table: buildSessionTable(),
+          createdAt: T0,
+          updatedAt: T0,
+          closedAt: null,
+          autoTopUp: policy,
+        }),
+      );
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.autoTopUp).toEqual(policy);
+
+      const raw = handle.sqlite
+        .prepare(
+          `select auto_top_up_enabled as e, auto_top_up_target_stack as t, typeof(auto_top_up_target_stack) as ty from sessions where id = ?`,
+        )
+        .get(SESSION) as { readonly e: number; readonly t: number; readonly ty: string };
+      expect(raw).toEqual({ e: 1, t: 100_000, ty: 'integer' });
+    });
+
+    it('round-trips a DISABLED policy as a stored fact, not as an absent one', () => {
+      const policy = {
+        enabled: false,
+        targetStack: Money.mbb(50_000),
+        threshold: Money.mbb(50_000),
+      };
+      unwrap(
+        sessionRepository.insertSession(handle.db, {
+          id: SESSION,
+          label: null,
+          presetId: null,
+          table: buildSessionTable(),
+          createdAt: T0,
+          updatedAt: T0,
+          closedAt: null,
+          autoTopUp: policy,
+        }),
+      );
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.autoTopUp).toEqual(policy);
+    });
+
+    it('stores NULL for both columns when the session records no policy', () => {
+      unwrap(
+        sessionRepository.insertSession(handle.db, {
+          id: SESSION,
+          label: null,
+          presetId: null,
+          table: buildSessionTable(),
+          createdAt: T0,
+          updatedAt: T0,
+          closedAt: null,
+          autoTopUp: null,
+        }),
+      );
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.autoTopUp).toBeNull();
+      const raw = handle.sqlite
+        .prepare(
+          `select auto_top_up_enabled as e, auto_top_up_target_stack as t from sessions where id = ?`,
+        )
+        .get(SESSION) as { readonly e: number | null; readonly t: number | null };
+      expect(raw).toEqual({ e: null, t: null });
+    });
+
+    it('REFUSES a threshold that differs from the target rather than dropping it', () => {
+      const written = sessionRepository.insertSession(handle.db, {
+        id: SESSION,
+        label: null,
+        presetId: null,
+        table: buildSessionTable(),
+        createdAt: T0,
+        updatedAt: T0,
+        closedAt: null,
+        autoTopUp: {
+          enabled: true,
+          targetStack: Money.mbb(100_000),
+          threshold: Money.mbb(40_000),
+        },
+      });
+      expect(written.ok).toBe(false);
+      if (!written.ok) expect(written.error.code).toBe('INVALID_INPUT');
+      expect(handle.sqlite.prepare(`select count(*) as n from sessions`).get()).toEqual({ n: 0 });
+    });
+
+    it('REJECTS a fractional target stack AT THE CONSTRAINT', () => {
+      unwrap(
+        sessionRepository.insertSession(handle.db, {
+          id: SESSION,
+          label: null,
+          presetId: null,
+          table: buildSessionTable(),
+          createdAt: T0,
+          updatedAt: T0,
+          closedAt: null,
+          autoTopUp: null,
+        }),
+      );
+      expect(() =>
+        handle.sqlite
+          .prepare(
+            `update sessions set auto_top_up_enabled = 1, auto_top_up_target_stack = 93701.5`,
+          )
+          .run(),
+      ).toThrow(/CHECK constraint failed/u);
+      // ... and a non-positive target, and a half-written pair.
+      expect(() =>
+        handle.sqlite
+          .prepare(`update sessions set auto_top_up_enabled = 1, auto_top_up_target_stack = 0`)
+          .run(),
+      ).toThrow(/CHECK constraint failed/u);
+      expect(() =>
+        handle.sqlite.prepare(`update sessions set auto_top_up_enabled = 1`).run(),
+      ).toThrow(/CHECK constraint failed/u);
+      expect(() =>
+        handle.sqlite.prepare(`update sessions set auto_top_up_enabled = 2`).run(),
+      ).toThrow(/CHECK constraint failed/u);
+    });
+
+    it('refuses a HALF-WRITTEN pair at the constraint, not later at the decoder', () => {
+      unwrap(
+        sessionRepository.insertSession(handle.db, {
+          id: SESSION,
+          label: null,
+          presetId: null,
+          table: buildSessionTable(),
+          createdAt: T0,
+          updatedAt: T0,
+          closedAt: null,
+          autoTopUp: null,
+        }),
+      );
+      // `decodeAutoTopUp` also rejects a half-written pair, but a row that can never be
+      // written is the stronger guarantee: assert the constraint is what stops it.
+      const attempted = () =>
+        handle.sqlite.prepare(`update sessions set auto_top_up_target_stack = 100000`).run();
+      expect(attempted).toThrow(/CHECK constraint failed: sessions_auto_top_up_pair/u);
+    });
   });
 });

@@ -770,7 +770,7 @@ ADR-0027.
 
 ## ADR-0033 — The fixture is not coming; settlement correctness becomes a configuration surface
 
-**Date:** 2026-08-29 · **Phase:** 2 input · **Status:** accepted; supersedes the *scheduling*
+**Date:** 2026-08-29 · **Phase:** 2 input · **Status:** accepted; supersedes the _scheduling_
 of ADR-0027's evidence task, not its findings
 
 **Context.** ADR-0027 recorded a bounded Phase-2 task: analyse the complete real CoinPoker
@@ -860,7 +860,7 @@ actually stores, and the two answers are not the same shape.
 - The two are never averaged, never merged into one table, and never joined into a view that
   presents a single number.
 
-**Consequences.** Percentages are integers for the same reason money is, but they are *not*
+**Consequences.** Percentages are integers for the same reason money is, but they are _not_
 `MilliBB` — milliBB carries a currency meaning a frequency does not have, and mixing them
 would let a percentage reach an arithmetic path expecting chips. HUD stats are frequency-only
 for MVP; aggression factor and other unbounded ratios are excluded rather than forced into a
@@ -903,7 +903,7 @@ that as a **convention**: the HUD and note repositories simply exported no updat
 The independent review broke it in one line. The package barrel re-exports the raw Drizzle
 table objects, so `db.update(playerNotes).set({ body: '…' })` — using barrel imports only —
 overwrote a note body with no error and no surviving version. Overwriting a HUD reading's
-`enteredText` and value *together* even passed the read-time re-parse check, because that
+`enteredText` and value _together_ even passed the read-time re-parse check, because that
 check compares the two clobbered columns against each other. The test that claimed to prove
 the guarantee was a **regex over exported method names**; a method called `saveNote` would
 have passed it.
@@ -995,7 +995,7 @@ pin one. ISO strings are never stored. Under PostgreSQL these columns need `bigi
 **Date:** 2026-08-29 · **Phase:** 3 · **Status:** accepted
 
 **Context.** CLAUDE.md rule 1 makes money an integer count of milliBB. The schema declares
-those columns `INTEGER` — but SQLite's INTEGER *affinity* does not enforce integrality: a
+those columns `INTEGER` — but SQLite's INTEGER _affinity_ does not enforce integrality: a
 value that cannot be converted losslessly is simply stored as REAL. `update session_seats set
 stack = 93701.5` succeeded. The read path caught it, so nothing lossy was ever returned, but
 the write produced a permanently unreadable row instead of being rejected.
@@ -1038,3 +1038,159 @@ and a probe caught it.
 **Consequences.** Each rule is proved non-vacuous by a probe that asserts a forbidden import
 errors and a permitted one does not. A layering rule with a hole is worse than no rule,
 because the documentation then claims an enforcement that does not exist.
+
+---
+
+## ADR-0043 — The action path is local and synchronous; persistence happens at boundaries
+
+**Date:** 2026-08-29 · **Phase:** 4–7 · **Status:** accepted
+
+**Context.** The app is used by a person entering hands quickly. `docs/UX.md` makes speed a
+product property, not a tuning goal. The engine is pure and runs anywhere; the database is
+`better-sqlite3` and runs only on the server. Where the boundary between them falls decides
+whether the table feels immediate.
+
+**Decision.** `poker-core` runs **in the browser**. Every poker state transition — action,
+undo, card entry, award — is a local synchronous call inside a client component. Nothing
+asynchronous sits between a user input and the visible update: no network request, no server
+action, no database round trip, no `await`. Persistence happens **at boundaries only**: the
+session is written on Start Session. Genuinely non-hot-path data — nickname autocomplete, the
+player profile panel — may use a server action, because it is not on the interaction path.
+
+**Hand persistence is not yet implemented.** Phases 4-7 write the session and nothing else:
+live table state, the hand event log, cards and awards exist only in memory, and a page reload
+discards them. This is a deliberate deferral, not an oversight — the write boundary and its
+reconciliation rules belong with the hand-lifecycle work of Phase 8 — but it is recorded here
+because an earlier draft of this ADR described a completion boundary that does not exist in the
+code, and an independent review caught the divergence.
+
+**Consequences.** The in-memory `Hand` event log, _after_ any undo, is the value that will
+later be persisted, so **persisted undo remains legitimately deferred**: there is nothing
+written yet to reconcile. Until the write boundary exists, losing entered work to a reload is a
+CLAUDE.md rule 3 hazard, so the table states plainly in the UI that its state is in memory —
+input may be discarded by an action the user takes knowingly, never silently. Introducing a database write into the action path to "solve"
+persisted undo is forbidden — it would trade the product's defining property for a problem
+that does not yet exist. The claim is enforced, not asserted: an end-to-end test drives a
+full betting sequence and asserts the captured request list is empty.
+
+---
+
+## ADR-0044 — All database access funnels through `apps/web/src/server/`, ESLint-enforced
+
+**Date:** 2026-08-29 · **Phase:** 4 · **Status:** accepted; extends ADR-0006 and ADR-0042
+
+**Context.** `@gto-self/db` loads `better-sqlite3`, a native Node module. A client component
+that imports it does not fail a lint rule or a type check — it fails at runtime in the
+browser, and only on the code path that reaches it. The layering rules of ADR-0042 stopped at
+the package boundary and said nothing about where _inside_ the app persistence may be used.
+
+**Decision.** `@gto-self/db` is importable only from `apps/web/src/server/**`. Everywhere else
+under `apps/web` — client components, hooks, shared libs, and the `app/` route files
+themselves — it is an ESLint error on both the bare specifier and its subpath form. Route
+server components reach persistence through helpers in `src/server/`, never directly. Server
+actions are passed to client components **as props** rather than imported by them, so a client
+module's import graph cannot reach the database at all.
+
+**Consequences.** The performance contract of ADR-0043 becomes structurally checkable rather
+than a thing reviewers must re-derive from diffs. Proved non-vacuous by probe: a client-side
+import of `@gto-self/db` and of `@gto-self/db/client.js` both error, and the same file under
+`src/server/` does not.
+
+---
+
+## ADR-0045 — Auto top-up policy is session state, not table configuration
+
+**Date:** 2026-08-29 · **Phase:** 4 · **Status:** accepted
+
+**Context.** Session setup must collect an auto top-up toggle and a target stack.
+`AutoTopUpPolicy` is `{ enabled, targetStack, threshold }` and the `sessions` table had nowhere
+to put any of it. Two wrong answers were available: collect the control and store nothing —
+a stub presented as a feature, forbidden by CLAUDE.md rule 5 — or reuse
+`TableConfig.referenceStack`, which is the **GTO model reference stack** that Phase 9 will read
+as such, not a buy-in.
+
+**Decision.** Two nullable columns on `sessions`, carrying enabled and target stack, with the
+integrality `CHECK` of ADR-0041 and a paired-or-both-null check. `threshold` gets **no column**:
+Phase 4 collects only enabled and target and stores `threshold = targetStack`, exactly as
+`defaultAutoTopUpPolicy` shapes it. `insertSession` **refuses** a policy whose threshold differs
+from its target rather than silently dropping the difference.
+
+**Consequences.** Phase 8 owns the editable threshold and adds its column then. A column
+nothing can write would itself be a stub, so the schema stays honest about what the product can
+currently express, and a caller that assumes more is rejected loudly rather than truncated.
+
+---
+
+## ADR-0046 — Additive columns migrate with `ALTER TABLE ADD COLUMN`, never a generated table rebuild
+
+**Date:** 2026-08-29 · **Phase:** 4 · **Status:** accepted
+
+**Context.** `drizzle-kit generate` emitted SQLite's 12-step table-recreate for two additive
+nullable columns on `sessions`. That output is both broken and destructive here. Its
+`INSERT … SELECT` reads the two columns being **added**, so it fails with `no such column` on
+any database, empty or not. Worse, once that is fixed, its `PRAGMA foreign_keys=OFF` is a
+**no-op**: the migrator runs every migration inside one transaction, and SQLite ignores that
+pragma while a transaction is open. `DROP TABLE sessions` would therefore execute with foreign
+keys **enforced** and cascade away every `session_seats` row of every existing session.
+
+**Decision.** A purely additive nullable column migrates with `ALTER TABLE … ADD COLUMN`,
+carrying its named `CHECK` inline. Generated SQL is an input to review, not an artifact to be
+trusted; where it is hand-corrected the reasoning is recorded in the migration header, and the
+journal and snapshot are left untouched.
+
+**Consequences.** A migration is verified against a **populated** database, not an empty one —
+an empty-database test cannot observe data loss. The committed migration was applied inside a
+single transaction to a database holding a session and its seats, and both seat rows survived
+with their exact stack values. Falsifying evidence: if a future drizzle-kit emits a recreate
+whose pragma is honoured and whose select is correct, this can be revisited.
+
+---
+
+## ADR-0047 — Module scope stays free of side effects that a bundler can break
+
+**Date:** 2026-08-29 · **Phase:** 4 · **Status:** accepted
+
+**Context.** `packages/db` resolved its migrations folder with
+`export const MIGRATIONS_FOLDER = fileURLToPath(new URL('../drizzle', import.meta.url))`. This
+is correct under Node and under Vitest. Under a bundler it is not: Next/Turbopack rewrites the
+whole `new URL(...)` expression into an asset reference, and `fileURLToPath` then throws — at
+**module evaluation**, which made the entire package unimportable from the app and failed
+`next build` with an error naming a page rather than the cause.
+
+**Decision.** Path resolution that depends on `import.meta.url` is exposed as a **function**
+(`defaultMigrationsFolder()`), reached only by a caller that supplied no path of its own. A
+bundled caller always passes an explicit folder — `apps/web/src/server/db.ts` resolves it by
+walking up to the workspace root — because inside a build output `import.meta.url` points at a
+chunk and the value would be wrong even where it does not throw.
+
+**Consequences.** A failure at module scope takes down every importer and reports itself far
+from its cause; the same failure inside a function is contained to the caller that needed it.
+This class of bug is invisible to the unit test suite, which never runs through a bundler:
+it is caught only by building and starting the real app, which is now part of the milestone
+gate rather than an afterthought.
+
+---
+
+## ADR-0048 — One keyboard owner at a time, decided by explicit state
+
+**Date:** 2026-08-29 · **Phase:** 7 · **Status:** accepted
+
+**Context.** The action dock owns `F C R A Z N` on the window. The 52-card palette needs `A`
+for ace and `C` for clubs. During `AWAITING_BOARD` the collision is accidentally harmless —
+every action key is already disabled — but that is luck, not design, and it does not hold for
+Hero hole-card entry during a live betting phase, where `A` means all-in.
+
+**Decision.** A single `capturing` boolean is computed once by the parent and read by both the
+palette and the dock **in the same React commit**; the dock returns from its handler before
+doing anything when it is set. The palette adds no window listener of its own — its keys arrive
+through a React `onKeyDown` and bubble to the dock's existing, inert listener. `stopPropagation`,
+listener ordering and `capture: true` are not used. Open is deliberately **not** the same as
+capturing: the palette may be open while the dock still owns the keyboard, until the user
+actually engages it.
+
+**Consequences.** The gate cannot race, because it is not a function of which listener fires
+first — both read the identical value from one render. Proved by a test that asserts on
+resulting engine state **with a negative control**: with the palette open but not capturing,
+`a` really does put the seat all-in, so the passing case is not passing vacuously. Rejected
+alternative: suppressing the dock with `stopPropagation`, which makes correctness depend on
+DOM ordering and fails silently the moment a third listener appears.

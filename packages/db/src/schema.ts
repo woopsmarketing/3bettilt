@@ -410,6 +410,21 @@ export const sessions = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
     closedAt: integer('closed_at'),
+    /**
+     * `AutoTopUpPolicy.enabled`, or NULL when the session records no policy at all. 0/1
+     * rather than a boolean column so the integrality CHECK reads like its neighbours.
+     */
+    autoTopUpEnabled: integer('auto_top_up_enabled'),
+    /**
+     * `AutoTopUpPolicy.targetStack` in milliBB. NULL exactly when `auto_top_up_enabled`
+     * is NULL, so "no policy" is one fact rather than two half-facts.
+     *
+     * `AutoTopUpPolicy.threshold` has deliberately NO column: Phase 4 collects only
+     * enabled + target and stores `threshold = targetStack`, matching
+     * `defaultAutoTopUpPolicy`. Phase 8 owns the editable threshold and adds its column
+     * then; a column nothing can write would be a stub (`CLAUDE.md` rule 5).
+     */
+    autoTopUpTargetStack: integer('auto_top_up_target_stack'),
   },
   (t) => [
     index('sessions_created_idx').on(t.createdAt, t.id),
@@ -426,6 +441,21 @@ export const sessions = sqliteTable(
     check(
       'sessions_closed_at_range',
       sql`${t.closedAt} is null or (${isIntegral(t.closedAt)} and ${t.closedAt} >= ${t.createdAt} and ${t.closedAt} <= ${sql.raw(String(MAX_TIMESTAMP))})`,
+    ),
+    check(
+      'sessions_auto_top_up_enabled_boolean',
+      sql`${t.autoTopUpEnabled} is null or (${isIntegral(t.autoTopUpEnabled)} and ${t.autoTopUpEnabled} in (0, 1))`,
+    ),
+    check(
+      'sessions_auto_top_up_target_stack_range',
+      sql`${t.autoTopUpTargetStack} is null or (${moneyRange(t.autoTopUpTargetStack)} and ${t.autoTopUpTargetStack} > 0)`,
+    ),
+    // Both columns describe ONE policy, so both are present or neither is. Written the
+    // long way, like `session_seats_empty_iff_no_player`, so it means the same thing in
+    // SQLite and PostgreSQL.
+    check(
+      'sessions_auto_top_up_pair',
+      sql`(${t.autoTopUpEnabled} is null and ${t.autoTopUpTargetStack} is null) or (${t.autoTopUpEnabled} is not null and ${t.autoTopUpTargetStack} is not null)`,
     ),
   ],
 );

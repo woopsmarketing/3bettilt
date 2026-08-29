@@ -1,0 +1,34 @@
+-- Auto top-up persistence for `sessions` (Phase 4).
+--
+-- `AutoTopUpPolicy` is `{ enabled, targetStack, threshold }` and `sessions` had nowhere to
+-- put it, so the setup form collected a toggle nothing stored. Two nullable columns fix
+-- that: both NULL means "this session records no policy at all".
+--
+-- `threshold` deliberately gets NO column. Phase 4 collects only enabled + target and
+-- stores `threshold = targetStack`, exactly as `defaultAutoTopUpPolicy` shapes it; Phase 8
+-- owns the editable threshold and adds its column then. A column nothing can write would
+-- be a stub (`CLAUDE.md` rule 5).
+--
+-- HAND-CORRECTED GENERATED SQL. `drizzle-kit generate` emitted the SQLite 12-step
+-- table-recreate (`__new_sessions` + `DROP TABLE sessions` + rename) for this diff, and
+-- that output is both broken and destructive here:
+--
+--   1. Its `INSERT INTO __new_sessions(...) SELECT ..., "auto_top_up_enabled",
+--      "auto_top_up_target_stack" FROM "sessions"` selects the two columns being ADDED, so
+--      it fails with `no such column` on any database, empty or not.
+--   2. Its `PRAGMA foreign_keys=OFF` is a NO-OP: drizzle's migrator runs every migration
+--      inside one transaction, and SQLite ignores that pragma while a transaction is open.
+--      `DROP TABLE sessions` would therefore run with foreign keys ENFORCED and CASCADE
+--      away every `session_seats` row of every existing session.
+--
+-- `ALTER TABLE ... ADD COLUMN` is the correct migration for a purely additive nullable
+-- column, needs no table rewrite, cannot touch existing rows, and keeps the CHECK
+-- constraint names identical to `src/schema.ts`. SQLite appends the column definition
+-- verbatim to the stored CREATE TABLE, so the constraints below are the same text
+-- `0000` would have produced.
+--
+-- PG: `ALTER TABLE sessions ADD COLUMN ... ; ALTER TABLE sessions ADD CONSTRAINT ... CHECK
+-- (...)`, dropping the `typeof(...)` terms, which `integer` makes redundant.
+
+ALTER TABLE `sessions` ADD `auto_top_up_enabled` integer CONSTRAINT "sessions_auto_top_up_enabled_boolean" CHECK("sessions"."auto_top_up_enabled" is null or (typeof("sessions"."auto_top_up_enabled") = 'integer' and "sessions"."auto_top_up_enabled" in (0, 1)));--> statement-breakpoint
+ALTER TABLE `sessions` ADD `auto_top_up_target_stack` integer CONSTRAINT "sessions_auto_top_up_target_stack_range" CHECK("sessions"."auto_top_up_target_stack" is null or (typeof("sessions"."auto_top_up_target_stack") = 'integer' and "sessions"."auto_top_up_target_stack" >= -1000000000 and "sessions"."auto_top_up_target_stack" <= 1000000000 and "sessions"."auto_top_up_target_stack" > 0)) CONSTRAINT "sessions_auto_top_up_pair" CHECK(("sessions"."auto_top_up_enabled" is null and "sessions"."auto_top_up_target_stack" is null) or ("sessions"."auto_top_up_enabled" is not null and "sessions"."auto_top_up_target_stack" is not null));

@@ -201,9 +201,26 @@ export default tseslint.config(
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
-      // The app may import everything the layering allows — except the research sandbox.
-      'no-restricted-imports': restrict([NO_SOLVER_LAB]),
+      // The app may import the domain freely, but persistence is reached only through
+      // `src/server/`. `@gto-self/db` pulls in `better-sqlite3`, a native Node module: a
+      // client component that imports it does not fail a lint rule, it fails at runtime in
+      // the browser. Funnelling every DB call through one server-only directory also keeps
+      // the hot path — keypress -> poker-core -> React -> render — provably free of a
+      // database round trip, which is a product requirement and not a style preference.
+      'no-restricted-imports': restrict([
+        NO_SOLVER_LAB,
+        {
+          ...NO_DB,
+          message:
+            'Reach persistence through apps/web/src/server/ only. @gto-self/db loads a native module and must never be bundled into a client component.',
+        },
+      ]),
     },
+  },
+  {
+    // The one place in the app permitted to open the database.
+    files: ['apps/web/src/server/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-imports': restrict([NO_SOLVER_LAB]) },
   },
   {
     files: ['**/*.test.ts', '**/*.test.tsx', 'solver-lab/**/*.ts', 'scripts/**/*.mjs'],

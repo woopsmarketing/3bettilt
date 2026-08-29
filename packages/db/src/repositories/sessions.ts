@@ -32,10 +32,32 @@ function seatRows(sessionId: SessionId, table: TableState) {
   });
 }
 
-/** Insert a session and its six seats in one transaction. */
+/**
+ * Insert a session and its six seats in one transaction.
+ *
+ * `record.autoTopUp` is stored as `enabled` + `targetStack` only. A policy whose
+ * `threshold` differs from its `targetStack` is REFUSED rather than written with the
+ * threshold quietly dropped: Phase 4 has no column for it, and a write that loses a value
+ * the caller supplied is exactly the silent lossy behaviour `CLAUDE.md` rule 5 forbids.
+ * Phase 8 adds the column and this check goes away with it.
+ */
 export function insertSession(db: GtoDatabase, record: SessionRecord): DbResult<SessionRecord> {
   const validated = validateTableConfig(record.table.config);
   if (!validated.ok) return fromEngineError(validated.error, { table: 'sessions', id: record.id });
+  const policy = record.autoTopUp;
+  if (policy !== null && policy.threshold !== policy.targetStack) {
+    return dbErr(
+      'INVALID_INPUT',
+      'sessions cannot yet store an auto top-up threshold that differs from targetStack (Phase 8)',
+      {
+        table: 'sessions',
+        id: record.id,
+        field: 'auto_top_up_target_stack',
+        expected: String(policy.targetStack),
+        actual: String(policy.threshold),
+      },
+    );
+  }
   const written = attempt({ table: 'sessions', id: record.id }, () => {
     db.transaction((tx) => {
       tx.insert(sessions)
@@ -50,6 +72,8 @@ export function insertSession(db: GtoDatabase, record: SessionRecord): DbResult<
           createdAt: record.createdAt,
           updatedAt: record.updatedAt,
           closedAt: record.closedAt,
+          autoTopUpEnabled: policy === null ? null : policy.enabled ? 1 : 0,
+          autoTopUpTargetStack: policy === null ? null : policy.targetStack,
         })
         .run();
       tx.insert(sessionSeats).values(seatRows(record.id, record.table)).run();
@@ -127,6 +151,10 @@ export function listSessions(
 /**
  * Write the session's current `TableState` back: config, button, hero, hand number, and all
  * six seats. The caller supplies `updatedAt`; the DB never reads the clock.
+ *
+ * The auto top-up columns are NOT touched: the policy is set when the session is created
+ * and Phase 8 owns editing it. Leaving them alone is deliberate — silently rewriting a
+ * stored policy from a `TableState` that does not carry one would invent data.
  */
 export function updateSessionTable(
   db: GtoDatabase,

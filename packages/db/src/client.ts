@@ -25,8 +25,23 @@ export interface DatabaseHandle {
   close(): void;
 }
 
-/** The committed migration artifacts. Resolved relative to this module, not to the cwd. */
-export const MIGRATIONS_FOLDER: string = fileURLToPath(new URL('../drizzle', import.meta.url));
+/**
+ * The committed migration artifacts, resolved relative to THIS module rather than the cwd.
+ *
+ * A FUNCTION, not a module-level constant, and that is load-bearing. A bundler rewrites
+ * `import.meta.url` — Next/Turbopack rewrites the whole `new URL(...)` expression into an
+ * asset reference — and the rewritten value makes `fileURLToPath` throw. As a constant that
+ * throw happened at MODULE EVALUATION and made this entire package unimportable from a
+ * bundled app; as a function it is reached only by a caller that supplied no folder of its
+ * own.
+ *
+ * A bundled caller must always pass `migrationsFolder` explicitly (`apps/web/src/server/db.ts`
+ * resolves it from the repository root): inside a build output `import.meta.url` points at
+ * a chunk, so this value would be wrong even where it does not throw.
+ */
+export function defaultMigrationsFolder(): string {
+  return fileURLToPath(new URL('../drizzle', import.meta.url));
+}
 
 /** In-memory database URL. Each connection gets its OWN empty database. */
 export const IN_MEMORY_URL = ':memory:';
@@ -65,7 +80,7 @@ export function openDatabase(options: OpenDatabaseOptions = {}): DatabaseHandle 
   const db = drizzle(sqlite, { schema });
 
   if (!readonly && (options.applyMigrations ?? true)) {
-    migrate(db, { migrationsFolder: options.migrationsFolder ?? MIGRATIONS_FOLDER });
+    migrate(db, { migrationsFolder: options.migrationsFolder ?? defaultMigrationsFolder() });
   }
 
   let closed = false;

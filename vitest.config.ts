@@ -49,6 +49,10 @@ export default defineConfig({
       nodeProject('coinpoker-parser'),
       {
         resolve: { alias: workspaceAlias },
+        // `apps/web/tsconfig.json` sets `jsx: 'preserve'` so Next owns the JSX transform.
+        // Vitest has no Next pipeline, so the component tests need the transform stated
+        // here; without it a `.tsx` test fails to parse.
+        oxc: { jsx: { runtime: 'automatic', importSource: 'react' } },
         test: {
           name: 'web',
           root: `${root}apps/web`,

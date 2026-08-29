@@ -3,7 +3,7 @@
 Single source of truth for where the project is. The orchestrator updates this after
 every phase; phase agents report, they do not edit it.
 
-**Last updated:** 2026-08-29, after Phase 3 (database and player domain).
+**Last updated:** 2026-08-29, after Phases 4-7 (Poker Table Alpha).
 
 ## Completed
 
@@ -101,7 +101,7 @@ every phase; phase agents report, they do not edit it.
     projection (ADR-0039); the load path is `loadHand`, never `replayHand`. Integration tests
     run against a real in-memory SQLite, not mocks.
   - **Independent review.** No blockers. Two MAJOR findings, both fixed: the "insert-only"
-    guarantee for manually entered records was a repository *convention* that the exported
+    guarantee for manually entered records was a repository _convention_ that the exported
     Drizzle tables let any caller bypass — now enforced by database triggers (ADR-0037); and
     the ESLint layering rules matched only bare specifiers, so every subpath import bypassed
     them, with four boundaries unguarded entirely (ADR-0042). Five MINOR findings also fixed:
@@ -111,29 +111,56 @@ every phase; phase agents report, they do not edit it.
 
 ## Current
 
-- Nothing in flight. Phases 1, 2 and 3 are **accepted** — none is reopened or reimplemented.
+- Nothing in flight. Phases 1, 2, 3, 4, 5, 6 and 7 are **accepted** — none is reopened.
+- **Poker Table Alpha reached, 2026-08-29.** A person can open the app in a browser, configure
+  a session, and manually enter a complete practice hand: hole cards, F/C/R/A/Z from the
+  keyboard or mouse, flop/turn/river through the card palette, settlement, and next hand.
+  Phase 8 is deliberately NOT started; this is a hands-on testing checkpoint.
 - **MVP priority update (ADR-0033), 2026-08-29.** The real CoinPoker hand-history export will
   not be provided, and this is **not** a blocker. Phase 11 (parser) is deferred past the first
-  usable MVP; delivery order is **2 -> 10, then 12**. Phase 2 does no further rake forensics —
-  it builds the *configuration surface* so that a later correction is config-only.
-- A bounded documentation + Phase-2 input reconciliation pass ran on 2026-08-29. No source
-  code changed. It removed the duplicated status column from `docs/ROADMAP.md`, reconciled
-  `ARCHITECTURE.md` with ADR-0023, corrected product-boundary wording, and recorded
-  **ADR-0027..0032** plus `docs/GTO_DESIGN_NOTES.md`.
+  usable MVP; delivery order is **2 -> 10, then 12**.
+- An independent adversarial review of Phases 4-7 found **2 BLOCKERs, 1 MAJOR and 3 MINORs**;
+  all six are resolved. The blockers were an award-panel selection that leaked across hands and
+  paid the wrong player, and a keyboard-ownership state in which neither the action dock nor the
+  card palette owned the keyboard. Both were reproduced in a real browser before and after the
+  fix. Decisions recorded as **ADR-0043..0048**.
 
 ## Next
 
-- **Phase 4 — Session setup UX** (`apps/web`), fresh agent. Six seats, nickname
-  search/autocomplete over `searchPlayersByNicknamePrefix`, existing-player reuse, new-player
-  HUD entry, stack input, Hero selection, active/sitting-out/empty. The persistence seam it
-  builds on is `packages/db`'s repositories, which return domain types, not rows.
-- **Then Phases 5 -> 10 in order, then 12.** The milestone is the loop in `docs/UX.md`:
-  session setup -> seats/stacks -> start hand -> hero cards -> rapid F/C/R/A -> automatic
-  pot/stack/action order -> board entry -> undo -> hero fold / observe -> Skip Rest / dirty
-  resync -> next hand -> MOCK-labelled strategy. Phase 11 is deferred past it (ADR-0033).
+- **Hands-on testing by the user.** Launch with `pnpm dev` and open
+  `http://localhost:3210`. This is the point of the Alpha: find what is wrong by using it.
+- **Phase 8 — Observe / dirty stack flow** (`web`, `poker-core`), fresh agent. Hero fold ->
+  Observe mode, Skip Rest, dirty marking, inline resync with next-dirty focus, next-hand
+  rotation, manual button/blind override (ADR-0031), and the editable auto top-up threshold
+  whose column ADR-0045 deliberately deferred. **Hand persistence belongs here too** — see
+  known issues.
+- **Then Phases 9 -> 10, then 12.** Phase 11 is deferred past the MVP (ADR-0033).
 
 ## Known issues / explicit TODOs
 
+- **Nothing entered at the table is persisted.** Phases 4-7 write the SESSION only. The live
+  table, the hand event log, cards and awards live in memory; a page reload discards them
+  (ADR-0043). The table says so plainly in the UI, because losing entered work silently would
+  violate rule 3. The write boundary and its reconciliation rules are Phase 8 work, and
+  **persisted undo stays deferred until then** — there is nothing written yet to reconcile.
+- **`updateSessionTable` is never called.** Stack changes across hands (wins, losses, auto
+  top-up) advance in memory only, so a reloaded session returns to its configured stacks.
+  Same fix as the item above.
+- **No showdown reveal for opponents.** `SET_HOLE_CARDS` is engine-reachable for any seat but
+  only Hero's palette is mounted, so a contested showdown is settled by the user picking the
+  winner. Deliberate: there is no hand evaluator and none is planned in this scope.
+- **The observed splash fee has no input.** `AWARD_POTS` always sends `fee: null` (ADR-0032 —
+  no automatic trigger is invented). An observed fee cannot yet be recorded from the UI.
+- **`S` (sit-out toggle) from `docs/UX.md` is not bound.** It is not in the Phase 6 key map;
+  seat occupancy is set at session setup only until Phase 8.
+- **Split pots have no UI test.** Multiple winners per pot work and the engine splits them, but
+  only engine-level tests cover it.
+- **The card palette costs ~120px above the dock**, so a very short viewport can push the
+  action dock off-screen. Desktop-first, no responsive work done (deliberate, prompt scope).
+- **`apps/web` typechecks as `moduleResolution: nodenext`** (required by Turbopack). Relative
+  imports must carry `.js`, `next/link` is unusable as a default import, and
+  `@testing-library/user-event` must be imported as a named import. Future web phases inherit
+  this constraint.
 - `packages/{gto-core,coinpoker-parser}/src/index.ts` are still Phase 0 placeholders with a
   wiring test each. Each implementing phase must delete its `placeholder.test.ts`.
   (`poker-core`'s went in Phase 1; `player-core`'s and `db`'s in Phase 3.)
@@ -223,19 +250,33 @@ every phase; phase agents report, they do not edit it.
 
 ## Test status
 
-Phase 3 gate, 2026-08-29, run after the review fixes landed.
+Poker Table Alpha gate, 2026-08-29, run on frozen source after the review fixes landed.
 
-| Suite                | Result                                                          |
-| -------------------- | --------------------------------------------------------------- |
-| `pnpm typecheck`     | pass                                                            |
-| `pnpm lint`          | pass                                                            |
-| `pnpm lint:licences` | pass                                                            |
-| `pnpm test`          | pass — **59 files, 725 tests**                                  |
-| `pnpm build`         | pass                                                            |
-| `pnpm e2e`           | not run — needs `pnpm --filter @gto-self/web e2e:install` first |
+| Suite                | Result                         |
+| -------------------- | ------------------------------ |
+| `pnpm typecheck`     | pass                           |
+| `pnpm lint`          | pass                           |
+| `pnpm lint:licences` | pass                           |
+| `pnpm test`          | pass — **66 files, 856 tests** |
+| `pnpm build`         | pass                           |
+| `pnpm e2e`           | pass — **11 Playwright tests** |
 
-Every layering rule in `eslint.config.js` was proved non-vacuous by a probe asserting that a
-forbidden import errors and a permitted one does not (15 cases). The insert-only triggers were
-verified independently of the test suite by applying the committed migrations to a scratch
-database and attempting a raw `UPDATE` and `DELETE`: both were rejected and the original row
-survived.
+Evidence beyond the suite passing:
+
+- **The performance contract is asserted, not assumed.** An end-to-end test drives a full
+  betting sequence against a production build and asserts the captured network request list is
+  empty, so ADR-0043 cannot silently regress into a server round trip on the action path.
+- **The DB boundary was proved non-vacuous by probe**: a client-side import of `@gto-self/db`
+  and of `@gto-self/db/client.js` both error, the same file under `apps/web/src/server/` does
+  not, and `next build` output contains neither `better-sqlite3` nor `drizzle-orm` in the
+  client bundle.
+- **Migration `0002` was verified against a POPULATED database**, not an empty one: applied
+  inside a single transaction to a database holding a session and its seats, every row survived
+  with exact values, and `integrity_check` / `foreign_key_check` came back clean. An
+  empty-database test cannot observe data loss (ADR-0046).
+- **Test quality was probed by mutation.** Six deliberate breaks were introduced; five were
+  caught (raise-to inflation, stale `view` after undo, ignored `hotkeysSuppressed`, ignored
+  `deadCards`, award ignoring the user's pick). The sixth — raise-**to** silently treated as
+  raise-**by** — passed against all 116 tests, because every raise test acted from a seat with
+  zero street contribution. Three tests raising from the SB, the BB and over an existing raise
+  now pin it, and were confirmed to fail against that mutation.

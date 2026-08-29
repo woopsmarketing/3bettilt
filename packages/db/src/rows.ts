@@ -24,6 +24,7 @@ import {
   makeBySeat,
   validateTableConfig,
   tableConfigSchema,
+  type AutoTopUpPolicy,
   type HandEvent,
   type SeatIndex,
   type SeatOccupancy,
@@ -460,6 +461,15 @@ export interface SessionRecord {
   readonly label: string | null;
   readonly presetId: string | null;
   readonly table: TableState;
+  /**
+   * The between-hands auto top-up policy, or `null` when the session records none.
+   *
+   * Only `enabled` and `targetStack` are stored: Phase 4 sets `threshold = targetStack`,
+   * matching `defaultAutoTopUpPolicy`, and `insertSession` REFUSES a policy whose
+   * threshold differs rather than dropping it silently. Phase 8 owns the editable
+   * threshold and the column it needs.
+   */
+  readonly autoTopUp: AutoTopUpPolicy | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   /** Set when the sitting ended. `null` while it is live. */
@@ -499,6 +509,47 @@ function decodeSessionSeatRow(row: SessionSeatRow): DbResult<TableSeat> {
     occupancy,
     playerId: row.playerId === null ? null : asId<'Player'>(row.playerId),
     stack: stack.value,
+  });
+}
+
+/**
+ * The two `auto_top_up_*` columns as one policy, or `null` when neither is set. Both
+ * present or neither: a half-written policy is a corrupt row, not a policy with a guessed
+ * half. `threshold` is not stored — it is `targetStack` by construction until Phase 8 makes
+ * it editable — so it is re-derived here rather than defaulted to something else.
+ */
+function decodeAutoTopUp(row: SessionRow): DbResult<AutoTopUpPolicy | null> {
+  const enabled = row.autoTopUpEnabled;
+  const target = row.autoTopUpTargetStack;
+  if (enabled === null && target === null) return ok(null);
+  if (enabled === null || target === null) {
+    return dbErr(
+      'CORRUPT_ROW',
+      `session ${row.id}: auto_top_up_enabled and auto_top_up_target_stack must both be set or both be null`,
+      { table: 'sessions', id: row.id, field: 'auto_top_up_enabled' },
+    );
+  }
+  if (enabled !== 0 && enabled !== 1) {
+    return dbErr('CORRUPT_ROW', `sessions.auto_top_up_enabled must be 0 or 1, got ${enabled}`, {
+      table: 'sessions',
+      id: row.id,
+      field: 'auto_top_up_enabled',
+      actual: String(enabled),
+    });
+  }
+  const targetStack = decodeMoney(target, 'auto_top_up_target_stack', 'sessions');
+  if (!targetStack.ok) return targetStack;
+  if (targetStack.value <= 0) {
+    return dbErr(
+      'CORRUPT_ROW',
+      `sessions.auto_top_up_target_stack must be positive, got ${targetStack.value}`,
+      { table: 'sessions', id: row.id, field: 'auto_top_up_target_stack' },
+    );
+  }
+  return ok({
+    enabled: enabled === 1,
+    targetStack: targetStack.value,
+    threshold: targetStack.value,
   });
 }
 
@@ -567,10 +618,14 @@ export function decodeSessionRow(
     });
   }
 
+  const autoTopUp = decodeAutoTopUp(row);
+  if (!autoTopUp.ok) return autoTopUp;
+
   return ok({
     id: asId<'Session'>(row.id),
     label: row.label,
     presetId: row.presetId,
+    autoTopUp: autoTopUp.value,
     table: {
       config: config.value,
       seats: makeBySeat((seat) => {

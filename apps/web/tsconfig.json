@@ -2,6 +2,29 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "preserve",
+    /*
+     * `nodenext`, NOT the `bundler` the rest of the workspace uses, and it is Turbopack
+     * that requires it.
+     *
+     * The workspace packages are consumed as TypeScript SOURCE and their internal imports
+     * use the TypeScript `./module.js` form that resolves to `./module.ts`. Turbopack
+     * performs that substitution only when the project's tsconfig sets `moduleResolution`
+     * to `node16`/`nodenext`; under `bundler` every `export * from './x.js'` in `shared`,
+     * `poker-core`, `player-core` and `db` fails to resolve and neither `next dev` nor
+     * `next build` can compile the app at all. (webpack resolves it via
+     * `experimental.extensionAlias`, but `next dev --webpack` in Next 16.3.3 never
+     * hydrates a client component — its HMR client requests the Turbopack endpoint — so
+     * the webpack route costs a working dev server.)
+     *
+     * Consequences, both of which the app already lives with:
+     *  - relative imports carry the `.js` extension, exactly as every package does;
+     *  - a CommonJS dependency with no `exports` map (notably `next/link`) types its
+     *    default import as the whole namespace, so those are imported by their real
+     *    subpath file or avoided. `next/navigation.js` and every package with a proper
+     *    `exports` map are unaffected.
+     */
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "incremental": true,

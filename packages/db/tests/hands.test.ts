@@ -49,6 +49,7 @@ describe('hand persistence', () => {
         createdAt: T0,
         updatedAt: T0,
         closedAt: null,
+        autoTopUp: null,
       }),
     );
     return () => handle.close();

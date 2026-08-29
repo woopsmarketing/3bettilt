@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 3211;
@@ -18,5 +20,10 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
+    env: {
+      // A throwaway database per run. The E2E suite creates real sessions and players, and
+      // must never write them into the developer's own `.data/gto-self.db`.
+      GTO_SELF_DB_URL: join(tmpdir(), `gto-self-e2e-${process.pid}.db`),
+    },
   },
 });

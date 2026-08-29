@@ -4,9 +4,17 @@
  * A schema full of REFERENCES clauses with `foreign_keys` off is decoration, so the
  * enforcement itself is asserted here — not merely that the DDL contains the word.
  */
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { foreignKeysEnabled, openTestDatabase } from '../src/client.js';
+import {
+  defaultMigrationsFolder,
+  foreignKeysEnabled,
+  openDatabase,
+  openTestDatabase,
+} from '../src/client.js';
 import { playerHudSnapshots, players } from '../src/schema.js';
 
 const TABLES = [
@@ -43,6 +51,8 @@ const INTEGRAL_COLUMNS: readonly (readonly [string, string])[] = [
   ['sessions', 'created_at'],
   ['sessions', 'updated_at'],
   ['sessions', 'closed_at'],
+  ['sessions', 'auto_top_up_enabled'],
+  ['sessions', 'auto_top_up_target_stack'],
   ['session_seats', 'stack'],
   ['hands', 'started_at'],
   ['hands', 'finished_at'],
@@ -192,7 +202,7 @@ describe('migrations', () => {
         .run();
       handle.sqlite
         .prepare(
-          `insert into sessions values ('s1', null, null, '{}', null, null, 0, 1700000000000, 1700000000000, null)`,
+          `insert into sessions values ('s1', null, null, '{}', null, null, 0, 1700000000000, 1700000000000, null, null, null)`,
         )
         .run();
       handle.sqlite
@@ -278,6 +288,94 @@ describe('migrations', () => {
       expect(handle.db.get(sql`select 1 as one`)).toBeDefined();
     } finally {
       handle.close();
+    }
+  });
+  /**
+   * The UPGRADE path, not the from-scratch one. `openTestDatabase` always replays every
+   * migration into an empty database, so it would never catch a `0002` that only works on a
+   * virgin schema — and `0002` adds columns to a table that already has children pointing at
+   * it. A generated table-recreate here would CASCADE the `session_seats` rows away with
+   * foreign keys enforced (the pragma that disables them is a no-op inside the migrator's
+   * transaction), so the rows below are the assertion that matters.
+   */
+  it('applies 0002 to a populated database that already has 0000 and 0001', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gto-self-migrate-'));
+    try {
+      // A migrations folder frozen at 0001, built from the committed artifacts.
+      const older = join(dir, 'drizzle-0001');
+      mkdirSync(join(older, 'meta'), { recursive: true });
+      const journal = JSON.parse(
+        readFileSync(join(defaultMigrationsFolder(), 'meta', '_journal.json'), 'utf8'),
+      ) as { entries: { tag: string; idx: number }[] };
+      const kept = journal.entries.filter((entry) => entry.idx <= 1);
+      expect(kept).toHaveLength(2);
+      for (const entry of kept) {
+        cpSync(
+          join(defaultMigrationsFolder(), `${entry.tag}.sql`),
+          join(older, `${entry.tag}.sql`),
+        );
+      }
+      writeFileSync(
+        join(older, 'meta', '_journal.json'),
+        JSON.stringify({ ...journal, entries: kept }),
+      );
+
+      const url = join(dir, 'upgrade.db');
+      const before = openDatabase({ url, migrationsFolder: older });
+      try {
+        before.sqlite
+          .prepare(
+            `insert into players values ('p1', 'Dan', 'dan', null, 1700000000000, 1700000000000, 0)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into sessions values ('s1', 'grind', null, '{}', 0, 0, 3, 1700000000000, 1700000000000, null)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 93701)`)
+          .run();
+        before.sqlite.prepare(`insert into session_seats values ('s1', 1, 'EMPTY', null, 0)`).run();
+      } finally {
+        before.close();
+      }
+
+      const after = openDatabase({ url });
+      try {
+        // The session and BOTH seat rows survived the migration.
+        expect(after.sqlite.prepare(`select count(*) as n from sessions`).get()).toEqual({ n: 1 });
+        expect(after.sqlite.prepare(`select count(*) as n from session_seats`).get()).toEqual({
+          n: 2,
+        });
+        const row = after.sqlite
+          .prepare(
+            `select label, hand_number as hn, auto_top_up_enabled as e, auto_top_up_target_stack as t from sessions where id = 's1'`,
+          )
+          .get() as Record<string, unknown>;
+        expect(row).toEqual({ label: 'grind', hn: 3, e: null, t: null });
+        // The new constraints are live on the upgraded table.
+        expect(() =>
+          after.sqlite
+            .prepare(
+              `update sessions set auto_top_up_enabled = 1, auto_top_up_target_stack = 100000.5`,
+            )
+            .run(),
+        ).toThrow(/CHECK constraint failed/u);
+        // The index the schema declares is still there exactly once.
+        const indexes = after.sqlite
+          .prepare(`select name from sqlite_master where type = 'index' and tbl_name = 'sessions'`)
+          .all() as readonly { readonly name: string }[];
+        expect(indexes.filter((i) => i.name === 'sessions_created_idx')).toHaveLength(1);
+        // No leftover scratch table from a table-recreate.
+        expect(
+          after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
+        ).toEqual([]);
+      } finally {
+        after.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
