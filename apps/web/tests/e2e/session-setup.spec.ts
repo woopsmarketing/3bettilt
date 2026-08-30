@@ -1,43 +1,56 @@
 import { expect, test } from '@playwright/test';
+import { setupSeat, startSession } from './helpers.js';
 
 /**
  * Session setup end to end in a real browser: configure a session, start it, and land on
  * the practice table with the seats that were entered.
+ *
+ * Controls are addressed by `data-testid`, so a copy change cannot break the behaviour
+ * these tests exist to prove. The Korean copy is asserted deliberately and separately.
  */
 test('configures a session and lands on the practice table', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'New session' }).click();
+  // The landing page is Korean, and its one link goes to setup.
+  await expect(page.getByTestId('new-session-link')).toHaveText('새 세션');
+  await page.getByTestId('new-session-link').click();
   await expect(page).toHaveURL(/\/session\/new$/u);
 
-  const start = page.getByRole('button', { name: 'Start Session' });
-  // Disabled, with the actual first problem stated — never a bare "invalid form".
+  const start = page.getByTestId('setup-submit');
+  await expect(start).toHaveText('세션 시작');
+  // Disabled, with the actual first problem stated — never a bare "invalid form". The
+  // sentence is the DOMAIN's own (`lib/session-setup/plan.ts`) and is shown verbatim.
   await expect(start).toBeDisabled();
   await expect(page.locator('#start-session-reason')).toContainText('needs a nickname');
+  await expect(page.locator('#start-session-reason')).toContainText('좌석 1');
 
-  const nicknames = ['E2E Hero', 'E2E Villain', 'E2E Fish'];
-  for (let seat = 1; seat <= 6; seat += 1) {
-    if (seat <= 3) {
-      await page.getByLabel(`Seat ${seat} nickname`).fill(nicknames[seat - 1] ?? '');
-      await page.getByLabel(`Seat ${seat} stack in BB`).fill(seat === 2 ? '93.701' : '100');
-    } else {
-      await page.getByLabel(`Seat ${seat} occupancy`).selectOption('EMPTY');
-    }
-  }
-  await page.getByLabel('Seat 1 is Hero').check();
-  await page.getByLabel('Seat 3 has the button').check();
-  await page.getByLabel('Label (optional)').fill('e2e session');
+  await startSession(page, {
+    nicknames: ['E2E Hero', 'E2E Villain', 'E2E Fish'],
+    stacks: ['100', '93.701', '100'],
+    heroSeat: 0,
+    buttonSeat: 2,
+    label: 'e2e session',
+  });
 
-  await expect(start).toBeEnabled();
-  await start.click();
-
-  await page.waitForURL(/\/table\/[^/]+$/u);
   const main = page.locator('main');
   await expect(main).toContainText('e2e session');
   await expect(main).toContainText('E2E Hero');
   // The ACTUAL entered stack, to full milliBB precision — never rounded for display.
   await expect(main).toContainText('93.701 BB');
-  await expect(main).toContainText('HERO');
-  await expect(main).toContainText('BTN');
+  // Hero's marker is Korean; BTN stays in its international form.
+  await expect(page.getByTestId('seat-0')).toContainText('나');
+  await expect(page.getByTestId('seat-2')).toContainText('BTN');
+});
+
+test('keeps a rejected stack on screen with the domain’s own reason', async ({ page }) => {
+  await page.goto('/session/new');
+  const seat = setupSeat(page, 1);
+  await seat.stack.fill('1o0');
+
+  // Rule 3: what was typed is still there, and the parser's own words are shown.
+  await expect(seat.stack).toHaveValue('1o0');
+  await expect(page.getByTestId('setup-submit')).toBeDisabled();
+  await expect(page.locator('form')).toContainText('not a number');
+  await expect(page.locator('form')).toContainText('문제:');
 });
 
 /**
@@ -46,23 +59,15 @@ test('configures a session and lands on the practice table', async ({ page }) =>
  * screen with nothing awaited.
  */
 test('starts a hand on the table and shows what the engine says', async ({ page }) => {
-  await page.goto('/session/new');
-  const nicknames = ['P5 Hero', 'P5 Villain', 'P5 Fish'];
-  for (let seat = 1; seat <= 6; seat += 1) {
-    if (seat <= 3) {
-      await page.getByLabel(`Seat ${seat} nickname`).fill(nicknames[seat - 1] ?? '');
-      await page.getByLabel(`Seat ${seat} stack in BB`).fill('100');
-    } else {
-      await page.getByLabel(`Seat ${seat} occupancy`).selectOption('EMPTY');
-    }
-  }
-  await page.getByLabel('Seat 1 is Hero').check();
-  await page.getByLabel('Seat 3 has the button').check();
-  await page.getByRole('button', { name: 'Start Session' }).click();
-  await page.waitForURL(/\/table\/[^/]+$/u);
+  await startSession(page, {
+    nicknames: ['P5 Hero', 'P5 Villain', 'P5 Fish'],
+    heroSeat: 0,
+    buttonSeat: 2,
+  });
 
   // Before the deal there is no pot and no street.
   await expect(page.getByTestId('pot')).toHaveText('—');
+  await expect(page.getByTestId('street')).toHaveText('핸드 없음');
 
   await page.getByTestId('start-hand').click();
 
@@ -72,20 +77,46 @@ test('starts a hand on the table and shows what the engine says', async ({ page 
   await expect(page.getByTestId('seat-2')).toHaveAttribute('data-button', 'true');
   // Exactly one seat is on the clock.
   await expect(page.locator('[data-actor="true"]')).toHaveCount(1);
-  // The blinds and antes are in the pot and in the history.
+  // The blinds and antes are in the pot and in the history, in Korean.
   await expect(page.getByTestId('pot')).not.toHaveText('—');
-  await expect(page.getByTestId('action-history')).toContainText('small blind');
-  await expect(page.getByTestId('action-history')).toContainText('big blind');
+  await expect(page.getByTestId('action-history')).toContainText('스몰 블라인드');
+  await expect(page.getByTestId('action-history')).toContainText('빅 블라인드');
   // Phase 6: the dock is live, and it is live exactly where the engine says it is.
   await expect(page.getByTestId('dock-F')).toBeEnabled();
+  await expect(page.getByTestId('dock-F')).toContainText('폴드');
   // No hand can be started while one is in progress.
   await expect(page.getByTestId('dock-N')).toBeDisabled();
 
-  // Esc returns the right panel to its default.
+  // Esc returns the right panel to its default. Hero is not the seat on the clock here
+  // (the button is seat 3), so that default is the action log.
   await page.getByTestId('seat-1').click();
   await expect(page.getByTestId('player-profile')).toBeVisible();
+  await expect(page.getByTestId('right-panel')).toHaveAttribute('data-panel', 'PLAYER');
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('strategy-placeholder')).toBeVisible();
+  await expect(page.getByTestId('player-profile')).toHaveCount(0);
+  await expect(page.getByTestId('right-panel')).toHaveAttribute('data-panel', 'HISTORY');
+});
+
+/**
+ * The right column's priority, and the honesty requirement that goes with it: when hero is
+ * the one who has to decide, the panel says plainly that there is no recommendation.
+ */
+test('leads with the strategy panel on hero’s decision, and promises no number', async ({
+  page,
+}) => {
+  // Heads-up with hero on the button: hero is first to act preflop.
+  await startSession(page, { nicknames: ['P9 Hero', 'P9 Villain'], heroSeat: 0, buttonSeat: 0 });
+  await page.getByTestId('start-hand').click();
+
+  await expect(page.getByTestId('seat-0')).toHaveAttribute('data-actor', 'true');
+  await expect(page.getByTestId('right-panel')).toHaveAttribute('data-panel', 'STRATEGY');
+
+  const strategy = page.getByTestId('strategy-placeholder');
+  await expect(strategy).toContainText('전략 데이터는 아직 준비되지 않았습니다.');
+  await expect(strategy).toContainText('Phase 9');
+  await expect(strategy).toContainText('Phase 10');
+  // `CLAUDE.md` rule 2: no invented frequency, ever — not even as placeholder content.
+  await expect(strategy).not.toContainText('%');
 });
 
 test('a session id that does not exist is a 404', async ({ page }) => {

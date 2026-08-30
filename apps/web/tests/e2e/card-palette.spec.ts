@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { stackOf, startSession } from './helpers.js';
 
 /**
  * Phase 7 — a COMPLETE practice hand entered by hand, in a real browser.
@@ -12,25 +13,12 @@ import type { Page } from '@playwright/test';
  *  - a physical card already in play is unavailable in every later palette.
  */
 
-const stackOf = (page: Page, seat: number) =>
-  page.getByTestId(`seat-${seat}`).locator('span.tabular').first();
-
-async function startFiveHandedSession(page: Page): Promise<void> {
-  await page.goto('/session/new');
-  const nicknames = ['P7 Hero', 'P7 Small', 'P7 Big', 'P7 Under', 'P7 Cutoff'];
-  for (let seat = 1; seat <= 6; seat += 1) {
-    if (seat <= 5) {
-      await page.getByLabel(`Seat ${seat} nickname`).fill(nicknames[seat - 1] ?? '');
-      await page.getByLabel(`Seat ${seat} stack in BB`).fill('100');
-    } else {
-      await page.getByLabel(`Seat ${seat} occupancy`).selectOption('EMPTY');
-    }
-  }
-  await page.getByLabel('Seat 1 is Hero').check();
-  await page.getByLabel('Seat 1 has the button').check();
-  await page.getByRole('button', { name: 'Start Session' }).click();
-  await page.waitForURL(/\/table\/[^/]+$/u);
-}
+const startFiveHandedSession = (page: Page): Promise<void> =>
+  startSession(page, {
+    nicknames: ['P7 Hero', 'P7 Small', 'P7 Big', 'P7 Under', 'P7 Cutoff'],
+    heroSeat: 0,
+    buttonSeat: 0,
+  });
 
 test('enters a complete hand: hole cards, three streets, settlement', async ({ page }) => {
   const requests: string[] = [];
@@ -42,6 +30,8 @@ test('enters a complete hand: hole cards, three streets, settlement', async ({ p
 
   // --- hero hole cards: the palette opened itself, and closes on the second card ------
   await expect(page.getByTestId('card-palette')).toHaveAttribute('data-needed', '2');
+  await expect(page.getByTestId('card-palette')).toContainText('내 카드');
+  await expect(page.getByTestId('card-palette-remaining')).toHaveText('2장 남음');
   await page.getByTestId('palette-As').click();
   await expect(page.getByTestId('card-palette')).toHaveAttribute('data-needed', '1');
   await page.getByTestId('palette-Kd').click();
@@ -67,7 +57,7 @@ test('enters a complete hand: hole cards, three streets, settlement', async ({ p
   await expect(page.getByTestId('pot')).toHaveText('27.8 BB');
 
   // --- flop: the palette asks for exactly three, and As is gone from the deck --------
-  await expect(page.getByTestId('phase')).toContainText(/awaiting flop/iu);
+  await expect(page.getByTestId('phase')).toContainText('플랍 대기');
   await expect(page.getByTestId('card-palette')).toHaveAttribute('data-needed', '3');
   await expect(page.getByTestId('palette-As')).toBeDisabled();
   await expect(page.getByTestId('palette-Kd')).toBeDisabled();
@@ -85,7 +75,7 @@ test('enters a complete hand: hole cards, three streets, settlement', async ({ p
   await page.keyboard.press('c');
   await page.keyboard.press('c');
   await page.keyboard.press('c');
-  await expect(page.getByTestId('phase')).toContainText(/awaiting turn/iu);
+  await expect(page.getByTestId('phase')).toContainText('턴 대기');
   await expect(page.getByTestId('card-palette')).toHaveAttribute('data-needed', '1');
   await expect(page.getByTestId('palette-2c')).toBeDisabled();
   await page.getByTestId('palette-3s').click();
@@ -94,7 +84,7 @@ test('enters a complete hand: hole cards, three streets, settlement', async ({ p
   await page.keyboard.press('c');
   await page.keyboard.press('c');
   await page.keyboard.press('c');
-  await expect(page.getByTestId('phase')).toContainText(/awaiting river/iu);
+  await expect(page.getByTestId('phase')).toContainText('리버 대기');
   await page.getByTestId('palette-4s').click();
   await expect(page.getByTestId('board')).toContainText('4s');
 
@@ -103,13 +93,14 @@ test('enters a complete hand: hole cards, three streets, settlement', async ({ p
   await page.keyboard.press('c');
 
   // --- settlement: the user picks the winner, the engine settles ---------------------
-  await expect(page.getByTestId('phase')).toContainText(/awaiting award/iu);
+  await expect(page.getByTestId('phase')).toContainText('정산 대기');
   await expect(page.getByTestId('award-panel')).toBeVisible();
+  await expect(page.getByTestId('award-panel')).toContainText('각 팟의 승자를 고르세요');
   await expect(page.getByTestId('award-amount-0')).toHaveText('27.8 BB');
   await page.getByTestId('award-seat-0-0').click();
   await page.getByTestId('award-submit').click();
 
-  await expect(page.getByTestId('phase')).toContainText(/complete/iu);
+  await expect(page.getByTestId('phase')).toContainText('완료');
   await expect(page.getByTestId('card-palette')).toHaveCount(0);
   await expect(page.getByTestId('award-panel')).toHaveCount(0);
   await expect(page.getByTestId('dock-N')).toBeEnabled();
@@ -148,21 +139,21 @@ test('the palette owns A and C while it is capturing, and the dock owns them oth
 /** Everyone calls preflop and checks down: five seats, one main pot, five eligible. */
 async function playToShowdown(page: Page): Promise<void> {
   for (let i = 0; i < 5; i += 1) await page.keyboard.press('c');
-  await expect(page.getByTestId('phase')).toContainText(/awaiting flop/iu);
+  await expect(page.getByTestId('phase')).toContainText('플랍 대기');
   await page.getByTestId('palette-2c').click();
   await page.getByTestId('palette-7d').click();
   await page.getByTestId('palette-9h').click();
 
   for (let i = 0; i < 5; i += 1) await page.keyboard.press('c');
-  await expect(page.getByTestId('phase')).toContainText(/awaiting turn/iu);
+  await expect(page.getByTestId('phase')).toContainText('턴 대기');
   await page.getByTestId('palette-3s').click();
 
   for (let i = 0; i < 5; i += 1) await page.keyboard.press('c');
-  await expect(page.getByTestId('phase')).toContainText(/awaiting river/iu);
+  await expect(page.getByTestId('phase')).toContainText('리버 대기');
   await page.getByTestId('palette-4s').click();
 
   for (let i = 0; i < 5; i += 1) await page.keyboard.press('c');
-  await expect(page.getByTestId('phase')).toContainText(/awaiting award/iu);
+  await expect(page.getByTestId('phase')).toContainText('정산 대기');
 }
 
 test('a second hand starts with no winner ticked, and pays only the seat ticked now', async ({
@@ -176,7 +167,7 @@ test('a second hand starts with no winner ticked, and pays only the seat ticked 
   await page.getByTestId('award-seat-0-2').click();
   await expect(page.getByTestId('award-seat-0-2')).toHaveAttribute('aria-pressed', 'true');
   await page.getByTestId('award-submit').click();
-  await expect(page.getByTestId('phase')).toContainText(/complete/iu);
+  await expect(page.getByTestId('phase')).toContainText('완료');
 
   // --- hand 2: nothing is carried over ----------------------------------------------
   await page.keyboard.press('n');
@@ -188,7 +179,7 @@ test('a second hand starts with no winner ticked, and pays only the seat ticked 
   const before = await Promise.all([0, 1, 2, 3, 4].map((seat) => stackOf(page, seat).innerText()));
   await page.getByTestId('award-seat-0-1').click();
   await page.getByTestId('award-submit').click();
-  await expect(page.getByTestId('phase')).toContainText(/complete/iu);
+  await expect(page.getByTestId('phase')).toContainText('완료');
   const after = await Promise.all([0, 1, 2, 3, 4].map((seat) => stackOf(page, seat).innerText()));
 
   const bb = (text: string): number => Number.parseFloat(text.replace(' BB', ''));
@@ -208,12 +199,12 @@ test('a mouse click on a card leaves the palette owning the keyboard', async ({ 
 
   // Untouched: the dock owns the keyboard and the header says so.
   await expect(page.getByTestId('card-palette')).toHaveAttribute('data-capturing', 'false');
-  await expect(page.getByTestId('card-palette-owner')).toHaveText('keyboard: action dock');
+  await expect(page.getByTestId('card-palette-owner')).toHaveText('키보드: 액션');
 
   // One real mouse click on a card. This is what used to leave focus on `<body>`.
   await page.getByTestId('palette-As').click();
   await expect(page.getByTestId('card-palette')).toHaveAttribute('data-capturing', 'true');
-  await expect(page.getByTestId('card-palette-owner')).toHaveText('keyboard: palette');
+  await expect(page.getByTestId('card-palette-owner')).toHaveText('키보드: 카드 입력');
 
   // Esc still reaches the palette even though the dock's listener is suppressed...
   await page.keyboard.press('Escape');

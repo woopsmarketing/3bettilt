@@ -12,20 +12,23 @@
  * decides whether a row may exist; this module only sequences them and reports whatever
  * they said.
  */
-import { asId, type PlayerId, type SessionId } from '@gto-self/shared';
+import { asId, Money, type PlayerId, type SessionId } from '@gto-self/shared';
 import type { IdFactory } from '@gto-self/shared';
 import { createHudSnapshot, createPlayer, timestamp } from '@gto-self/player-core';
 import type { Timestamp } from '@gto-self/player-core';
-import type { SeatIndex } from '@gto-self/poker-core';
+import { isSeatIndex } from '@gto-self/poker-core';
+import type { AutoTopUpPolicy, SeatIndex } from '@gto-self/poker-core';
 import {
   findPlayerById,
   findPlayerByNormalizedNickname,
   getPreset,
+  getSession,
   insertHudSnapshot,
   insertPlayer,
   insertPreset,
   insertSession,
   searchPlayersByNicknamePrefix,
+  updateSessionSeatAutoTopUp,
   type DbError,
   type GtoDatabase,
 } from '@gto-self/db';
@@ -35,8 +38,9 @@ import type {
   SearchPlayersResult,
   SessionFormValue,
   StartSessionResult,
+  UpdateSeatAutoTopUpResult,
 } from '../lib/session-setup/contract.js';
-import { sessionFormSchema } from '../lib/session-setup/contract.js';
+import { seatAutoTopUpSchema, sessionFormSchema } from '../lib/session-setup/contract.js';
 import { buildTableState, planSession, type SeatPlan } from '../lib/session-setup/plan.js';
 
 /** How many autocomplete candidates the setup form asks for. */
@@ -132,6 +136,28 @@ function recordHudSnapshot(
 }
 
 /**
+ * Internal. Each OCCUPIED seat's starting policy, seeded from the session-level default.
+ *
+ * Auto top-up is a per-seat preference (real-user Alpha feedback), and the setup form
+ * deliberately still collects only one session-level default — so every seat that actually
+ * holds a player starts on that default and diverges from it later through
+ * `updateSeatAutoTopUp`. `plan.seats` is exactly the seats that will be seated: ACTIVE or
+ * SITTING_OUT with a player, never EMPTY.
+ *
+ * A `null` session policy seeds NOTHING: no seat records a policy, which is a different
+ * fact from every seat recording a disabled one.
+ */
+function seedSeatAutoTopUp(
+  sessionPolicy: AutoTopUpPolicy | null,
+  seats: readonly SeatPlan[],
+): Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>> {
+  if (sessionPolicy === null) return {};
+  const seeded: Partial<Record<SeatIndex, AutoTopUpPolicy>> = {};
+  for (const seat of seats) seeded[seat.seat] = sessionPolicy;
+  return seeded;
+}
+
+/**
  * Validate, resolve, build and write. Returns the new `SessionId`, or every issue the user
  * has to fix. `input` is untrusted: it arrives over the network at a server action.
  */
@@ -197,6 +223,7 @@ export function startSession(
         presetId: plan.preset.presetId,
         table: table.value,
         autoTopUp: plan.autoTopUp,
+        seatAutoTopUp: seedSeatAutoTopUp(plan.autoTopUp, plan.seats),
         createdAt: deps.now,
         updatedAt: deps.now,
         closedAt: null,
@@ -209,6 +236,109 @@ export function startSession(
     if (error instanceof Rollback) return { ok: false, issues: error.issues };
     throw error;
   }
+}
+
+/**
+ * Set ONE seat's own auto top-up policy. The table-side toggle.
+ *
+ * `input` is untrusted — this is reached from a public server action — so it is re-validated
+ * from scratch: the shape through `seatAutoTopUpSchema`, the seat through `isSeatIndex`, and
+ * the target through `Money.parseBB` on the TEXT the user typed. No client-computed money
+ * number is ever trusted or stored (`CLAUDE.md` rule 1).
+ *
+ * `threshold` is stored as `targetStack`, exactly the shape `defaultAutoTopUpPolicy`
+ * produces and the only shape the seat row can hold; the repository refuses anything else
+ * rather than dropping the value.
+ *
+ * The SESSION is then checked before anything is written, because a valid shape carrying a
+ * valid amount can still name a row that must not take one: a session whose sitting has
+ * ENDED (`closed_at` set), or a seat that holds no player. Neither has an effect today —
+ * `topUpPlan` only tops up ACTIVE seats, and the table only renders a chip for an occupied
+ * one — but this is a public HTTP endpoint, and a policy written onto an EMPTY seat is a
+ * preference that surfaces the moment Phase 8 seats somebody there.
+ *
+ * Not on a hot path: this is a toggle between hands, and no hand transition awaits it.
+ */
+export function updateSeatAutoTopUp(db: GtoDatabase, input: unknown): UpdateSeatAutoTopUpResult {
+  const shape = seatAutoTopUpSchema.safeParse(input);
+  if (!shape.success) {
+    return {
+      ok: false,
+      issues: shape.error.issues.map((detail) =>
+        issue(
+          null,
+          detail.path.join('.') || 'autoTopUp',
+          `submitted value is malformed: ${detail.message}`,
+        ),
+      ),
+    };
+  }
+  const { sessionId, enabled, targetText } = shape.data;
+  if (!isSeatIndex(shape.data.seat)) {
+    return { ok: false, issues: [issue(null, 'seat', `seat ${shape.data.seat} is not a seat`)] };
+  }
+  const seat: SeatIndex = shape.data.seat;
+
+  // The AUTHORITATIVE parse of the entered target. The client's own parse exists only to
+  // draw inline feedback and never reaches this side as a number.
+  const target = Money.parseBB(targetText);
+  if (!target.ok) {
+    return {
+      ok: false,
+      issues: [issue(seat, 'autoTopUpTargetText', `top-up target in BB: ${target.error}`)],
+    };
+  }
+  if (target.value <= 0) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          seat,
+          'autoTopUpTargetText',
+          'the top-up target must be positive',
+          'STACK_NOT_POSITIVE',
+        ),
+      ],
+    };
+  }
+
+  const id = asId<'Session'>(sessionId);
+  const stored = getSession(db, id);
+  if (!stored.ok) return { ok: false, issues: [fromDbError(stored.error, seat, 'autoTopUp')] };
+  if (stored.value === null) {
+    return {
+      ok: false,
+      issues: [issue(seat, 'sessionId', `session ${sessionId} does not exist`, 'NOT_FOUND')],
+    };
+  }
+  if (stored.value.closedAt !== null) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          seat,
+          'sessionId',
+          `session ${sessionId} has ended and cannot be changed`,
+          'CONFLICT',
+        ),
+      ],
+    };
+  }
+  if (stored.value.table.seats[seat].occupancy === 'EMPTY') {
+    return {
+      ok: false,
+      issues: [issue(seat, 'seat', `seat ${seat} holds no player`, 'SEAT_EMPTY')],
+    };
+  }
+
+  const policy: AutoTopUpPolicy = {
+    enabled,
+    targetStack: target.value,
+    threshold: target.value,
+  };
+  const written = updateSessionSeatAutoTopUp(db, id, seat, policy);
+  if (!written.ok) return { ok: false, issues: [fromDbError(written.error, seat, 'autoTopUp')] };
+  return { ok: true, seat, policy };
 }
 
 /** The setup form's nickname autocomplete. Not on any hot path — see `docs/UX.md`. */

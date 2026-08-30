@@ -7,7 +7,7 @@
 import { NewSessionScreen } from '../../../components/session-setup/NewSessionScreen.js';
 import { searchPlayersAction, startSessionAction } from '../../../server/actions/session.js';
 
-export const metadata = { title: 'New session · GTO-SELF' };
+export const metadata = { title: '새 세션 · GTO-SELF' };
 
 export default function NewSessionPage() {
   return <NewSessionScreen startSession={startSessionAction} searchPlayers={searchPlayersAction} />;

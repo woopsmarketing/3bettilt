@@ -1,0 +1,38 @@
+-- Per-seat auto top-up persistence for `session_seats`.
+--
+-- Real-user feedback: auto top-up is a PLAYER/SEAT preference, not one session-wide switch.
+-- Each occupied seat must be able to be on or off with its own target stack, and a top-up
+-- must only ever ADD chips — it never trims a winning stack down.
+--
+-- The two `sessions.auto_top_up_*` columns from `0002` STAY. They are the session DEFAULT
+-- that seeds each occupied seat's policy when the session is created; the two columns added
+-- here are what each seat then carries on its own.
+--
+-- `threshold` deliberately gets NO column, exactly as on `sessions`: a seat row stores
+-- `threshold = targetStack`, matching `defaultAutoTopUpPolicy`, and the repository REFUSES a
+-- policy whose threshold differs rather than writing it with the threshold quietly dropped
+-- (`CLAUDE.md` rule 5).
+--
+-- HAND-WRITTEN, NOT GENERATED. `drizzle-kit generate` emits the SQLite 12-step
+-- table-recreate (`__new_session_seats` + `DROP TABLE session_seats` + rename) for this
+-- diff, and that output is destructive here:
+--
+--   1. Its `INSERT INTO __new_session_seats(...) SELECT ..., "auto_top_up_enabled",
+--      "auto_top_up_target_stack" FROM "session_seats"` selects the two columns being ADDED,
+--      so it fails with `no such column` on any database, empty or not.
+--   2. Its `PRAGMA foreign_keys=OFF` is a NO-OP: drizzle's migrator runs every migration
+--      inside one transaction, and SQLite ignores that pragma while a transaction is open.
+--      `DROP TABLE session_seats` would therefore run with foreign keys ENFORCED, and every
+--      seat row of every existing session would be gone (ADR-0046).
+--
+-- `ALTER TABLE ... ADD COLUMN` is the correct migration for a purely additive nullable
+-- column: no table rewrite, existing rows cannot be touched, and the CHECK constraint names
+-- stay identical to `src/schema.ts`. SQLite appends the column definition verbatim to the
+-- stored CREATE TABLE, so the constraints below are the same text `0000` would have
+-- produced. Existing rows get NULL in both columns, which both null-tolerant CHECKs accept.
+--
+-- PG: `ALTER TABLE session_seats ADD COLUMN ... ; ALTER TABLE session_seats ADD CONSTRAINT
+-- ... CHECK (...)`, dropping the `typeof(...)` terms, which `integer` makes redundant.
+
+ALTER TABLE `session_seats` ADD `auto_top_up_enabled` integer CONSTRAINT "session_seats_auto_top_up_enabled_boolean" CHECK("session_seats"."auto_top_up_enabled" is null or (typeof("session_seats"."auto_top_up_enabled") = 'integer' and "session_seats"."auto_top_up_enabled" in (0, 1)));--> statement-breakpoint
+ALTER TABLE `session_seats` ADD `auto_top_up_target_stack` integer CONSTRAINT "session_seats_auto_top_up_target_stack_range" CHECK("session_seats"."auto_top_up_target_stack" is null or (typeof("session_seats"."auto_top_up_target_stack") = 'integer' and "session_seats"."auto_top_up_target_stack" >= -1000000000 and "session_seats"."auto_top_up_target_stack" <= 1000000000 and "session_seats"."auto_top_up_target_stack" > 0)) CONSTRAINT "session_seats_auto_top_up_pair" CHECK(("session_seats"."auto_top_up_enabled" is null and "session_seats"."auto_top_up_target_stack" is null) or ("session_seats"."auto_top_up_enabled" is not null and "session_seats"."auto_top_up_target_stack" is not null));

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { stackOf, startSession } from './helpers.js';
 
 /**
  * Phase 6 — a whole hand played from the keyboard, in a real browser.
@@ -8,27 +9,17 @@ import type { Page } from '@playwright/test';
  *  - the key -> `poker-core` -> render path fires NO network request, so the interaction
  *    is genuinely local and synchronous (`prompt` D1);
  *  - focus really moves into the raise editor, and a hotkey typed there does not act.
+ *
+ * Every control is addressed by `data-testid`. The Korean copy is asserted once, on
+ * purpose, in the preview and problem lines the user actually reads.
  */
 
-const stackOf = (page: Page, seat: number) =>
-  page.getByTestId(`seat-${seat}`).locator('span.tabular').first();
-
-async function startFiveHandedSession(page: Page): Promise<void> {
-  await page.goto('/session/new');
-  const nicknames = ['P6 Hero', 'P6 Small', 'P6 Big', 'P6 Under', 'P6 Jack'];
-  for (let seat = 1; seat <= 6; seat += 1) {
-    if (seat <= 5) {
-      await page.getByLabel(`Seat ${seat} nickname`).fill(nicknames[seat - 1] ?? '');
-      await page.getByLabel(`Seat ${seat} stack in BB`).fill('100');
-    } else {
-      await page.getByLabel(`Seat ${seat} occupancy`).selectOption('EMPTY');
-    }
-  }
-  await page.getByLabel('Seat 1 is Hero').check();
-  await page.getByLabel('Seat 1 has the button').check();
-  await page.getByRole('button', { name: 'Start Session' }).click();
-  await page.waitForURL(/\/table\/[^/]+$/u);
-}
+const startFiveHandedSession = (page: Page): Promise<void> =>
+  startSession(page, {
+    nicknames: ['P6 Hero', 'P6 Small', 'P6 Big', 'P6 Under', 'P6 Jack'],
+    heroSeat: 0,
+    buttonSeat: 0,
+  });
 
 test('plays a hand from the keyboard with no network request on the action path', async ({
   page,
@@ -53,9 +44,9 @@ test('plays a hand from the keyboard with no network request on the action path'
   await page.keyboard.press('r');
   await expect(page.getByTestId('raise-input')).toBeFocused();
   await page.keyboard.type('9');
-  await expect(page.getByTestId('raise-preview-min')).toContainText('Min 2 BB');
-  await expect(page.getByTestId('raise-preview-max')).toContainText('Max 99.84 BB');
-  await expect(page.getByTestId('raise-preview-to')).toContainText('Raise to 9 BB');
+  await expect(page.getByTestId('raise-preview-min')).toContainText('최소 2 BB');
+  await expect(page.getByTestId('raise-preview-max')).toContainText('최대 99.84 BB');
+  await expect(page.getByTestId('raise-preview-to')).toContainText('레이즈 9 BB');
 
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('pot')).toHaveText('11.3 BB');
@@ -82,7 +73,7 @@ test('plays a hand from the keyboard with no network request on the action path'
 
   // A call instead closes the round, and the engine asks for a flop.
   await page.keyboard.press('c');
-  await expect(page.getByTestId('phase')).toContainText(/awaiting flop/iu);
+  await expect(page.getByTestId('phase')).toContainText('플랍 대기');
   await expect(page.getByTestId('pot')).toHaveText('27.8 BB');
 
   expect(requests).toEqual([]);
@@ -99,13 +90,95 @@ test('a hotkey typed into the raise editor does not act on the hand', async ({ p
   await page.keyboard.press('r');
   await page.keyboard.type('f');
 
-  // The letter landed in the field; nobody folded.
+  // The letter landed in the field; nobody folded. The parser's own reason is shown
+  // verbatim inside the Korean sentence (`CLAUDE.md` rule 3).
   await expect(page.getByTestId('raise-input')).toHaveValue('f');
   await expect(page.getByTestId('seat-0')).toHaveAttribute('data-status', 'IN_HAND');
-  await expect(page.getByTestId('raise-problem')).toContainText('Not a valid amount');
+  await expect(page.getByTestId('raise-problem')).toContainText('금액을 읽을 수 없습니다');
+  await expect(page.getByTestId('raise-problem')).toContainText('not a number');
 
   // Enter refuses it and the typed text survives (`CLAUDE.md` rule 3).
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('raise-input')).toHaveValue('f');
   await expect(page.getByTestId('seat-0')).toHaveAttribute('data-actor', 'true');
+});
+
+/**
+ * The layout guarantee the Alpha did not have: the action dock is the primary control and
+ * must be inside the viewport in every phase, including while the card palette is open.
+ */
+test('keeps the action dock inside the viewport while the palette is open', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await startFiveHandedSession(page);
+  await page.getByTestId('start-hand').click();
+
+  // The palette opened itself for hero's hole cards: the tallest state the tray has.
+  await expect(page.getByTestId('card-palette')).toBeVisible();
+
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  const dock = await page.getByTestId('action-dock').boundingBox();
+  const tray = await page.getByTestId('entry-tray').boundingBox();
+  expect(dock).not.toBeNull();
+  expect(tray).not.toBeNull();
+  expect(dock!.y + dock!.height).toBeLessThanOrEqual(viewport!.height);
+  // Nothing scrolled: the page itself never grew past the viewport.
+  const scroll = await page.evaluate(() => ({
+    height: document.documentElement.scrollHeight,
+    client: document.documentElement.clientHeight,
+  }));
+  expect(scroll.height).toBeLessThanOrEqual(scroll.client);
+
+  // ...and the bottom region does not move when the palette goes away.
+  const trayBefore = tray!.y;
+  const dockBefore = dock!.y;
+  await page.getByTestId('palette-As').click();
+  await page.getByTestId('palette-Kd').click();
+  await expect(page.getByTestId('card-palette')).toHaveCount(0);
+
+  const trayAfter = await page.getByTestId('entry-tray').boundingBox();
+  const dockAfter = await page.getByTestId('action-dock').boundingBox();
+  expect(trayAfter!.y).toBe(trayBefore);
+  expect(dockAfter!.y).toBe(dockBefore);
+});
+
+/**
+ * The award panel is the one panel that moves money, and its submit button is the whole
+ * point of it. The Alpha's fixed-height entry tray pinned the tray at the palette's height,
+ * which is SHORTER than the award panel: the submit button landed underneath the action
+ * dock, half covered, at the exact moment the user has to settle a pot.
+ *
+ * The tray now grows for the award panel and takes the space from the felt above it, so
+ * this asserts the thing that actually matters — the button is fully clear of the dock —
+ * rather than that the tray happens to be some particular height.
+ */
+test('the award submit button is never covered by the action dock', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await startFiveHandedSession(page);
+  await page.getByTestId('start-hand').click();
+  await page.getByTestId('palette-As').click();
+  await page.getByTestId('palette-Kd').click();
+
+  // Two folds, then everyone checks every street down to a showdown.
+  await page.keyboard.press('f');
+  await page.keyboard.press('f');
+  await page.keyboard.press('c');
+  await page.keyboard.press('c');
+  await page.keyboard.press('c');
+  for (const card of ['7h', '2c', 'Ts']) await page.getByTestId(`palette-${card}`).click();
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('c');
+  await page.getByTestId('palette-4d').click();
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('c');
+  await page.getByTestId('palette-9s').click();
+  for (let i = 0; i < 3; i += 1) await page.keyboard.press('c');
+
+  await expect(page.getByTestId('award-panel')).toBeVisible();
+  const submit = await page.getByTestId('award-submit').boundingBox();
+  const dock = await page.getByTestId('action-dock').boundingBox();
+  expect(submit).not.toBeNull();
+  expect(dock).not.toBeNull();
+  // Fully above the dock, not merely "on the page".
+  expect(submit!.y + submit!.height).toBeLessThanOrEqual(dock!.y);
+  // And the dock itself is still pinned inside the viewport.
+  expect(dock!.y + dock!.height).toBeLessThanOrEqual(800);
 });

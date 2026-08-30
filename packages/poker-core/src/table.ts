@@ -301,14 +301,23 @@ export function defaultAutoTopUpPolicy(config: TableConfig): AutoTopUpPolicy {
  * Trusts `policy` is a valid shape; `applyAutoTopUp` is the boundary that validates
  * untrusted policy values, the same way `setSeatStack` (not this function) validates
  * untrusted stack values.
+ *
+ * `seats` optionally SCOPES the plan: only the listed seats are considered, and every
+ * qualification rule above still applies to each of them. Omitting it considers all six,
+ * which is what the session-wide policy means. The scope narrows the candidates; it never
+ * makes a seat qualify that would not have. Order is always ascending physical seat,
+ * whatever order `seats` is given in, and a seat named twice is planned once.
  */
 export function topUpPlan(
   table: TableState,
   policy: AutoTopUpPolicy,
+  seats?: readonly SeatIndex[],
 ): readonly { readonly seat: SeatIndex; readonly from: MilliBB; readonly to: MilliBB }[] {
   if (!policy.enabled) return [];
+  const scope = seats === undefined ? null : new Set<SeatIndex>(seats);
   return ([0, 1, 2, 3, 4, 5] as const)
     .filter((seat) => {
+      if (scope !== null && !scope.has(seat)) return false;
       const s = table.seats[seat];
       return (
         s.occupancy === 'ACTIVE' &&
@@ -336,10 +345,16 @@ export function topUpPlan(
  * silently no-op: errors STACK_NOT_POSITIVE (`targetStack <= 0`), STACK_NEGATIVE
  * (`threshold < 0`), AMOUNT_OUT_OF_RANGE (either value not a whole milliBB number
  * within +/-Money.MAX_MILLI_BB).
+ *
+ * `seats` scopes the plan exactly as it does in `topUpPlan`; it changes WHICH seats are
+ * considered and nothing else. Validation of the policy itself is unscoped: a live policy
+ * with a garbage target is refused even when its scope happens to select no seat, so the
+ * same policy cannot be accepted at one seat and refused at another.
  */
 export function applyAutoTopUp(
   table: TableState,
   policy: AutoTopUpPolicy,
+  seats?: readonly SeatIndex[],
 ): EngineResult<TableState> {
   if (!policy.enabled) return ok(table);
 
@@ -356,12 +371,41 @@ export function applyAutoTopUp(
     return engineErr('STACK_NEGATIVE', 'AutoTopUpPolicy.threshold must not be negative');
   }
 
-  const plan = topUpPlan(table, policy);
+  const plan = topUpPlan(table, policy, seats);
   if (plan.length === 0) return ok(table);
 
   let next = table;
   for (const { seat, to } of plan) {
     const result = setSeatStack(next, seat, to);
+    if (!result.ok) return result;
+    next = result.value;
+  }
+  return ok(next);
+}
+
+/**
+ * Result. Applies each seat's OWN policy, in ascending seat order, through the scoped
+ * `applyAutoTopUp`. Auto top-up is a per-seat preference — one seat may be topped to 100 BB
+ * while its neighbour is off entirely — and this is the one place that fold lives, so the
+ * presentation layer never loops over money logic itself (`CLAUDE.md` rule 1).
+ *
+ * A seat with no entry in `policies` is not considered at all, which is a different fact
+ * from an entry whose `enabled` is false: the first records no preference, the second
+ * records a preference that is switched off. Both leave the seat untouched.
+ *
+ * The FIRST error is returned unchanged, and with it the caller's own `table` — every
+ * intermediate value is discarded, so a run that fails at seat 4 never leaves seats 0..3
+ * topped up. Nothing here is partially applied.
+ */
+export function applySeatAutoTopUps(
+  table: TableState,
+  policies: Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>>,
+): EngineResult<TableState> {
+  let next = table;
+  for (const seat of [0, 1, 2, 3, 4, 5] as const) {
+    const policy = policies[seat];
+    if (policy === undefined) continue;
+    const result = applyAutoTopUp(next, policy, [seat]);
     if (!result.ok) return result;
     next = result.value;
   }

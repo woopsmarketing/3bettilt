@@ -85,6 +85,7 @@ describe('presets and sessions', () => {
         updatedAt: T0,
         closedAt: null,
         autoTopUp: null,
+        seatAutoTopUp: {},
       }),
     );
 
@@ -121,6 +122,7 @@ describe('presets and sessions', () => {
         updatedAt: T0,
         closedAt: null,
         autoTopUp: null,
+        seatAutoTopUp: {},
       }),
     );
     expect(handle.db.select().from(sessionSeats).all()).toHaveLength(6);
@@ -138,6 +140,7 @@ describe('presets and sessions', () => {
         updatedAt: T0,
         closedAt: null,
         autoTopUp: null,
+        seatAutoTopUp: {},
       }),
     );
     unwrap(
@@ -165,6 +168,7 @@ describe('presets and sessions', () => {
         updatedAt: T0,
         closedAt: null,
         autoTopUp: null,
+        seatAutoTopUp: {},
       }),
     );
     const advanced = { ...table, handNumber: 7, buttonSeat: 1 as const };
@@ -199,6 +203,7 @@ describe('presets and sessions', () => {
         updatedAt: T0,
         closedAt: null,
         autoTopUp: null,
+        seatAutoTopUp: {},
       }),
     );
     unwrap(sessionRepository.updateSessionTable(handle.db, SESSION, table, T1));
@@ -242,6 +247,7 @@ describe('presets and sessions', () => {
       updatedAt: T0,
       closedAt: null,
       autoTopUp: null,
+      seatAutoTopUp: {},
     });
     expect(written.ok).toBe(false);
     if (!written.ok) expect(written.error.code).toBe('CONSTRAINT_VIOLATION');
@@ -258,6 +264,7 @@ describe('presets and sessions', () => {
         updatedAt: T0,
         closedAt: null,
         autoTopUp: null,
+        seatAutoTopUp: {},
       }),
     );
     handle.sqlite.prepare(`update sessions set config_json = '{"nope":1}'`).run();
@@ -287,6 +294,7 @@ describe('presets and sessions', () => {
           updatedAt: T0,
           closedAt: null,
           autoTopUp: policy,
+          seatAutoTopUp: {},
         }),
       );
       const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
@@ -316,6 +324,7 @@ describe('presets and sessions', () => {
           updatedAt: T0,
           closedAt: null,
           autoTopUp: policy,
+          seatAutoTopUp: {},
         }),
       );
       expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.autoTopUp).toEqual(policy);
@@ -332,6 +341,7 @@ describe('presets and sessions', () => {
           updatedAt: T0,
           closedAt: null,
           autoTopUp: null,
+          seatAutoTopUp: {},
         }),
       );
       expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.autoTopUp).toBeNull();
@@ -357,6 +367,7 @@ describe('presets and sessions', () => {
           targetStack: Money.mbb(100_000),
           threshold: Money.mbb(40_000),
         },
+        seatAutoTopUp: {},
       });
       expect(written.ok).toBe(false);
       if (!written.ok) expect(written.error.code).toBe('INVALID_INPUT');
@@ -374,6 +385,7 @@ describe('presets and sessions', () => {
           updatedAt: T0,
           closedAt: null,
           autoTopUp: null,
+          seatAutoTopUp: {},
         }),
       );
       expect(() =>
@@ -408,6 +420,7 @@ describe('presets and sessions', () => {
           updatedAt: T0,
           closedAt: null,
           autoTopUp: null,
+          seatAutoTopUp: {},
         }),
       );
       // `decodeAutoTopUp` also rejects a half-written pair, but a row that can never be
@@ -415,6 +428,177 @@ describe('presets and sessions', () => {
       const attempted = () =>
         handle.sqlite.prepare(`update sessions set auto_top_up_target_stack = 100000`).run();
       expect(attempted).toThrow(/CHECK constraint failed: sessions_auto_top_up_pair/u);
+    });
+  });
+
+  /**
+   * Per-seat policy (migration `0003`). Auto top-up is a SEAT preference: each occupied
+   * seat carries its own on/off and its own target, seeded from the session default but
+   * free to diverge from it. Same two columns, same `threshold = targetStack` rule.
+   */
+  describe('per-seat auto top-up policy', () => {
+    const at = (targetStack: number, enabled = true) => ({
+      enabled,
+      targetStack: Money.mbb(targetStack),
+      threshold: Money.mbb(targetStack),
+    });
+
+    function insert(seatAutoTopUp: Record<number, ReturnType<typeof at>> = {}) {
+      return sessionRepository.insertSession(handle.db, {
+        id: SESSION,
+        label: null,
+        presetId: null,
+        table: buildSessionTable(),
+        createdAt: T0,
+        updatedAt: T0,
+        closedAt: null,
+        autoTopUp: at(100_000),
+        seatAutoTopUp,
+      });
+    }
+
+    it("round-trips each seat's own policy beside — not inside — the table state", () => {
+      unwrap(insert({ 0: at(100_000), 1: at(250_000), 2: at(50_000, false) }));
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.seatAutoTopUp).toEqual({
+        0: at(100_000),
+        1: at(250_000),
+        2: at(50_000, false),
+      });
+      // The session-level default is a SEPARATE fact and is untouched by the seats.
+      expect(loaded?.autoTopUp).toEqual(at(100_000));
+      // And nothing about the policy leaked into `TableState`.
+      expect(loaded?.table).toEqual(buildSessionTable());
+
+      const raw = handle.sqlite
+        .prepare(
+          `select seat, auto_top_up_enabled as e, auto_top_up_target_stack as t,
+                  typeof(auto_top_up_target_stack) as ty
+             from session_seats order by seat`,
+        )
+        .all();
+      expect(raw).toEqual([
+        { seat: 0, e: 1, t: 100_000, ty: 'integer' },
+        { seat: 1, e: 1, t: 250_000, ty: 'integer' },
+        { seat: 2, e: 0, t: 50_000, ty: 'integer' },
+        { seat: 3, e: null, t: null, ty: 'null' },
+        { seat: 4, e: null, t: null, ty: 'null' },
+        { seat: 5, e: null, t: null, ty: 'null' },
+      ]);
+    });
+
+    it('a seat with no entry records NO policy, which is not the same as a disabled one', () => {
+      unwrap(insert({ 1: at(100_000, false) }));
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.seatAutoTopUp).toEqual({ 1: at(100_000, false) });
+      expect(loaded?.seatAutoTopUp[0]).toBeUndefined();
+    });
+
+    it('updates ONE seat and touches no other column and no other seat', () => {
+      unwrap(insert({ 0: at(100_000), 1: at(100_000) }));
+      unwrap(
+        sessionRepository.updateSessionSeatAutoTopUp(handle.db, SESSION, 1, at(250_000, false)),
+      );
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.seatAutoTopUp).toEqual({ 0: at(100_000), 1: at(250_000, false) });
+      // Occupancy, player and STACK are the table's business and did not move.
+      expect(loaded?.table).toEqual(buildSessionTable());
+      // Neither did the session default or its timestamps.
+      expect(loaded?.autoTopUp).toEqual(at(100_000));
+      expect(loaded?.updatedAt).toBe(T0);
+    });
+
+    it('clears one seat back to no policy without disturbing its neighbour', () => {
+      unwrap(insert({ 0: at(100_000), 1: at(100_000) }));
+      unwrap(sessionRepository.updateSessionSeatAutoTopUp(handle.db, SESSION, 0, null));
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.seatAutoTopUp).toEqual({ 1: at(100_000) });
+    });
+
+    it('REFUSES a threshold that differs from the target, on insert and on update', () => {
+      const bad = {
+        enabled: true,
+        targetStack: Money.mbb(100_000),
+        threshold: Money.mbb(40_000),
+      };
+      const written = insert({ 2: bad });
+      expect(written.ok).toBe(false);
+      if (!written.ok) {
+        expect(written.error.code).toBe('INVALID_INPUT');
+        expect(written.error.context.table).toBe('session_seats');
+        expect(written.error.context.expected).toBe('100000');
+        expect(written.error.context.actual).toBe('40000');
+      }
+      // The refusal happens before the transaction opens: NOTHING was written.
+      expect(handle.sqlite.prepare(`select count(*) as n from sessions`).get()).toEqual({ n: 0 });
+
+      unwrap(insert());
+      const updated = sessionRepository.updateSessionSeatAutoTopUp(handle.db, SESSION, 2, bad);
+      expect(updated.ok).toBe(false);
+      if (!updated.ok) expect(updated.error.code).toBe('INVALID_INPUT');
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.seatAutoTopUp).toEqual({});
+    });
+
+    it('reports NOT_FOUND for a session that does not exist, rather than affecting 0 rows', () => {
+      const missing = sessionRepository.updateSessionSeatAutoTopUp(
+        handle.db,
+        asId<'Session'>('ghost') as SessionId,
+        3,
+        at(100_000),
+      );
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) expect(missing.error.code).toBe('NOT_FOUND');
+    });
+
+    it('reports NOT_FOUND for a seat row that is not there', () => {
+      unwrap(insert());
+      // All six rows always exist, so this can only happen to a database corrupted by
+      // other means — and it must still be an error rather than a silent no-op.
+      handle.sqlite.prepare(`delete from session_seats where seat = 5`).run();
+      const missing = sessionRepository.updateSessionSeatAutoTopUp(handle.db, SESSION, 5, null);
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) {
+        expect(missing.error.code).toBe('NOT_FOUND');
+        expect(missing.error.context.actual).toBe('5');
+      }
+    });
+
+    it('REJECTS a bad per-seat value AT THE CONSTRAINT', () => {
+      unwrap(insert());
+      expect(() =>
+        handle.sqlite
+          .prepare(
+            `update session_seats set auto_top_up_enabled = 1, auto_top_up_target_stack = 93701.5 where seat = 0`,
+          )
+          .run(),
+      ).toThrow(/CHECK constraint failed: session_seats_auto_top_up_target_stack_range/u);
+      expect(() =>
+        handle.sqlite
+          .prepare(`update session_seats set auto_top_up_enabled = 1 where seat = 0`)
+          .run(),
+      ).toThrow(/CHECK constraint failed: session_seats_auto_top_up_pair/u);
+      expect(() =>
+        handle.sqlite
+          .prepare(
+            `update session_seats set auto_top_up_enabled = 2, auto_top_up_target_stack = 100000 where seat = 0`,
+          )
+          .run(),
+      ).toThrow(/CHECK constraint failed: session_seats_auto_top_up_enabled_boolean/u);
+    });
+
+    it('reports a corrupt row when a seat holds a HALF-WRITTEN policy', () => {
+      unwrap(insert());
+      handle.sqlite.prepare(`pragma ignore_check_constraints = ON`).run();
+      handle.sqlite
+        .prepare(`update session_seats set auto_top_up_enabled = 1 where seat = 0`)
+        .run();
+      handle.sqlite.prepare(`pragma ignore_check_constraints = OFF`).run();
+      const loaded = sessionRepository.getSession(handle.db, SESSION);
+      expect(loaded.ok).toBe(false);
+      if (!loaded.ok) {
+        expect(loaded.error.code).toBe('CORRUPT_ROW');
+        expect(loaded.error.context.table).toBe('session_seats');
+      }
     });
   });
 });

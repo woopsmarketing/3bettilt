@@ -6,6 +6,8 @@
  * 1. **React computes no poker fact.** Which cards are needed, how many, and which cards
  *    are dead are all read off the engine's own projection (`prompt` D2). The functions
  *    here only *route* those facts; they never derive a street, a count or a dead card.
+ *    The one input that is not a view field is `revealSeat`: which opponent showed is a
+ *    user observation, so it is passed in explicitly and never inferred from the view.
  * 2. **No card is built from a raw integer.** `makeCard(rank, suit)` is the only
  *    constructor, and `PALETTE_RANKS` / `PALETTE_SUITS` are `shared`'s own orderings.
  * 3. **Pure and React-free**, so the lifecycle rules in `docs/UX.md` ("Card input") are
@@ -31,6 +33,14 @@ export type CardEntryRequest =
       readonly label: string;
     }
   | {
+      /** An opponent's SHOWN hand at showdown. Asked for only when the user asks. */
+      readonly kind: 'REVEAL';
+      readonly key: string;
+      readonly seat: SeatIndex;
+      readonly count: 2;
+      readonly label: string;
+    }
+  | {
       readonly kind: 'BOARD';
       readonly key: string;
       readonly street: PostflopStreet;
@@ -46,12 +56,20 @@ export type CardEntryRequest =
  * hand is live and they are unset — which is exactly `docs/UX.md`'s
  * `NEW HAND -> ... -> Hero hole cards -> PREFLOP`, and is why there is no "deal" button.
  *
+ * `revealSeat` is the ONE thing the engine cannot answer: which opponent the user says
+ * showed a hand. It is an explicit user choice made in `AwardPanel`, held above both that
+ * panel and the palette, and passed in here — it is never inferred from the view, and
+ * `null` (the usual case) leaves HERO and BOARD entry exactly as they were. A reveal is
+ * asked for only at `AWAITING_AWARD`, only for a seat the engine dealt in, and only while
+ * that seat's cards are still unknown.
+ *
  * Returning `null` is what closes the palette: the second hole card, or the third flop
  * card, changes engine state, which changes this answer.
  */
 export function cardEntryRequest(
   view: HandView | null,
   heroSeat: SeatIndex | null,
+  revealSeat: SeatIndex | null = null,
 ): CardEntryRequest | null {
   if (view === null) return null;
 
@@ -66,9 +84,29 @@ export function cardEntryRequest(
     };
   }
 
+  if (
+    revealSeat !== null &&
+    view.phase.kind === 'AWAITING_AWARD' &&
+    view.dealtInSeats.includes(revealSeat) &&
+    view.seats[revealSeat].holeCards.length < 2
+  ) {
+    // `position` is read off the view, never worked out here (`prompt` D2).
+    const position = view.seats[revealSeat].position;
+    const who =
+      position === null ? `seat ${revealSeat + 1}` : `${position} (seat ${revealSeat + 1})`;
+    return {
+      kind: 'REVEAL',
+      key: `${view.handNumber}:REVEAL:${revealSeat}`,
+      seat: revealSeat,
+      count: 2,
+      label: `${who} shown cards`,
+    };
+  }
+
   if (heroSeat === null) return null;
   // Only while the hand can still use them. At AWAITING_AWARD/COMPLETE the hero's hand is
-  // over, and Phase 7 does not build a showdown reveal flow.
+  // over; a card entered there is a SHOWDOWN REVEAL, which is the branch above and asks
+  // only for the seat the user explicitly nominated.
   if (view.phase.kind !== 'AWAITING_ACTION' && view.phase.kind !== 'SETUP') return null;
   if (!view.dealtInSeats.includes(heroSeat)) return null;
   if (view.seats[heroSeat].holeCards.length >= 2) return null;
@@ -83,13 +121,22 @@ export function cardEntryRequest(
 }
 
 /**
- * Total. The command a completed selection dispatches. `revealed: false` is the hero's
- * own entry, not a showdown reveal (`events.ts`).
+ * Total. The command a completed selection dispatches.
+ *
+ * `revealed` is the difference between the two hole-card requests and nothing else: the
+ * hero's own entry is private knowledge (`false`), while a REVEAL is a hand the user saw
+ * an opponent table at showdown (`true`) — the flag `HOLE_CARDS_SET` carries in
+ * `events.ts`.
  */
 export function commandForCards(request: CardEntryRequest, cards: readonly Card[]): HandCommand {
-  return request.kind === 'HERO'
-    ? { kind: 'SET_HOLE_CARDS', seat: request.seat, cards, revealed: false }
-    : { kind: 'DEAL_BOARD', cards };
+  switch (request.kind) {
+    case 'HERO':
+      return { kind: 'SET_HOLE_CARDS', seat: request.seat, cards, revealed: false };
+    case 'REVEAL':
+      return { kind: 'SET_HOLE_CARDS', seat: request.seat, cards, revealed: true };
+    case 'BOARD':
+      return { kind: 'DEAL_BOARD', cards };
+  }
 }
 
 const RANK_BY_KEY = new Map<string, Rank>(PALETTE_RANKS.map((rank) => [rank.toLowerCase(), rank]));

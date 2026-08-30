@@ -17,6 +17,13 @@
  * The server actions arrive as PROPS rather than imports: a `'use server'` module reaches
  * `@gto-self/db` and a native SQLite binding, which must never be reachable from a client
  * bundle or from this component's test.
+ *
+ * **Language.** Every string this component writes is Korean. A `FormIssue.message` is NOT
+ * one of those strings: it is produced by `lib/session-setup/plan.ts`, by `Money.parseBB`
+ * or by `poker-core` itself, it embeds the value the user actually typed, and it arrives
+ * with the originating domain `code`. Both are rendered VERBATIM, with only the framing
+ * around them translated — `CLAUDE.md` rule 3 is that the user sees the domain's own
+ * verdict, not a paraphrase of it.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Money } from '@gto-self/shared';
@@ -50,21 +57,38 @@ export interface SessionSetupFormProps {
   readonly initialForm?: SessionFormValue;
 }
 
+/**
+ * Every label below that comes from a union is an exhaustive `Record<Union, string>`, so a
+ * new occupancy state, HUD stat or match kind is a COMPILE error here rather than a string
+ * that silently renders in English.
+ */
 const OCCUPANCY_LABEL: Readonly<Record<SeatOccupancyChoice, string>> = {
-  ACTIVE: 'Active',
-  SITTING_OUT: 'Sitting out',
-  EMPTY: 'Empty',
+  ACTIVE: '참여',
+  SITTING_OUT: '자리 비움',
+  EMPTY: '빈 좌석',
 };
 
+/**
+ * HUD stat names stay in their international abbreviated form — `VPIP`, `PFR`, `3BET`,
+ * `WTSD`, `W$SD` and `CBET` are what every HUD prints and what the user reads off one.
+ * Only the spelled-out English parts become Korean.
+ */
 const HUD_LABEL: Readonly<Record<HudStatKey, string>> = {
   VPIP: 'VPIP',
   PFR: 'PFR',
-  THREE_BET: '3-bet',
-  FOLD_TO_THREE_BET: 'Fold to 3-bet',
-  CBET_FLOP: 'C-bet flop',
-  FOLD_TO_CBET_FLOP: 'Fold to c-bet',
+  THREE_BET: '3BET',
+  FOLD_TO_THREE_BET: '3BET 폴드',
+  CBET_FLOP: '플랍 CBET',
+  FOLD_TO_CBET_FLOP: 'CBET 폴드',
   WTSD: 'WTSD',
   WON_AT_SHOWDOWN: 'W$SD',
+};
+
+/** How closely a suggested player matched what was typed. */
+const MATCH_KIND_LABEL: Readonly<Record<PlayerMatch['kind'], string>> = {
+  EXACT: '정확히 일치',
+  PREFIX: '앞부분 일치',
+  SUBSTRING: '부분 일치',
 };
 
 /** The MVP target: CoinPoker-style NL50 6-max with the ante on. */
@@ -158,7 +182,7 @@ export function SessionSetupForm({
         {
           seat: null,
           field: 'form',
-          message: `the session could not be started: ${error instanceof Error ? error.message : String(error)}`,
+          message: `세션을 시작하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`,
           code: null,
         },
       ]);
@@ -173,19 +197,18 @@ export function SessionSetupForm({
 
   return (
     <form onSubmit={(event) => void submit(event)} className="mx-auto max-w-5xl px-6 py-10">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">New session</h1>
+      <header className="mb-5">
+        <h1 className="text-2xl font-semibold tracking-tight">새 세션</h1>
         <p className="mt-1 text-sm text-ink-500">
-          Configure the table you are going to practise on. Nothing here is connected to a poker
-          client.
+          연습할 테이블을 설정합니다. 어떤 포커 클라이언트와도 연결되지 않습니다.
         </p>
       </header>
 
       <section className="mb-6 rounded-lg border border-surface-700 bg-surface-800 p-4">
-        <h2 className="mb-3 text-xs font-medium uppercase tracking-widest text-ink-500">Game</h2>
+        <h2 className="mb-3 text-xs font-medium uppercase tracking-widest text-ink-500">게임</h2>
         <div className="grid grid-cols-[minmax(0,20rem)_auto_minmax(0,1fr)] items-end gap-4">
           <label className="block text-sm">
-            <span className="mb-1 block text-ink-300">Preset</span>
+            <span className="mb-1 block text-ink-300">프리셋</span>
             <select
               className={field}
               value={form.presetId}
@@ -213,21 +236,22 @@ export function SessionSetupForm({
               onChange={(event) => update({ ...form, anteEnabled: event.target.checked })}
             />
             <span>
-              Ante
+              앤티
               {preset !== undefined && (
                 <span className="tabular ml-2 text-ink-500">
-                  {Money.formatBB(preset.ante.amount, { maxDecimals: 3, unit: true })} / player
+                  {Money.formatBB(preset.ante.amount, { maxDecimals: 3, unit: true })} / 인
                 </span>
               )}
             </span>
           </label>
 
           <label className="block text-sm">
-            <span className="mb-1 block text-ink-300">Label (optional)</span>
+            <span className="mb-1 block text-ink-300">세션 이름 (선택)</span>
             <input
               className={field}
+              data-testid="setup-label"
               value={form.label}
-              placeholder="Tuesday grind"
+              placeholder="화요일 연습"
               onChange={(event) => update({ ...form, label: event.target.value })}
             />
           </label>
@@ -235,21 +259,21 @@ export function SessionSetupForm({
 
         {preset !== undefined && (
           <p className="tabular mt-3 text-xs text-ink-500">
-            Blinds {Money.formatBB(preset.blinds.smallBlind)} /{' '}
-            {Money.formatBB(preset.blinds.bigBlind)} BB · reference stack{' '}
+            블라인드 {Money.formatBB(preset.blinds.smallBlind)} /{' '}
+            {Money.formatBB(preset.blinds.bigBlind)} BB · 기준 스택{' '}
             {Money.formatBB(preset.referenceStack, { unit: true })}
           </p>
         )}
       </section>
 
       <section className="mb-6 rounded-lg border border-surface-700 bg-surface-800 p-4">
-        <h2 className="mb-3 text-xs font-medium uppercase tracking-widest text-ink-500">Seats</h2>
+        <h2 className="mb-3 text-xs font-medium uppercase tracking-widest text-ink-500">좌석</h2>
         <div className="grid grid-cols-[3rem_9rem_minmax(0,1fr)_7rem_3.5rem_3.5rem] items-center gap-3 pb-2 text-xs uppercase tracking-wider text-ink-700">
-          <span>Seat</span>
-          <span>Occupancy</span>
-          <span>Player</span>
-          <span>Stack (BB)</span>
-          <span className="text-center">Hero</span>
+          <span>좌석</span>
+          <span>상태</span>
+          <span>플레이어</span>
+          <span>스택 (BB)</span>
+          <span className="text-center">내 좌석</span>
           <span className="text-center">BTN</span>
         </div>
 
@@ -266,7 +290,8 @@ export function SessionSetupForm({
                   <span className="tabular text-sm text-ink-500">{seat + 1}</span>
 
                   <select
-                    aria-label={`Seat ${seat + 1} occupancy`}
+                    aria-label={`좌석 ${seat + 1} 상태`}
+                    data-testid={`setup-seat-${seat}-occupancy`}
                     className={field}
                     value={value.occupancy}
                     onChange={(event) =>
@@ -285,12 +310,13 @@ export function SessionSetupForm({
 
                   <div className="relative">
                     <input
-                      aria-label={`Seat ${seat + 1} nickname`}
+                      aria-label={`좌석 ${seat + 1} 닉네임`}
+                      data-testid={`setup-seat-${seat}-nickname`}
                       className={field}
                       autoComplete="off"
                       disabled={disabled}
                       value={value.nickname}
-                      placeholder="nickname"
+                      placeholder="닉네임"
                       onFocus={() => setSuggestSeat(seat)}
                       onBlur={() => window.setTimeout(() => setSuggestSeat(null), 150)}
                       onChange={(event) =>
@@ -300,7 +326,7 @@ export function SessionSetupForm({
                       }
                     />
                     {value.existingPlayerId !== null && (
-                      <span className="absolute right-2 top-1.5 text-xs text-good-500">known</span>
+                      <span className="absolute right-2 top-1.5 text-xs text-good-500">등록됨</span>
                     )}
                     {suggestSeat === seat && suggestQuery !== '' && (
                       <div className="absolute z-10 mt-1 w-full rounded border border-surface-600 bg-surface-900 shadow-lg">
@@ -309,7 +335,7 @@ export function SessionSetupForm({
                         )}
                         {searchError === null && matches.length === 0 && (
                           <p className="px-2 py-1 text-xs text-ink-700">
-                            no existing player matches — a new one will be created
+                            일치하는 기존 플레이어가 없습니다 — 새로 만들어집니다
                           </p>
                         )}
                         {matches.map((match) => (
@@ -328,7 +354,7 @@ export function SessionSetupForm({
                           >
                             {match.nickname}
                             <span className="ml-2 text-xs text-ink-700">
-                              {match.kind.toLowerCase()}
+                              {MATCH_KIND_LABEL[match.kind]}
                             </span>
                           </button>
                         ))}
@@ -338,7 +364,8 @@ export function SessionSetupForm({
 
                   <div>
                     <input
-                      aria-label={`Seat ${seat + 1} stack in BB`}
+                      aria-label={`좌석 ${seat + 1} 스택 (BB)`}
+                      data-testid={`setup-seat-${seat}-stack`}
                       className={`${field} tabular`}
                       inputMode="decimal"
                       autoComplete="off"
@@ -357,7 +384,8 @@ export function SessionSetupForm({
                     <input
                       type="radio"
                       name="heroSeat"
-                      aria-label={`Seat ${seat + 1} is Hero`}
+                      aria-label={`좌석 ${seat + 1} 내 좌석`}
+                      data-testid={`setup-seat-${seat}-hero`}
                       disabled={disabled}
                       checked={value.isHero}
                       onChange={() =>
@@ -376,7 +404,8 @@ export function SessionSetupForm({
                     <input
                       type="radio"
                       name="buttonSeat"
-                      aria-label={`Seat ${seat + 1} has the button`}
+                      aria-label={`좌석 ${seat + 1} BTN`}
+                      data-testid={`setup-seat-${seat}-button`}
                       disabled={disabled}
                       checked={form.buttonSeat === seat}
                       onChange={() => update({ ...form, buttonSeat: seat })}
@@ -386,9 +415,7 @@ export function SessionSetupForm({
 
                 {!disabled && (
                   <details className="mt-1 ml-[12rem] text-xs text-ink-500">
-                    <summary className="cursor-pointer select-none">
-                      HUD snapshot (optional)
-                    </summary>
+                    <summary className="cursor-pointer select-none">HUD 스냅샷 (선택)</summary>
                     <div className="mt-2 grid grid-cols-4 gap-2">
                       {HUD_STAT_KEYS.map((key) => (
                         <label key={key} className="block">
@@ -396,7 +423,7 @@ export function SessionSetupForm({
                             {HUD_LABEL[key]} %
                           </span>
                           <input
-                            aria-label={`Seat ${seat + 1} ${HUD_LABEL[key]}`}
+                            aria-label={`좌석 ${seat + 1} ${HUD_LABEL[key]}`}
                             className={`${field} tabular`}
                             autoComplete="off"
                             value={value.hud[key] ?? ''}
@@ -407,9 +434,9 @@ export function SessionSetupForm({
                         </label>
                       ))}
                       <label className="block">
-                        <span className="mb-0.5 block text-[11px] text-ink-700">HUD hands</span>
+                        <span className="mb-0.5 block text-[11px] text-ink-700">HUD 핸드 수</span>
                         <input
-                          aria-label={`Seat ${seat + 1} HUD hands`}
+                          aria-label={`좌석 ${seat + 1} HUD 핸드 수`}
                           className={`${field} tabular`}
                           autoComplete="off"
                           value={value.hudHandsText}
@@ -420,17 +447,20 @@ export function SessionSetupForm({
                       </label>
                     </div>
                     <p className="mt-2 text-[11px] text-ink-700">
-                      What a third-party HUD displayed, as you typed it. Never required, never
-                      averaged with anything we counted ourselves.
+                      서드파티 HUD에 표시되던 값을 입력한 그대로 저장합니다. 필수 아님. 우리가 직접
+                      센 관측치와 섞이지 않습니다.
                     </p>
                   </details>
                 )}
 
+                {/* Rule 3: the domain's own message and code are shown VERBATIM. Only the
+                    framing around them is ours to write. */}
                 {rowIssues.map((entry) => (
                   <p
                     key={`${entry.field}-${entry.message}`}
                     className="mt-1 ml-[12rem] text-xs text-danger-500"
                   >
+                    <span className="mr-1 text-ink-500">문제:</span>
                     {entry.message}
                     {entry.code !== null && <span className="ml-2 text-ink-700">{entry.code}</span>}
                   </p>
@@ -443,7 +473,7 @@ export function SessionSetupForm({
 
       <section className="mb-6 rounded-lg border border-surface-700 bg-surface-800 p-4">
         <h2 className="mb-3 text-xs font-medium uppercase tracking-widest text-ink-500">
-          Auto top-up
+          자동 리바이
         </h2>
         <div className="flex items-end gap-6">
           <label className="flex items-center gap-2 pb-1 text-sm text-ink-300">
@@ -452,12 +482,13 @@ export function SessionSetupForm({
               checked={form.autoTopUpEnabled}
               onChange={(event) => update({ ...form, autoTopUpEnabled: event.target.checked })}
             />
-            Top short stacks back up between hands
+            핸드 사이에 짧아진 스택을 목표치까지 채웁니다
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-ink-300">Target stack (BB)</span>
+            <span className="mb-1 block text-ink-300">목표 스택 (BB)</span>
             <input
-              aria-label="Auto top-up target stack in BB"
+              aria-label="자동 리바이 목표 스택 (BB)"
+              data-testid="setup-autotopup-target"
               className={`${field} tabular w-40`}
               inputMode="decimal"
               disabled={!form.autoTopUpEnabled}
@@ -467,8 +498,7 @@ export function SessionSetupForm({
           </label>
         </div>
         <p className="mt-2 text-xs text-ink-700">
-          Phase 4 stores the target only; the separate top-up threshold arrives with the observe /
-          dirty-stack flow.
+          지금은 목표치만 저장합니다. 별도의 리바이 기준선은 관찰 / 더티 스택 단계에서 들어옵니다.
         </p>
       </section>
 
@@ -476,24 +506,25 @@ export function SessionSetupForm({
         <button
           type="submit"
           disabled={!preview.ok || submitting}
+          data-testid="setup-submit"
           className="rounded bg-hero-500 px-4 py-2 text-sm font-medium text-surface-900 disabled:cursor-not-allowed disabled:bg-surface-600 disabled:text-ink-700"
           aria-describedby="start-session-reason"
         >
-          {submitting ? 'Starting…' : 'Start Session'}
+          {submitting ? '시작하는 중…' : '세션 시작'}
         </button>
         <div id="start-session-reason" className="text-sm">
           {blockingIssue === undefined ? (
             <span className="text-ink-500">
               {preview.ok
-                ? `${preview.table.config.label} · ${
+                ? `${preview.table.config.label} · 참여 좌석 ${
                     SEAT_INDEXES.filter((seat) => form.seats[seat]?.occupancy === 'ACTIVE').length
-                  } active seats`
+                  }개`
                 : ''}
             </span>
           ) : (
             <span className="text-danger-500">
               {blockingIssue.seat !== null && isSeatIndex(blockingIssue.seat)
-                ? `Seat ${blockingIssue.seat + 1}: `
+                ? `좌석 ${blockingIssue.seat + 1}: `
                 : ''}
               {blockingIssue.message}
             </span>

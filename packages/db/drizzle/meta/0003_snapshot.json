@@ -1,0 +1,1227 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "3f0a6a2e-2b1c-4a53-9f5d-6c8b2e7a4d19",
+  "prevId": "1766313e-a494-47db-85dd-96c7332521e3",
+  "tables": {
+    "game_presets": {
+      "name": "game_presets",
+      "columns": {
+        "preset_id": {
+          "name": "preset_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "config_json": {
+          "name": "config_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "game_presets_preset_id_not_empty": {
+          "name": "game_presets_preset_id_not_empty",
+          "value": "length(\"game_presets\".\"preset_id\") > 0"
+        },
+        "game_presets_created_at_range": {
+          "name": "game_presets_created_at_range",
+          "value": "typeof(\"game_presets\".\"created_at\") = 'integer' and \"game_presets\".\"created_at\" >= 0 and \"game_presets\".\"created_at\" <= 32503680000000"
+        },
+        "game_presets_updated_at_range": {
+          "name": "game_presets_updated_at_range",
+          "value": "typeof(\"game_presets\".\"updated_at\") = 'integer' and \"game_presets\".\"updated_at\" >= 0 and \"game_presets\".\"updated_at\" <= 32503680000000"
+        },
+        "game_presets_updated_not_before_created": {
+          "name": "game_presets_updated_not_before_created",
+          "value": "\"game_presets\".\"updated_at\" >= \"game_presets\".\"created_at\""
+        }
+      }
+    },
+    "hand_events": {
+      "name": "hand_events",
+      "columns": {
+        "hand_id": {
+          "name": "hand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "command_seq": {
+          "name": "command_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_json": {
+          "name": "payload_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "hand_events_hand_event_id_unique": {
+          "name": "hand_events_hand_event_id_unique",
+          "columns": [
+            "hand_id",
+            "event_id"
+          ],
+          "isUnique": true
+        },
+        "hand_events_command_idx": {
+          "name": "hand_events_command_idx",
+          "columns": [
+            "hand_id",
+            "command_seq",
+            "seq"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "hand_events_hand_id_hands_id_fk": {
+          "name": "hand_events_hand_id_hands_id_fk",
+          "tableFrom": "hand_events",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "hand_events_pk": {
+          "columns": [
+            "hand_id",
+            "seq"
+          ],
+          "name": "hand_events_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "hand_events_seq_non_negative": {
+          "name": "hand_events_seq_non_negative",
+          "value": "\"hand_events\".\"seq\" >= 0"
+        },
+        "hand_events_command_seq_non_negative": {
+          "name": "hand_events_command_seq_non_negative",
+          "value": "\"hand_events\".\"command_seq\" >= 0"
+        },
+        "hand_events_origin": {
+          "name": "hand_events_origin",
+          "value": "\"hand_events\".\"origin\" in ('USER', 'ENGINE')"
+        },
+        "hand_events_kind_not_empty": {
+          "name": "hand_events_kind_not_empty",
+          "value": "length(\"hand_events\".\"kind\") > 0"
+        },
+        "hand_events_event_id_not_empty": {
+          "name": "hand_events_event_id_not_empty",
+          "value": "length(\"hand_events\".\"event_id\") > 0"
+        }
+      }
+    },
+    "hand_players": {
+      "name": "hand_players",
+      "columns": {
+        "hand_id": {
+          "name": "hand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seat": {
+          "name": "seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "starting_stack": {
+          "name": "starting_stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "hand_players_player_idx": {
+          "name": "hand_players_player_idx",
+          "columns": [
+            "player_id",
+            "hand_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "hand_players_hand_id_hands_id_fk": {
+          "name": "hand_players_hand_id_hands_id_fk",
+          "tableFrom": "hand_players",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        },
+        "hand_players_player_id_players_id_fk": {
+          "name": "hand_players_player_id_players_id_fk",
+          "tableFrom": "hand_players",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "hand_players_pk": {
+          "columns": [
+            "hand_id",
+            "seat"
+          ],
+          "name": "hand_players_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "hand_players_seat_range": {
+          "name": "hand_players_seat_range",
+          "value": "\"hand_players\".\"seat\" >= 0 and \"hand_players\".\"seat\" <= 5"
+        },
+        "hand_players_starting_stack_positive": {
+          "name": "hand_players_starting_stack_positive",
+          "value": "\"hand_players\".\"starting_stack\" > 0"
+        },
+        "hand_players_starting_stack_range": {
+          "name": "hand_players_starting_stack_range",
+          "value": "typeof(\"hand_players\".\"starting_stack\") = 'integer' and \"hand_players\".\"starting_stack\" >= -1000000000 and \"hand_players\".\"starting_stack\" <= 1000000000"
+        }
+      }
+    },
+    "hands": {
+      "name": "hands",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_number": {
+          "name": "hand_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "hands_session_hand_number_unique": {
+          "name": "hands_session_hand_number_unique",
+          "columns": [
+            "session_id",
+            "hand_number"
+          ],
+          "isUnique": true
+        },
+        "hands_session_started_idx": {
+          "name": "hands_session_started_idx",
+          "columns": [
+            "session_id",
+            "started_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "hands_session_id_sessions_id_fk": {
+          "name": "hands_session_id_sessions_id_fk",
+          "tableFrom": "hands",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "hands_hand_number_non_negative": {
+          "name": "hands_hand_number_non_negative",
+          "value": "\"hands\".\"hand_number\" >= 0"
+        },
+        "hands_started_at_range": {
+          "name": "hands_started_at_range",
+          "value": "typeof(\"hands\".\"started_at\") = 'integer' and \"hands\".\"started_at\" >= 0 and \"hands\".\"started_at\" <= 32503680000000"
+        },
+        "hands_finished_at_range": {
+          "name": "hands_finished_at_range",
+          "value": "\"hands\".\"finished_at\" is null or (typeof(\"hands\".\"finished_at\") = 'integer' and \"hands\".\"finished_at\" >= \"hands\".\"started_at\" and \"hands\".\"finished_at\" <= 32503680000000)"
+        }
+      }
+    },
+    "player_hud_snapshot_stats": {
+      "name": "player_hud_snapshot_stats",
+      "columns": {
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stat_key": {
+          "name": "stat_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entered_text": {
+          "name": "entered_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value_centipercent": {
+          "name": "value_centipercent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_hud_snapshot_stats_ordinal_unique": {
+          "name": "player_hud_snapshot_stats_ordinal_unique",
+          "columns": [
+            "snapshot_id",
+            "ordinal"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "player_hud_snapshot_stats_snapshot_id_player_hud_snapshots_id_fk": {
+          "name": "player_hud_snapshot_stats_snapshot_id_player_hud_snapshots_id_fk",
+          "tableFrom": "player_hud_snapshot_stats",
+          "tableTo": "player_hud_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_hud_snapshot_stats_pk": {
+          "columns": [
+            "snapshot_id",
+            "stat_key"
+          ],
+          "name": "player_hud_snapshot_stats_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_hud_snapshot_stats_key": {
+          "name": "player_hud_snapshot_stats_key",
+          "value": "\"player_hud_snapshot_stats\".\"stat_key\" in ('VPIP', 'PFR', 'THREE_BET', 'FOLD_TO_THREE_BET', 'CBET_FLOP', 'FOLD_TO_CBET_FLOP', 'WTSD', 'WON_AT_SHOWDOWN')"
+        },
+        "player_hud_snapshot_stats_entered_text_not_empty": {
+          "name": "player_hud_snapshot_stats_entered_text_not_empty",
+          "value": "length(\"player_hud_snapshot_stats\".\"entered_text\") > 0"
+        },
+        "player_hud_snapshot_stats_value_range": {
+          "name": "player_hud_snapshot_stats_value_range",
+          "value": "typeof(\"player_hud_snapshot_stats\".\"value_centipercent\") = 'integer' and \"player_hud_snapshot_stats\".\"value_centipercent\" >= 0 and \"player_hud_snapshot_stats\".\"value_centipercent\" <= 10000"
+        },
+        "player_hud_snapshot_stats_ordinal_non_negative": {
+          "name": "player_hud_snapshot_stats_ordinal_non_negative",
+          "value": "\"player_hud_snapshot_stats\".\"ordinal\" >= 0"
+        }
+      }
+    },
+    "player_hud_snapshots": {
+      "name": "player_hud_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_sample": {
+          "name": "hand_sample",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_hud_snapshots_player_recorded_idx": {
+          "name": "player_hud_snapshots_player_recorded_idx",
+          "columns": [
+            "player_id",
+            "recorded_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "player_hud_snapshots_player_id_players_id_fk": {
+          "name": "player_hud_snapshots_player_id_players_id_fk",
+          "tableFrom": "player_hud_snapshots",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_hud_snapshots_source": {
+          "name": "player_hud_snapshots_source",
+          "value": "\"player_hud_snapshots\".\"source\" = 'MANUAL_HUD_ENTRY'"
+        },
+        "player_hud_snapshots_recorded_at_range": {
+          "name": "player_hud_snapshots_recorded_at_range",
+          "value": "typeof(\"player_hud_snapshots\".\"recorded_at\") = 'integer' and \"player_hud_snapshots\".\"recorded_at\" >= 0 and \"player_hud_snapshots\".\"recorded_at\" <= 32503680000000"
+        },
+        "player_hud_snapshots_hand_sample_range": {
+          "name": "player_hud_snapshots_hand_sample_range",
+          "value": "\"player_hud_snapshots\".\"hand_sample\" is null or (typeof(\"player_hud_snapshots\".\"hand_sample\") = 'integer' and \"player_hud_snapshots\".\"hand_sample\" >= 0 and \"player_hud_snapshots\".\"hand_sample\" <= 100000000)"
+        }
+      }
+    },
+    "player_notes": {
+      "name": "player_notes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "root_id": {
+          "name": "root_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "supersedes_id": {
+          "name": "supersedes_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_notes_player_created_idx": {
+          "name": "player_notes_player_created_idx",
+          "columns": [
+            "player_id",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "player_notes_root_created_idx": {
+          "name": "player_notes_root_created_idx",
+          "columns": [
+            "root_id",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "player_notes_supersedes_unique": {
+          "name": "player_notes_supersedes_unique",
+          "columns": [
+            "supersedes_id"
+          ],
+          "isUnique": true,
+          "where": "\"player_notes\".\"supersedes_id\" is not null"
+        }
+      },
+      "foreignKeys": {
+        "player_notes_player_id_players_id_fk": {
+          "name": "player_notes_player_id_players_id_fk",
+          "tableFrom": "player_notes",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_notes_root_id_player_notes_id_fk": {
+          "name": "player_notes_root_id_player_notes_id_fk",
+          "tableFrom": "player_notes",
+          "tableTo": "player_notes",
+          "columnsFrom": [
+            "root_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_notes_supersedes_id_player_notes_id_fk": {
+          "name": "player_notes_supersedes_id_player_notes_id_fk",
+          "tableFrom": "player_notes",
+          "tableTo": "player_notes",
+          "columnsFrom": [
+            "supersedes_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_notes_body_not_empty": {
+          "name": "player_notes_body_not_empty",
+          "value": "length(\"player_notes\".\"body\") > 0"
+        },
+        "player_notes_body_max_length": {
+          "name": "player_notes_body_max_length",
+          "value": "length(\"player_notes\".\"body\") <= 4000"
+        },
+        "player_notes_created_at_range": {
+          "name": "player_notes_created_at_range",
+          "value": "typeof(\"player_notes\".\"created_at\") = 'integer' and \"player_notes\".\"created_at\" >= 0 and \"player_notes\".\"created_at\" <= 32503680000000"
+        },
+        "player_notes_root_chain": {
+          "name": "player_notes_root_chain",
+          "value": "(\"player_notes\".\"supersedes_id\" is null and \"player_notes\".\"root_id\" = \"player_notes\".\"id\") or (\"player_notes\".\"supersedes_id\" is not null and \"player_notes\".\"root_id\" <> \"player_notes\".\"id\")"
+        },
+        "player_notes_no_self_supersede": {
+          "name": "player_notes_no_self_supersede",
+          "value": "\"player_notes\".\"supersedes_id\" is null or \"player_notes\".\"supersedes_id\" <> \"player_notes\".\"id\""
+        }
+      }
+    },
+    "player_observations": {
+      "name": "player_observations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "metric": {
+          "name": "metric",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "opportunities": {
+          "name": "opportunities",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actions": {
+          "name": "actions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "first_observed_at": {
+          "name": "first_observed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_observed_at": {
+          "name": "last_observed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_observations_context_unique": {
+          "name": "player_observations_context_unique",
+          "columns": [
+            "player_id",
+            "metric",
+            "position"
+          ],
+          "isUnique": true,
+          "where": "\"player_observations\".\"position\" is not null"
+        },
+        "player_observations_context_null_position_unique": {
+          "name": "player_observations_context_null_position_unique",
+          "columns": [
+            "player_id",
+            "metric"
+          ],
+          "isUnique": true,
+          "where": "\"player_observations\".\"position\" is null"
+        }
+      },
+      "foreignKeys": {
+        "player_observations_player_id_players_id_fk": {
+          "name": "player_observations_player_id_players_id_fk",
+          "tableFrom": "player_observations",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_observations_metric": {
+          "name": "player_observations_metric",
+          "value": "\"player_observations\".\"metric\" in ('VPIP', 'PFR', 'THREE_BET', 'FOLD_TO_THREE_BET')"
+        },
+        "player_observations_position": {
+          "name": "player_observations_position",
+          "value": "\"player_observations\".\"position\" is null or \"player_observations\".\"position\" in ('UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB')"
+        },
+        "player_observations_opportunities_range": {
+          "name": "player_observations_opportunities_range",
+          "value": "typeof(\"player_observations\".\"opportunities\") = 'integer' and \"player_observations\".\"opportunities\" >= 0 and \"player_observations\".\"opportunities\" <= 100000000"
+        },
+        "player_observations_actions_range": {
+          "name": "player_observations_actions_range",
+          "value": "typeof(\"player_observations\".\"actions\") = 'integer' and \"player_observations\".\"actions\" >= 0 and \"player_observations\".\"actions\" <= 100000000"
+        },
+        "player_observations_actions_within_opportunities": {
+          "name": "player_observations_actions_within_opportunities",
+          "value": "\"player_observations\".\"actions\" <= \"player_observations\".\"opportunities\""
+        },
+        "player_observations_first_observed_range": {
+          "name": "player_observations_first_observed_range",
+          "value": "typeof(\"player_observations\".\"first_observed_at\") = 'integer' and \"player_observations\".\"first_observed_at\" >= 0 and \"player_observations\".\"first_observed_at\" <= 32503680000000"
+        },
+        "player_observations_last_observed_range": {
+          "name": "player_observations_last_observed_range",
+          "value": "typeof(\"player_observations\".\"last_observed_at\") = 'integer' and \"player_observations\".\"last_observed_at\" >= 0 and \"player_observations\".\"last_observed_at\" <= 32503680000000"
+        },
+        "player_observations_last_not_before_first": {
+          "name": "player_observations_last_not_before_first",
+          "value": "\"player_observations\".\"last_observed_at\" >= \"player_observations\".\"first_observed_at\""
+        }
+      }
+    },
+    "players": {
+      "name": "players",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "nickname": {
+          "name": "nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "normalized_nickname": {
+          "name": "normalized_nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_alias": {
+          "name": "display_alias",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived": {
+          "name": "archived",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "players_normalized_nickname_unique": {
+          "name": "players_normalized_nickname_unique",
+          "columns": [
+            "normalized_nickname"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "players_id_not_empty": {
+          "name": "players_id_not_empty",
+          "value": "length(\"players\".\"id\") > 0"
+        },
+        "players_nickname_not_empty": {
+          "name": "players_nickname_not_empty",
+          "value": "length(\"players\".\"nickname\") > 0"
+        },
+        "players_normalized_not_empty": {
+          "name": "players_normalized_not_empty",
+          "value": "length(\"players\".\"normalized_nickname\") > 0"
+        },
+        "players_display_alias_not_empty": {
+          "name": "players_display_alias_not_empty",
+          "value": "\"players\".\"display_alias\" is null or length(\"players\".\"display_alias\") > 0"
+        },
+        "players_archived_boolean": {
+          "name": "players_archived_boolean",
+          "value": "\"players\".\"archived\" in (0, 1)"
+        },
+        "players_created_at_range": {
+          "name": "players_created_at_range",
+          "value": "typeof(\"players\".\"created_at\") = 'integer' and \"players\".\"created_at\" >= 0 and \"players\".\"created_at\" <= 32503680000000"
+        },
+        "players_updated_at_range": {
+          "name": "players_updated_at_range",
+          "value": "typeof(\"players\".\"updated_at\") = 'integer' and \"players\".\"updated_at\" >= 0 and \"players\".\"updated_at\" <= 32503680000000"
+        },
+        "players_updated_not_before_created": {
+          "name": "players_updated_not_before_created",
+          "value": "\"players\".\"updated_at\" >= \"players\".\"created_at\""
+        }
+      }
+    },
+    "session_seats": {
+      "name": "session_seats",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seat": {
+          "name": "seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occupancy": {
+          "name": "occupancy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "stack": {
+          "name": "stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "auto_top_up_enabled": {
+          "name": "auto_top_up_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_top_up_target_stack": {
+          "name": "auto_top_up_target_stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "session_seats_player_idx": {
+          "name": "session_seats_player_idx",
+          "columns": [
+            "player_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "session_seats_session_id_sessions_id_fk": {
+          "name": "session_seats_session_id_sessions_id_fk",
+          "tableFrom": "session_seats",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        },
+        "session_seats_player_id_players_id_fk": {
+          "name": "session_seats_player_id_players_id_fk",
+          "tableFrom": "session_seats",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "session_seats_pk": {
+          "columns": [
+            "session_id",
+            "seat"
+          ],
+          "name": "session_seats_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "session_seats_seat_range": {
+          "name": "session_seats_seat_range",
+          "value": "\"session_seats\".\"seat\" >= 0 and \"session_seats\".\"seat\" <= 5"
+        },
+        "session_seats_occupancy": {
+          "name": "session_seats_occupancy",
+          "value": "\"session_seats\".\"occupancy\" in ('ACTIVE', 'SITTING_OUT', 'EMPTY')"
+        },
+        "session_seats_empty_iff_no_player": {
+          "name": "session_seats_empty_iff_no_player",
+          "value": "(\"session_seats\".\"occupancy\" = 'EMPTY' and \"session_seats\".\"player_id\" is null) or (\"session_seats\".\"occupancy\" <> 'EMPTY' and \"session_seats\".\"player_id\" is not null)"
+        },
+        "session_seats_empty_stack_zero": {
+          "name": "session_seats_empty_stack_zero",
+          "value": "\"session_seats\".\"occupancy\" <> 'EMPTY' or \"session_seats\".\"stack\" = 0"
+        },
+        "session_seats_stack_non_negative": {
+          "name": "session_seats_stack_non_negative",
+          "value": "\"session_seats\".\"stack\" >= 0"
+        },
+        "session_seats_stack_range": {
+          "name": "session_seats_stack_range",
+          "value": "typeof(\"session_seats\".\"stack\") = 'integer' and \"session_seats\".\"stack\" >= -1000000000 and \"session_seats\".\"stack\" <= 1000000000"
+        },
+        "session_seats_auto_top_up_enabled_boolean": {
+          "name": "session_seats_auto_top_up_enabled_boolean",
+          "value": "\"session_seats\".\"auto_top_up_enabled\" is null or (typeof(\"session_seats\".\"auto_top_up_enabled\") = 'integer' and \"session_seats\".\"auto_top_up_enabled\" in (0, 1))"
+        },
+        "session_seats_auto_top_up_target_stack_range": {
+          "name": "session_seats_auto_top_up_target_stack_range",
+          "value": "\"session_seats\".\"auto_top_up_target_stack\" is null or (typeof(\"session_seats\".\"auto_top_up_target_stack\") = 'integer' and \"session_seats\".\"auto_top_up_target_stack\" >= -1000000000 and \"session_seats\".\"auto_top_up_target_stack\" <= 1000000000 and \"session_seats\".\"auto_top_up_target_stack\" > 0)"
+        },
+        "session_seats_auto_top_up_pair": {
+          "name": "session_seats_auto_top_up_pair",
+          "value": "(\"session_seats\".\"auto_top_up_enabled\" is null and \"session_seats\".\"auto_top_up_target_stack\" is null) or (\"session_seats\".\"auto_top_up_enabled\" is not null and \"session_seats\".\"auto_top_up_target_stack\" is not null)"
+        }
+      }
+    },
+    "sessions": {
+      "name": "sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "preset_id": {
+          "name": "preset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "config_json": {
+          "name": "config_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "button_seat": {
+          "name": "button_seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hero_seat": {
+          "name": "hero_seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hand_number": {
+          "name": "hand_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_top_up_enabled": {
+          "name": "auto_top_up_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_top_up_target_stack": {
+          "name": "auto_top_up_target_stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sessions_created_idx": {
+          "name": "sessions_created_idx",
+          "columns": [
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "sessions_preset_id_game_presets_preset_id_fk": {
+          "name": "sessions_preset_id_game_presets_preset_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "game_presets",
+          "columnsFrom": [
+            "preset_id"
+          ],
+          "columnsTo": [
+            "preset_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sessions_label_not_empty": {
+          "name": "sessions_label_not_empty",
+          "value": "\"sessions\".\"label\" is null or length(\"sessions\".\"label\") > 0"
+        },
+        "sessions_button_seat_range": {
+          "name": "sessions_button_seat_range",
+          "value": "\"sessions\".\"button_seat\" is null or (\"sessions\".\"button_seat\" >= 0 and \"sessions\".\"button_seat\" <= 5)"
+        },
+        "sessions_hero_seat_range": {
+          "name": "sessions_hero_seat_range",
+          "value": "\"sessions\".\"hero_seat\" is null or (\"sessions\".\"hero_seat\" >= 0 and \"sessions\".\"hero_seat\" <= 5)"
+        },
+        "sessions_hand_number_non_negative": {
+          "name": "sessions_hand_number_non_negative",
+          "value": "\"sessions\".\"hand_number\" >= 0"
+        },
+        "sessions_created_at_range": {
+          "name": "sessions_created_at_range",
+          "value": "typeof(\"sessions\".\"created_at\") = 'integer' and \"sessions\".\"created_at\" >= 0 and \"sessions\".\"created_at\" <= 32503680000000"
+        },
+        "sessions_updated_at_range": {
+          "name": "sessions_updated_at_range",
+          "value": "typeof(\"sessions\".\"updated_at\") = 'integer' and \"sessions\".\"updated_at\" >= 0 and \"sessions\".\"updated_at\" <= 32503680000000"
+        },
+        "sessions_updated_not_before_created": {
+          "name": "sessions_updated_not_before_created",
+          "value": "\"sessions\".\"updated_at\" >= \"sessions\".\"created_at\""
+        },
+        "sessions_closed_at_range": {
+          "name": "sessions_closed_at_range",
+          "value": "\"sessions\".\"closed_at\" is null or (typeof(\"sessions\".\"closed_at\") = 'integer' and \"sessions\".\"closed_at\" >= \"sessions\".\"created_at\" and \"sessions\".\"closed_at\" <= 32503680000000)"
+        },
+        "sessions_auto_top_up_enabled_boolean": {
+          "name": "sessions_auto_top_up_enabled_boolean",
+          "value": "\"sessions\".\"auto_top_up_enabled\" is null or (typeof(\"sessions\".\"auto_top_up_enabled\") = 'integer' and \"sessions\".\"auto_top_up_enabled\" in (0, 1))"
+        },
+        "sessions_auto_top_up_target_stack_range": {
+          "name": "sessions_auto_top_up_target_stack_range",
+          "value": "\"sessions\".\"auto_top_up_target_stack\" is null or (typeof(\"sessions\".\"auto_top_up_target_stack\") = 'integer' and \"sessions\".\"auto_top_up_target_stack\" >= -1000000000 and \"sessions\".\"auto_top_up_target_stack\" <= 1000000000 and \"sessions\".\"auto_top_up_target_stack\" > 0)"
+        },
+        "sessions_auto_top_up_pair": {
+          "name": "sessions_auto_top_up_pair",
+          "value": "(\"sessions\".\"auto_top_up_enabled\" is null and \"sessions\".\"auto_top_up_target_stack\" is null) or (\"sessions\".\"auto_top_up_enabled\" is not null and \"sessions\".\"auto_top_up_target_stack\" is not null)"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

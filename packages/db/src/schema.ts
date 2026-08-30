@@ -479,6 +479,25 @@ export const sessionSeats = sqliteTable(
       onUpdate: 'restrict',
     }),
     stack: integer('stack').notNull(),
+    /**
+     * This SEAT's own `AutoTopUpPolicy.enabled`, or NULL when the seat records no policy.
+     * 0/1 rather than a boolean column so the integrality CHECK reads like its neighbours.
+     *
+     * Auto top-up is a per-seat preference, not one session-wide switch: `sessions`' own
+     * two columns are the DEFAULT the seats are seeded from at session creation, and each
+     * seat is free to diverge from it afterwards.
+     */
+    autoTopUpEnabled: integer('auto_top_up_enabled'),
+    /**
+     * This seat's `AutoTopUpPolicy.targetStack` in milliBB. NULL exactly when
+     * `auto_top_up_enabled` is NULL, so "no policy" is one fact rather than two half-facts.
+     *
+     * `AutoTopUpPolicy.threshold` has deliberately NO column here, exactly as on `sessions`:
+     * a seat row stores `threshold = targetStack` and `updateSessionSeatAutoTopUp` REFUSES a
+     * policy whose threshold differs rather than dropping it. A column nothing can write
+     * would be a stub (`CLAUDE.md` rule 5).
+     */
+    autoTopUpTargetStack: integer('auto_top_up_target_stack'),
   },
   (t) => [
     primaryKey({ name: 'session_seats_pk', columns: [t.sessionId, t.seat] }),
@@ -494,6 +513,21 @@ export const sessionSeats = sqliteTable(
     check('session_seats_empty_stack_zero', sql`${t.occupancy} <> 'EMPTY' or ${t.stack} = 0`),
     check('session_seats_stack_non_negative', sql`${t.stack} >= 0`),
     check('session_seats_stack_range', moneyRange(t.stack)),
+    check(
+      'session_seats_auto_top_up_enabled_boolean',
+      sql`${t.autoTopUpEnabled} is null or (${isIntegral(t.autoTopUpEnabled)} and ${t.autoTopUpEnabled} in (0, 1))`,
+    ),
+    check(
+      'session_seats_auto_top_up_target_stack_range',
+      sql`${t.autoTopUpTargetStack} is null or (${moneyRange(t.autoTopUpTargetStack)} and ${t.autoTopUpTargetStack} > 0)`,
+    ),
+    // Both columns describe ONE policy, so both are present or neither is. Written the
+    // long way, like `session_seats_empty_iff_no_player`, so it means the same thing in
+    // SQLite and PostgreSQL.
+    check(
+      'session_seats_auto_top_up_pair',
+      sql`(${t.autoTopUpEnabled} is null and ${t.autoTopUpTargetStack} is null) or (${t.autoTopUpEnabled} is not null and ${t.autoTopUpTargetStack} is not null)`,
+    ),
   ],
 );
 

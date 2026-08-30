@@ -69,12 +69,12 @@ export function PlayerProfilePanel({
   return (
     <section
       data-testid="player-profile"
-      aria-label="Player profile"
-      className="flex flex-col gap-3"
+      aria-label="플레이어 정보"
+      className="flex flex-col gap-2"
     >
       <header className="flex items-baseline justify-between gap-2">
         <h2 className="truncate text-sm font-semibold">
-          {profile?.displayAlias ?? profile?.nickname ?? nickname ?? 'Player'}
+          {profile?.displayAlias ?? profile?.nickname ?? nickname ?? '플레이어'}
         </h2>
         <button
           type="button"
@@ -87,7 +87,7 @@ export function PlayerProfilePanel({
 
       {state.kind === 'LOADING' && (
         <p className="text-xs text-ink-500" data-testid="profile-loading">
-          Loading profile…
+          불러오는 중…
         </p>
       )}
 
@@ -100,24 +100,20 @@ export function PlayerProfilePanel({
       {profile !== null && (
         <>
           {profile.archived && (
-            <p className="text-[0.65rem] uppercase tracking-widest text-dirty-500">archived</p>
+            <p className="text-[0.65rem] uppercase tracking-widest text-dirty-500">보관됨</p>
           )}
 
           <div>
-            <h3 className="text-[0.65rem] uppercase tracking-widest text-ink-500">
-              latest HUD snapshot
-            </h3>
+            <h3 className="text-[0.65rem] uppercase tracking-widest text-ink-500">최근 HUD</h3>
             {profile.hud === null ? (
               <p className="mt-1 text-xs text-ink-700" data-testid="profile-no-hud">
-                No HUD data recorded for this player.
+                이 플레이어의 HUD 기록이 없습니다.
               </p>
             ) : (
               <div className="mt-1" data-testid="profile-hud">
                 <p className="tabular text-[0.65rem] text-ink-700">
                   {formatInstant(profile.hud.recordedAt)} ·{' '}
-                  {profile.hud.handSample === null
-                    ? 'sample unknown'
-                    : `${profile.hud.handSample} hands`}
+                  {profile.hud.handSample === null ? '표본 불명' : `${profile.hud.handSample}핸드`}
                 </p>
                 <ul className="mt-1">
                   {profile.hud.stats.map((stat) => (
@@ -136,10 +132,10 @@ export function PlayerProfilePanel({
           </div>
 
           <div>
-            <h3 className="text-[0.65rem] uppercase tracking-widest text-ink-500">notes</h3>
+            <h3 className="text-[0.65rem] uppercase tracking-widest text-ink-500">메모</h3>
             {profile.notes.length === 0 ? (
               <p className="mt-1 text-xs text-ink-700" data-testid="profile-no-notes">
-                No notes yet.
+                아직 메모가 없습니다.
               </p>
             ) : (
               <ul className="mt-1 flex flex-col gap-2">

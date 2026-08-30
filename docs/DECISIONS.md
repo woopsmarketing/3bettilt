@@ -1194,3 +1194,160 @@ resulting engine state **with a negative control**: with the palette open but no
 `a` really does put the seat all-in, so the passing case is not passing vacuously. Rejected
 alternative: suppressing the dock with `stopPropagation`, which makes correctness depend on
 DOM ordering and fails silently the moment a third listener appears.
+
+---
+
+## ADR-0049 — A hotkey is resolved from the physical key when an input method rewrites `event.key`
+
+**Date:** 2026-08-31 · **Phase:** 7 (Alpha feedback) · **Status:** accepted
+
+**Context.** The first hands-on Alpha session reported "hotkeys not working". Every component
+test and every Playwright spec passed, and the dock's listener read correctly. That
+combination was the evidence: the suite drives a US keyboard, and the user types Korean. With
+a Hangul input method active a browser `keydown` does not carry `event.key === 'f'` — it
+carries the jamo (`'ㄹ'`), or the literal `'Process'` while the IME composes. `key.toLowerCase()`
+matched nothing, so every hotkey was dead for exactly the primary user and alive for every
+test.
+
+**Decision.** `lib/table/keys.ts` resolves one keystroke to the letter or digit actually
+pressed: `event.key` wins when it is already a single ASCII letter or digit, otherwise
+`event.code` (`KeyA`..`KeyZ`, `Digit0`..`Digit9`) does. Named keys — `Escape`, `Backspace`,
+`Enter` — are not this function's business and keep being read off `event.key` by their own
+handlers. Both the action dock and the card palette route through it.
+
+**Consequences.** The order matters and is the whole design: preferring `key` keeps AZERTY
+and Dvorak users on the letter they see printed, because for them the physical position is
+deliberately not what they mean; falling back to `code` fixes every input method, because no
+IME rewrites the physical position, and a Korean 2-set keyboard is physically QWERTY with the
+Latin legend on the cap. The fallback covers `KeyX`/`DigitX` only — a numpad code is not a
+digit source here, since no hotkey uses the numpad. Verified in a real browser, not only in
+tests: raw CDP key events (`key: 'ㄹ', code: 'KeyF'`) fold the hand, and `ㅁ`+`ㅑ` on
+`KeyA`/`KeyS` enter the ace of spades. A test that presses `'f'` cannot ever catch this class
+of bug again, so the unit tests assert on jamo and `'Process'` directly.
+
+---
+
+## ADR-0050 — Auto top-up is a per-seat preference; the session-level policy is only a seeding default
+
+**Date:** 2026-08-31 · **Phase:** 7 (Alpha feedback) · **Status:** accepted
+
+**Context.** ADR-0045 established that auto top-up is session state rather than table
+configuration, and Phase 4 shipped it as one switch for the whole session. Hands-on use
+falsified the granularity, not the placement: a practice table has one short stack and five
+that are fine, and the user asked for a per-seat control where the common action is one click.
+This refines ADR-0045's granularity; its placement decision stands.
+
+**Decision.** Each seat carries its own `AutoTopUpPolicy`, stored on `session_seats`
+(migration `0003`, additive per ADR-0046) and applied at the between-hands boundary by
+`applySeatAutoTopUps` in `poker-core`. The session-level columns stay, and mean exactly one
+thing now: the default each occupied seat was SEEDED from when the session was created. They
+are never applied to a seat on their own.
+
+**Consequences.** A seat the user switches off stays off — which would be false if the
+session-wide switch were still applied alongside, and that is the bug this ADR exists to
+prevent. Top-up arithmetic stays in the engine: React supplies per-seat policies and never
+loops over money. A session created before these columns existed carries no per-seat rows, so
+the store seeds its occupied seats from the session default at load, by the same rule the
+server applies at creation — a legacy session cannot silently lose its top-up behaviour.
+`threshold` still has no column anywhere; a seat row stores `threshold === targetStack` and
+the repository refuses anything else rather than dropping a value the caller supplied.
+Verified in a browser against a copy of a real database: a seat at 85.68 BB with the switch on
+came back to 100 BB, a winner holding 119.08 BB with the switch off was NOT trimmed, and only
+the toggled seat's row was written.
+
+---
+
+## ADR-0051 — A pot's winner selection replaces; a split must be armed explicitly
+
+**Date:** 2026-08-31 · **Phase:** 7 (Alpha feedback) · **Status:** accepted
+
+**Context.** The Alpha's award panel toggled: clicking a candidate added it to the pot's
+winner list. A user who clicked the wrong seat and then the right one had ticked both, and the
+engine faithfully split the pot between them. The user reported it as an "accidental split
+winner". The engine's split arithmetic was reviewed and is correct — `splitPot` floors with
+`Money.splitEvenly` and hands the remainder along the configured odd-chip order, and the
+settlement balances. The defect was entirely in the selection UI.
+
+**Decision.** Clicking a candidate makes it the SOLE winner of that pot. A second winner is
+reachable only after arming that pot's own split control, and disarming it collapses back to
+one. Candidates are labelled with the player's nickname and the engine's own position, not a
+bare seat number. Submit is disabled until every pending pot has a winner.
+
+**Consequences.** The common case costs one click and a misclick costs a second one, instead
+of costing money. The submit gate is the ONE pre-check in that panel and it is about the
+user's own selection — every poker judgement (`WINNER_NOT_ELIGIBLE`, `DUPLICATE_WINNER`,
+`AWARDS_INCOMPLETE`) still comes back from `applyCommand`, because dispatching a
+known-illegal command to read the rejection back is not a way to ask a question. The ticked
+winners, the split arming and the muck marks all live in a session keyed by the hand number,
+for the same reason the palette keys its picks: pot indexes restart at 0 every hand, and an
+unkeyed selection would still be ticked in the next one.
+
+---
+
+## ADR-0052 — A showdown SHOW is a hole-card event; a MUCK is unknown information and has none
+
+**Date:** 2026-08-31 · **Phase:** 7 (Alpha feedback) · **Status:** accepted
+
+**Context.** The Alpha could not record what an opponent showed. `cardEntryRequest` returned
+`null` at `AWAITING_AWARD`, so a showdown was settled by picking a winner and the cards were
+lost. The engine already supported the write: `SET_HOLE_CARDS { revealed: true }` is valid in
+any phase for a dealt-in seat.
+
+**Decision.** SHOW nominates a seat and the existing palette asks for its two cards, emitting
+`SET_HOLE_CARDS` with `revealed: true` — the hero's own entry stays `revealed: false`, and the
+distinction is the engine's existing one. MUCK is recorded as local UI state and nothing else:
+no cards, no command, no new engine event.
+
+**Consequences.** A muck is genuinely unknown information, and the honest representation of
+unknown information is the absence of a record — inventing an event for it would be a claim
+the engine could later be asked to replay. It is per-hand and not persisted, like everything
+else at this table in the Alpha. Whether a mucked seat may still be awarded a pot is
+deliberately NOT decided here: that is a poker rule this project has no fixture for, so the
+muck mark only stops the panel asking that seat for cards (`CLAUDE.md` rule 7). Reveal is
+never required — a pot can always be awarded with nobody having shown.
+
+---
+
+## ADR-0053 — The UI is Korean-first; standard poker notation stays Latin
+
+**Date:** 2026-08-31 · **Phase:** 7 (Alpha feedback) · **Status:** accepted
+
+**Context.** The primary user is Korean and asked for a Korean interface with compact
+Korean-tool density rather than English explanatory paragraphs.
+
+**Decision.** User-visible copy is Korean, including `<html lang="ko">`. These stay in their
+international form and are never translated: `BB`, `BTN` / `SB` / `BB`, `UTG` / `HJ` / `CO`,
+`VPIP` / `PFR` / `3BET`, `SPR`, card ranks and suits, and the hotkey letters. A label derived
+from a domain union is mapped through an exhaustive `Record<...>` typed against that union.
+
+**Consequences.** A new engine event kind or seat status is a COMPILE error rather than a
+silently untranslated string. Domain error codes and the values the user typed are still
+rendered verbatim inside the Korean frame — translating an `EngineError.code` would hide the
+engine's own verdict, which rule 3 forbids. E2E specs drive by `data-testid` so a behaviour
+test cannot break on a copy change again, and each surface asserts its Korean copy once,
+deliberately and separately.
+
+---
+
+## ADR-0054 — The action dock is pinned; the entry tray grows from a floor and the felt absorbs it
+
+**Date:** 2026-08-31 · **Phase:** 7 (Alpha feedback) · **Status:** accepted
+
+**Context.** The Alpha stacked the card palette, the award panel and the action dock at the
+bottom of a `h-screen` column. The palette mounted and unmounted as a hand progressed, so the
+whole bottom region jumped, and on a short viewport the dock — the primary control — was
+pushed off screen. Pinning the tray to one constant height fixed the jump but created a worse
+failure: the award panel is taller than the palette, and its submit button landed underneath
+the dock. The one panel that moves money had its primary action half hidden.
+
+**Decision.** `main` cannot overflow; the felt/aside row is the only elastic child; the tray
+and the dock are both `shrink-0`. The tray's height is a FLOOR, not a constant: the palette
+and the keyboard legend both fit inside it, so the states the user moves between constantly
+change nothing below them, while the award panel grows the tray up to a cap and the extra
+space comes out of the felt above — never out of the dock below.
+
+**Consequences.** The dock is at the bottom of the viewport in every phase and at every
+viewport height. Two E2E assertions pin both halves, because a layout invariant that is only
+true today is not an invariant: the dock stays inside the viewport with the palette open, and
+the award submit button's bottom edge stays above the dock's top edge. Both were confirmed to
+FAIL against the pinned-height version before the fix landed, so neither can pass vacuously.

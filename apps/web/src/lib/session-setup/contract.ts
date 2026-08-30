@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { MAX_NICKNAME_LENGTH } from '@gto-self/player-core';
 import type { HudStatKey } from '@gto-self/player-core';
 import { SEAT_INDEXES } from '@gto-self/poker-core';
-import type { SeatIndex } from '@gto-self/poker-core';
+import type { AutoTopUpPolicy, SeatIndex } from '@gto-self/poker-core';
 
 /** The three occupancy states a physical seat can be put in from the setup form. */
 export type SeatOccupancyChoice = 'ACTIVE' | 'SITTING_OUT' | 'EMPTY';
@@ -89,6 +89,64 @@ export type SearchPlayersResult =
  */
 export type StartSessionAction = (input: SessionFormValue) => Promise<StartSessionResult>;
 export type SearchPlayersAction = (query: string) => Promise<SearchPlayersResult>;
+
+// ---------------------------------------------------------------------------
+// Per-seat auto top-up
+// ---------------------------------------------------------------------------
+
+/**
+ * One seat's auto top-up preference, exactly as it was typed.
+ *
+ * Auto top-up is a SEAT preference, not one session-wide switch: the setup form's single
+ * control is only the session DEFAULT that seeds each occupied seat, and this is how one
+ * seat diverges from it afterwards. The setup form itself gains no per-seat field.
+ *
+ * It lives beside the setup contract rather than in `lib/table/contract.ts` because it is
+ * SESSION state (ADR-0045), and for the same reason that file exists: the client component
+ * takes the action as a PROP typed here and never imports the `'use server'` module.
+ *
+ * `targetText` is what the user typed, and it travels as TEXT. The server re-parses it with
+ * `Money.parseBB` and that parse is the authoritative one — no client-computed money number
+ * is ever transmitted or stored (`CLAUDE.md` rule 1, rule 3).
+ */
+export interface SeatAutoTopUpValue {
+  readonly sessionId: string;
+  readonly seat: SeatIndex;
+  readonly enabled: boolean;
+  /** Verbatim entered target stack in BB. Parsed, never replaced. */
+  readonly targetText: string;
+}
+
+/**
+ * On success the STORED policy comes back, so the table renders what the database now
+ * holds rather than what the form believed it sent.
+ */
+export type UpdateSeatAutoTopUpResult =
+  | { readonly ok: true; readonly seat: SeatIndex; readonly policy: AutoTopUpPolicy }
+  | { readonly ok: false; readonly issues: readonly FormIssue[] };
+
+/** The table-side toggle's server action, as the client component sees it. */
+export type UpdateSeatAutoTopUpAction = (
+  input: SeatAutoTopUpValue,
+) => Promise<UpdateSeatAutoTopUpResult>;
+
+/**
+ * Shape validation for the per-seat toggle. A server action is a public HTTP endpoint, so
+ * this input is untrusted no matter what the client component sends. SHAPE only: whether
+ * `targetText` is money is decided afterwards by `Money.parseBB`, and whether the seat and
+ * session exist is decided by `@gto-self/db`.
+ */
+export const seatAutoTopUpSchema = z.object({
+  sessionId: z.string().min(1).max(200),
+  // Range only. `isSeatIndex` on the server is what turns this into a `SeatIndex`.
+  seat: z
+    .number()
+    .int()
+    .min(0)
+    .max(SEAT_INDEXES.length - 1),
+  enabled: z.boolean(),
+  targetText: z.string().max(64),
+});
 
 /**
  * Shape validation for what actually arrives at the server action. A server action is a

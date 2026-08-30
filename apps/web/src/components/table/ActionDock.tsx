@@ -22,6 +22,12 @@
  * Buttons and hotkeys are the same thing: both run a `DockAction` out of the single
  * `actions` table below, so a guard can never be true for the mouse and false for the
  * keyboard.
+ *
+ * **Language.** Labels are Korean; the hotkey letters `F C R A Z N` and `BB` stay Latin,
+ * because they are physical key positions and international poker vocabulary rather than
+ * words. An engine string — `wagerBlockedBy`, an `EngineError` code and message — is
+ * rendered VERBATIM inside a Korean sentence (`CLAUDE.md` rule 3): the user sees the
+ * engine's own verdict, never a paraphrase of it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, Ref } from 'react';
@@ -35,6 +41,7 @@ import {
 } from '@gto-self/poker-core';
 import type { HandView, LegalActions, RaisePreview } from '@gto-self/poker-core';
 import { canStartHand } from '../../lib/table/tableStore.js';
+import { resolveTypedKey } from '../../lib/table/keys.js';
 import { useTableStore } from './TableStoreProvider.js';
 
 const bb = (amount: MilliBB): string => Money.formatBB(amount, { maxDecimals: 3 });
@@ -89,17 +96,21 @@ function DockButton({ hotkey, action, buttonRef }: DockButtonProps) {
       }}
       data-testid={`dock-${hotkey}`}
       data-legal={action.enabled ? 'true' : 'false'}
-      className={`flex min-w-[5.5rem] flex-col items-start rounded-md border px-3 py-2 text-left ${
+      className={`flex min-w-[5rem] flex-col items-start justify-center rounded-md border px-2.5 py-1 text-left ${
         action.enabled
           ? 'border-ink-500 bg-surface-700 text-ink-100 hover:border-actor-500'
           : 'border-surface-700 bg-surface-800 text-ink-700'
       }`}
     >
-      <span className="text-[0.65rem] uppercase tracking-widest text-ink-500">{hotkey}</span>
-      <span className="text-sm font-medium">{action.label}</span>
-      {action.detail !== undefined && (
-        <span className="tabular text-[0.65rem] text-ink-500">{action.detail}</span>
-      )}
+      {/* Hotkey and label share ONE line: the legend is unobtrusive and the dock costs a
+          line less of the viewport it must never be pushed out of. */}
+      <span className="flex items-baseline gap-1.5">
+        <kbd className="tabular text-[0.65rem] tracking-widest text-ink-500">{hotkey}</kbd>
+        <span className="text-sm font-medium">{action.label}</span>
+      </span>
+      <span className="tabular h-[0.85rem] text-[0.65rem] leading-[0.85rem] text-ink-500">
+        {action.detail ?? ''}
+      </span>
     </button>
   );
 }
@@ -181,12 +192,14 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
     if (!parsed.ok) {
       problem =
         raiseText.trim() === ''
-          ? 'Enter a raise-to amount in BB.'
-          : `Not a valid amount (${parsed.error}). Raise-to is a BB amount such as 9 or 2.375.`;
+          ? '레이즈 금액(BB)을 입력하세요.'
+          : // `parsed.error` is the parser's own reason, kept verbatim (rule 3).
+            `금액을 읽을 수 없습니다 (${parsed.error}). 레이즈 금액은 9 또는 2.375 같은 BB 값입니다.`;
     } else if (preview !== null && !preview.legal && preview.error !== null) {
-      problem = `${preview.error.code}: ${preview.error.message} — min ${bb(
+      // The engine's own code and message, unchanged; only the bounds sentence is ours.
+      problem = `${preview.error.code}: ${preview.error.message} — 최소 ${bb(
         preview.minToAmount,
-      )} BB, max ${bb(preview.maxToAmount)} BB.`;
+      )} BB, 최대 ${bb(preview.maxToAmount)} BB.`;
     }
   }
   const canSubmit = parsed.ok && preview !== null && preview.legal;
@@ -229,19 +242,19 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
   // ---------------------------------------------------------------------------
   const actions: Readonly<Record<HotkeyId, DockAction>> = {
     F: {
-      label: 'Fold',
+      label: '폴드',
       detail: undefined,
       enabled: legal?.canFold ?? false,
       run: () => apply({ kind: 'FOLD' }),
     },
     C: {
-      label: isCheck ? 'Check' : 'Call',
+      label: isCheck ? '체크' : '콜',
       detail: call === null ? undefined : bbUnit(call.amount),
       enabled: legal !== null && (isCheck ? legal.canCheck : true),
       run: () => apply(isCheck ? { kind: 'CHECK' } : { kind: 'CALL' }),
     },
     R: {
-      label: wager?.kind === 'BET' ? 'Bet to' : 'Raise to',
+      label: wager?.kind === 'BET' ? '벳' : '레이즈',
       detail:
         wager === null
           ? (legal?.wagerBlockedBy ?? undefined)
@@ -250,19 +263,19 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
       run: openEditor,
     },
     A: {
-      label: 'All-in',
+      label: '올인',
       detail: allIn === null ? undefined : bbUnit(allIn.toAmount),
       enabled: allIn !== null,
       run: () => apply({ kind: 'ALL_IN' }),
     },
     Z: {
-      label: 'Undo',
+      label: '되돌리기',
       detail: undefined,
       enabled: view?.canUndo ?? false,
       run: undo,
     },
     N: {
-      label: 'Next hand',
+      label: '다음 핸드',
       detail: undefined,
       // Phase 8 owns Observe mode, dirty stacks and manual overrides. All `N` does here is
       // the store's real settle -> top up -> advance button -> deal, and only between
@@ -283,12 +296,18 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
     if (hotkeysSuppressed) return;
     if (isTypingTarget(event.target)) return;
 
-    const key = event.key.toLowerCase();
-    if (key === 'escape') {
+    // `Escape` is a named key, not a hotkey letter: it is read straight off `event.key`
+    // and never routed through the IME-resolver below, exactly as before.
+    if (event.key.toLowerCase() === 'escape') {
       if (editorOpen) closeEditor();
       return;
     }
-    const id = key.toUpperCase() as HotkeyId;
+    // Resolves to the physical letter the user typed regardless of active input method —
+    // see `lib/table/keys.ts`. A Korean IME (or any other) rewrites `event.key`, but never
+    // `event.code`.
+    const resolved = resolveTypedKey(event);
+    if (resolved === null) return;
+    const id = resolved.toUpperCase() as HotkeyId;
     if (!HOTKEY_IDS.includes(id)) return;
 
     // An illegal action is inert. The key is still swallowed so it cannot type into
@@ -325,10 +344,10 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
   return (
     <section
       data-testid="action-dock"
-      className="flex flex-col gap-2 border-t border-surface-700 bg-surface-900 px-4 py-3"
-      aria-label="Action dock"
+      className="flex shrink-0 flex-col gap-1.5 border-t border-surface-700 bg-surface-900 px-3 py-2"
+      aria-label="액션"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <DockButton hotkey="F" action={actions.F} />
         <DockButton hotkey="C" action={actions.C} />
         <DockButton hotkey="R" action={actions.R} buttonRef={raiseButtonRef} />
@@ -341,7 +360,7 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
             htmlFor="raise-to"
             className="text-[0.65rem] uppercase tracking-widest text-ink-500"
           >
-            {wager?.kind === 'BET' ? 'Bet to' : 'Raise to'} (BB)
+            {wager?.kind === 'BET' ? '벳' : '레이즈'} (BB)
           </label>
           <input
             id="raise-to"
@@ -367,7 +386,7 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
             onClick={submitRaise}
             className="rounded-md border border-good-500 px-3 py-1 text-xs font-semibold text-good-500 disabled:border-surface-600 disabled:text-ink-700"
           >
-            Enter
+            확인
           </button>
         </div>
       </div>
@@ -378,23 +397,23 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
           className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-md border border-surface-700 bg-surface-800 px-3 py-2 text-[0.7rem] text-ink-300"
         >
           <span className="tabular" data-testid="raise-preview-to">
-            <span className="text-ink-500">Raise to </span>
+            <span className="text-ink-500">레이즈 </span>
             {preview === null ? '—' : bbUnit(preview.toAmount)}
           </span>
           <span className="tabular" data-testid="raise-preview-additional">
-            <span className="text-ink-500">Additional </span>
+            <span className="text-ink-500">추가 </span>
             {preview === null ? '—' : bbUnit(preview.additional)}
           </span>
           <span className="tabular" data-testid="raise-preview-min">
-            <span className="text-ink-500">Min </span>
+            <span className="text-ink-500">최소 </span>
             {bbUnit(wager.minToAmount)}
           </span>
           <span className="tabular" data-testid="raise-preview-max">
-            <span className="text-ink-500">Max </span>
+            <span className="text-ink-500">최대 </span>
             {bbUnit(wager.maxToAmount)}
           </span>
           <span className="tabular" data-testid="raise-preview-pot">
-            <span className="text-ink-500">Pot </span>
+            <span className="text-ink-500">팟 </span>
             {bbUnit(actor.pot)}
             {preview === null ? '' : ` → ${bbUnit(preview.potAfter)}`}
           </span>

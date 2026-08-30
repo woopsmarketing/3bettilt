@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { asId, Money, unwrap, type PlayerId } from '@gto-self/shared';
+import { asId, Money, unwrap, type MilliBB, type PlayerId } from '@gto-self/shared';
 import {
   advanceButton,
   applyAutoTopUp,
   applyHandResult,
+  applySeatAutoTopUps,
   createTable,
   dealtInSeats,
   defaultAutoTopUpPolicy,
@@ -285,5 +286,128 @@ describe('auto top-up', () => {
     expect(after.seats[0].stack).toBe(BB(100));
     expect(after.seats[1].stack).toBe(BB(150));
     expect(after.seats[2].stack).toBe(BB(100));
+  });
+
+  describe('seat scope', () => {
+    const shortTable = () =>
+      buildTable({ stacks: { 0: BB(20), 1: BB(150), 2: BB(40) }, buttonSeat: 1 });
+
+    it('considers only the listed seats', () => {
+      const table = shortTable();
+      const p = policy({ targetStack: BB(100), threshold: BB(100) });
+      expect(topUpPlan(table, p, [2])).toEqual([{ seat: 2, from: BB(40), to: BB(100) }]);
+      const after = unwrap(applyAutoTopUp(table, p, [2]));
+      expect(after.seats[0].stack).toBe(BB(20));
+      expect(after.seats[2].stack).toBe(BB(100));
+    });
+
+    it('plans in ascending seat order however the scope is ordered, and de-duplicates it', () => {
+      const table = shortTable();
+      const p = policy({ targetStack: BB(100), threshold: BB(100) });
+      expect(topUpPlan(table, p, [2, 0, 2])).toEqual([
+        { seat: 0, from: BB(20), to: BB(100) },
+        { seat: 2, from: BB(40), to: BB(100) },
+      ]);
+    });
+
+    it('an empty scope selects nothing, and is not the same as omitting the scope', () => {
+      const table = shortTable();
+      const p = policy({ targetStack: BB(100), threshold: BB(100) });
+      expect(topUpPlan(table, p, [])).toEqual([]);
+      expect(unwrap(applyAutoTopUp(table, p, []))).toBe(table);
+      expect(topUpPlan(table, p)).toHaveLength(2);
+    });
+
+    it('narrows candidates only — a scoped seat still has to qualify', () => {
+      // Seat 1 is in the scope but sits above the target, so it is still not touched.
+      const table = shortTable();
+      const p = policy({ targetStack: BB(100), threshold: BB(100) });
+      expect(topUpPlan(table, p, [1])).toEqual([]);
+      expect(unwrap(applyAutoTopUp(table, p, [1]))).toBe(table);
+    });
+
+    it('validates a live policy even when its scope selects no seat', () => {
+      const table = shortTable();
+      expect(errCode(applyAutoTopUp(table, policy({ targetStack: Money.ZERO }), [1]))).toBe(
+        'STACK_NOT_POSITIVE',
+      );
+    });
+  });
+});
+
+/**
+ * Per-seat policies. Auto top-up is a SEAT preference, not one session-wide switch: each
+ * occupied seat carries its own on/off and its own target.
+ */
+describe('per-seat auto top-up', () => {
+  const at = (targetStack: MilliBB, enabled = true): AutoTopUpPolicy => ({
+    enabled,
+    targetStack,
+    threshold: targetStack,
+  });
+
+  it('never trims a seat that is ABOVE its own target', () => {
+    const table = buildTable({ stacks: { 0: BB(240), 1: BB(100) }, buttonSeat: 1 });
+    const after = unwrap(applySeatAutoTopUps(table, { 0: at(BB(100)), 1: at(BB(100)) }));
+    expect(after).toBe(table);
+    expect(after.seats[0].stack).toBe(BB(240));
+  });
+
+  it('tops a seat below its own target up to exactly that target', () => {
+    const table = buildTable({ stacks: { 0: BB(31), 1: BB(100) }, buttonSeat: 1 });
+    const after = unwrap(applySeatAutoTopUps(table, { 0: at(BB(100)) }));
+    expect(after.seats[0].stack).toBe(BB(100));
+    expect(after.seats[1].stack).toBe(BB(100));
+  });
+
+  it('applies DIFFERENT targets to different seats in one call', () => {
+    const table = buildTable({ stacks: { 0: BB(20), 1: BB(40), 2: BB(60) }, buttonSeat: 2 });
+    const after = unwrap(
+      applySeatAutoTopUps(table, { 0: at(BB(100)), 1: at(BB(250)), 2: at(BB(50)) }),
+    );
+    expect(after.seats[0].stack).toBe(BB(100));
+    expect(after.seats[1].stack).toBe(BB(250));
+    // Seat 2 is already above its own 50 BB target: untouched, not trimmed.
+    expect(after.seats[2].stack).toBe(BB(60));
+  });
+
+  it('leaves a seat whose own policy is off alone while its neighbour tops up', () => {
+    const table = buildTable({ stacks: { 0: BB(20), 1: BB(20), 2: BB(100) }, buttonSeat: 2 });
+    const after = unwrap(applySeatAutoTopUps(table, { 0: at(BB(100), false), 1: at(BB(100)) }));
+    expect(after.seats[0].stack).toBe(BB(20));
+    expect(after.seats[1].stack).toBe(BB(100));
+  });
+
+  it('a seat with NO entry is not considered at all', () => {
+    const table = buildTable({ stacks: { 0: BB(20), 1: BB(20), 2: BB(100) }, buttonSeat: 2 });
+    const after = unwrap(applySeatAutoTopUps(table, { 1: at(BB(100)) }));
+    expect(after.seats[0].stack).toBe(BB(20));
+    expect(after.seats[1].stack).toBe(BB(100));
+  });
+
+  it('an empty policy map is an identity no-op', () => {
+    const table = buildTable({ stacks: { 0: BB(20), 1: BB(100) }, buttonSeat: 1 });
+    expect(unwrap(applySeatAutoTopUps(table, {}))).toBe(table);
+  });
+
+  it('returns the first error unchanged and applies NOTHING when one seat is invalid', () => {
+    const table = buildTable({ stacks: { 0: BB(20), 1: BB(20), 2: BB(100) }, buttonSeat: 2 });
+    const result = applySeatAutoTopUps(table, {
+      0: at(BB(100)),
+      1: { enabled: true, targetStack: 2.5 as never, threshold: BB(100) },
+    });
+    expect(errCode(result)).toBe('AMOUNT_OUT_OF_RANGE');
+    // Seat 0 would have been topped up first: the caller's table is untouched regardless.
+    expect(table.seats[0].stack).toBe(BB(20));
+    expect(table.seats[1].stack).toBe(BB(20));
+  });
+
+  it('still routes each seat through the table-TOTAL range check', () => {
+    let table = buildTable({
+      stacks: { 0: BB(1), 1: BB(400_000), 2: BB(400_000) },
+      buttonSeat: 1,
+    });
+    table = unwrap(setSeatStack(table, 0, Money.ZERO));
+    expect(errCode(applySeatAutoTopUps(table, { 0: at(BB(400_000)) }))).toBe('AMOUNT_OUT_OF_RANGE');
   });
 });

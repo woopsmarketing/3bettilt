@@ -10,14 +10,66 @@
  */
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { ok, type SessionId } from '@gto-self/shared';
-import { validateTableConfig, type TableState } from '@gto-self/poker-core';
+import {
+  validateTableConfig,
+  type AutoTopUpPolicy,
+  type SeatIndex,
+  type TableState,
+} from '@gto-self/poker-core';
 import type { Timestamp } from '@gto-self/player-core';
 import type { GtoDatabase } from '../client.js';
-import { attempt, dbErr, fromEngineError, type DbResult } from '../errors.js';
+import {
+  attempt,
+  dbErr,
+  dbError,
+  fromEngineError,
+  type DbError,
+  type DbResult,
+} from '../errors.js';
 import { sessionSeats, sessions } from '../schema.js';
 import { collect, decodeSessionRow, type SessionRecord, type SessionSeatRow } from '../rows.js';
 
 const SEATS = [0, 1, 2, 3, 4, 5] as const;
+
+/**
+ * `threshold` has no column: a stored policy is `threshold = targetStack` by construction,
+ * exactly as `defaultAutoTopUpPolicy` shapes it. A policy that disagrees is REFUSED rather
+ * than written with the threshold quietly dropped — a write that loses a value the caller
+ * supplied is the silent lossy behaviour `CLAUDE.md` rule 5 forbids.
+ *
+ * Returns the error, or `null` when the policy is storable. One function for the session
+ * default and for a seat's own policy, so the two rules cannot drift apart.
+ */
+function unstorableThreshold(
+  policy: AutoTopUpPolicy | null,
+  table: string,
+  id: SessionId,
+  subject: string,
+): DbError | null {
+  if (policy === null || policy.threshold === policy.targetStack) return null;
+  return dbError(
+    'INVALID_INPUT',
+    `${subject} cannot store an auto top-up threshold that differs from targetStack`,
+    {
+      table,
+      id,
+      field: 'auto_top_up_target_stack',
+      expected: String(policy.targetStack),
+      actual: String(policy.threshold),
+    },
+  );
+}
+
+/** The two policy columns for one seat. `null` writes NULL to both. */
+function autoTopUpColumns(policy: AutoTopUpPolicy | null): {
+  readonly autoTopUpEnabled: number | null;
+  readonly autoTopUpTargetStack: number | null;
+} {
+  return {
+    autoTopUpEnabled: policy === null ? null : policy.enabled ? 1 : 0,
+    autoTopUpTargetStack: policy === null ? null : policy.targetStack,
+  };
+}
 
 function seatRows(sessionId: SessionId, table: TableState) {
   return SEATS.map((seat) => {
@@ -33,31 +85,29 @@ function seatRows(sessionId: SessionId, table: TableState) {
 }
 
 /**
- * Insert a session and its six seats in one transaction.
+ * Insert a session, its six seats, and each seat's own auto top-up policy in ONE
+ * transaction.
  *
- * `record.autoTopUp` is stored as `enabled` + `targetStack` only. A policy whose
- * `threshold` differs from its `targetStack` is REFUSED rather than written with the
- * threshold quietly dropped: Phase 4 has no column for it, and a write that loses a value
- * the caller supplied is exactly the silent lossy behaviour `CLAUDE.md` rule 5 forbids.
- * Phase 8 adds the column and this check goes away with it.
+ * `record.autoTopUp` (the session DEFAULT) and every entry in `record.seatAutoTopUp` (a
+ * seat's own preference) are stored as `enabled` + `targetStack` only, and any policy whose
+ * `threshold` differs from its `targetStack` is REFUSED — see `unstorableThreshold`. The
+ * refusal happens BEFORE the transaction opens, so a rejected policy writes nothing at all.
  */
 export function insertSession(db: GtoDatabase, record: SessionRecord): DbResult<SessionRecord> {
   const validated = validateTableConfig(record.table.config);
   if (!validated.ok) return fromEngineError(validated.error, { table: 'sessions', id: record.id });
-  const policy = record.autoTopUp;
-  if (policy !== null && policy.threshold !== policy.targetStack) {
-    return dbErr(
-      'INVALID_INPUT',
-      'sessions cannot yet store an auto top-up threshold that differs from targetStack (Phase 8)',
-      {
-        table: 'sessions',
-        id: record.id,
-        field: 'auto_top_up_target_stack',
-        expected: String(policy.targetStack),
-        actual: String(policy.threshold),
-      },
+  const sessionPolicy = unstorableThreshold(record.autoTopUp, 'sessions', record.id, 'sessions');
+  if (sessionPolicy !== null) return { ok: false, error: sessionPolicy };
+  for (const seat of SEATS) {
+    const seatPolicy = unstorableThreshold(
+      record.seatAutoTopUp[seat] ?? null,
+      'session_seats',
+      record.id,
+      `session_seats seat ${seat}`,
     );
+    if (seatPolicy !== null) return { ok: false, error: seatPolicy };
   }
+  const policy = record.autoTopUp;
   const written = attempt({ table: 'sessions', id: record.id }, () => {
     db.transaction((tx) => {
       tx.insert(sessions)
@@ -72,11 +122,17 @@ export function insertSession(db: GtoDatabase, record: SessionRecord): DbResult<
           createdAt: record.createdAt,
           updatedAt: record.updatedAt,
           closedAt: record.closedAt,
-          autoTopUpEnabled: policy === null ? null : policy.enabled ? 1 : 0,
-          autoTopUpTargetStack: policy === null ? null : policy.targetStack,
+          ...autoTopUpColumns(policy),
         })
         .run();
-      tx.insert(sessionSeats).values(seatRows(record.id, record.table)).run();
+      tx.insert(sessionSeats)
+        .values(
+          seatRows(record.id, record.table).map((row) => ({
+            ...row,
+            ...autoTopUpColumns(record.seatAutoTopUp[row.seat] ?? null),
+          })),
+        )
+        .run();
     });
     return record;
   });
@@ -152,9 +208,10 @@ export function listSessions(
  * Write the session's current `TableState` back: config, button, hero, hand number, and all
  * six seats. The caller supplies `updatedAt`; the DB never reads the clock.
  *
- * The auto top-up columns are NOT touched: the policy is set when the session is created
- * and Phase 8 owns editing it. Leaving them alone is deliberate — silently rewriting a
- * stored policy from a `TableState` that does not carry one would invent data.
+ * The auto top-up columns are NOT touched — neither the session's default nor any seat's
+ * own policy. `TableState` does not carry them (they are session state, not table config —
+ * ADR-0045), so rewriting them from one would invent data. `updateSessionSeatAutoTopUp` is
+ * the only way a seat's policy changes after the session is created.
  */
 export function updateSessionTable(
   db: GtoDatabase,
@@ -190,6 +247,53 @@ export function updateSessionTable(
   if (!written.ok) return written;
   if (written.value === 0) {
     return dbErr('NOT_FOUND', `session ${id} does not exist`, { table: 'sessions', id });
+  }
+  return ok(null);
+}
+
+/**
+ * Set (or clear) ONE seat's own auto top-up policy. The table-side toggle.
+ *
+ * Auto top-up is a per-seat preference, so this writes exactly two columns of exactly one
+ * row: occupancy, player and stack are the table's business and are never touched here, and
+ * neither is the session's default policy or its `updated_at`.
+ *
+ * `policy === null` clears the seat back to "records no policy". A policy whose `threshold`
+ * differs from its `targetStack` is REFUSED, exactly as `insertSession` refuses one.
+ *
+ * A session or seat that does not exist is `NOT_FOUND`, not a silent no-op: all six seat
+ * rows always exist for a session that does, so zero affected rows can only mean the caller
+ * named something that is not there.
+ */
+export function updateSessionSeatAutoTopUp(
+  db: GtoDatabase,
+  sessionId: SessionId,
+  seat: SeatIndex,
+  policy: AutoTopUpPolicy | null,
+): DbResult<null> {
+  const unstorable = unstorableThreshold(
+    policy,
+    'session_seats',
+    sessionId,
+    `session_seats seat ${seat}`,
+  );
+  if (unstorable !== null) return { ok: false, error: unstorable };
+
+  const written = attempt({ table: 'session_seats', id: sessionId }, () =>
+    db
+      .update(sessionSeats)
+      .set(autoTopUpColumns(policy))
+      .where(and(eq(sessionSeats.sessionId, sessionId), eq(sessionSeats.seat, seat)))
+      .run(),
+  );
+  if (!written.ok) return written;
+  if (written.value.changes === 0) {
+    return dbErr('NOT_FOUND', `session ${sessionId} has no seat ${seat}`, {
+      table: 'session_seats',
+      id: sessionId,
+      field: 'seat',
+      actual: String(seat),
+    });
   }
   return ok(null);
 }

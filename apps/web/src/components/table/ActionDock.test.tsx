@@ -60,6 +60,17 @@ const press = (key: string): void => {
   });
 };
 
+/**
+ * Fires a keydown carrying both `key` and `code`, so a Korean (or other non-Latin) IME
+ * can be simulated: the IME rewrites `key` to a jamo or to `'Process'` while composing,
+ * but never touches `code`, the physical key position.
+ */
+const pressPhysical = (key: string, code: string): void => {
+  act(() => {
+    fireEvent.keyDown(window, { key, code });
+  });
+};
+
 const handState = (store: TableStore): HandState => {
   const hand = store.getState().hand;
   if (hand === null) throw new Error('no hand in progress');
@@ -275,7 +286,7 @@ describe('ActionDock — the raise-to editor', () => {
     expect(store.getState().lastError).toBeNull();
     expect(screen.getByTestId('raise-input')).toHaveValue('1.5');
     expect(screen.getByTestId('raise-problem')).toHaveTextContent(
-      `min ${Money.formatBB(wager.minToAmount, { maxDecimals: 3 })} BB`,
+      `최소 ${Money.formatBB(wager.minToAmount, { maxDecimals: 3 })} BB`,
     );
   });
 
@@ -296,7 +307,7 @@ describe('ActionDock — the raise-to editor', () => {
     expect(handState(store).actions.length).toBe(before);
     expect(screen.getByTestId('raise-input')).toHaveValue(tooMuch);
     expect(screen.getByTestId('raise-problem')).toHaveTextContent(
-      `max ${Money.formatBB(wager.maxToAmount, { maxDecimals: 3 })} BB`,
+      `최대 ${Money.formatBB(wager.maxToAmount, { maxDecimals: 3 })} BB`,
     );
   });
 
@@ -329,7 +340,7 @@ describe('ActionDock — the raise-to editor', () => {
     await user.keyboard('{Enter}');
 
     expect(handState(store).actions.length).toBe(before);
-    expect(screen.getByTestId('raise-problem')).toHaveTextContent('Enter a raise-to amount');
+    expect(screen.getByTestId('raise-problem')).toHaveTextContent('레이즈 금액');
   });
 
   it('Esc cancels without dispatching and keeps what was typed', async () => {
@@ -527,6 +538,49 @@ describe('ActionDock — hotkeys never fire while the user is typing', () => {
     });
 
     expect(handState(store).actions.length).toBe(before);
+  });
+});
+
+describe('ActionDock — hotkeys survive a non-Latin IME', () => {
+  /**
+   * The real-user bug: with a Korean (Hangul) input source active, a browser `keydown`
+   * does not deliver `event.key === 'f'`. It delivers the Hangul jamo, or `'Process'`
+   * while the IME is composing. The dock must still resolve the physical key.
+   */
+  it('F folds when the IME delivers a Hangul jamo for the physical F key', () => {
+    const store = renderDock(fourHanded());
+    start(store);
+    const seat = actorSeat(store);
+
+    pressPhysical('ㄹ', 'KeyF');
+
+    expect(lastAction(store).kind).toBe('FOLD');
+    expect(handState(store).seats[seat].status).toBe('FOLDED');
+  });
+
+  it('C calls when the IME reports `Process` while composing over the physical C key', () => {
+    const store = renderDock(fourHanded());
+    start(store);
+
+    pressPhysical('Process', 'KeyC');
+
+    expect(lastAction(store).kind).toBe('CALL');
+  });
+
+  it('Escape still closes the raise editor when the IME rewrites `key`', async () => {
+    const user = userEvent.setup();
+    const store = renderDock(fourHanded());
+    start(store);
+    const before = handState(store).actions.length;
+
+    pressPhysical('ㄹ', 'KeyR'); // R opens the editor
+    await user.type(screen.getByTestId('raise-input'), '9');
+
+    // Escape is a named key: an IME never rewrites it away from the literal 'Escape'.
+    pressPhysical('Escape', 'Escape');
+
+    expect(handState(store).actions.length).toBe(before);
+    expect(screen.queryByTestId('raise-panel')).not.toBeInTheDocument();
   });
 });
 

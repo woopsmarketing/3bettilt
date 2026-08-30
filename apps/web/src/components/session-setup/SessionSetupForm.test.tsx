@@ -29,7 +29,7 @@ function validForm(): SessionFormValue {
   };
 }
 
-const startButton = () => screen.getByRole('button', { name: /start session/i });
+const startButton = () => screen.getByRole('button', { name: '세션 시작' });
 
 describe('SessionSetupForm', () => {
   it('disables Start Session and states the reason while the form is incomplete', () => {
@@ -87,7 +87,7 @@ describe('SessionSetupForm', () => {
       />,
     );
 
-    const stack = screen.getByLabelText('Seat 2 stack in BB');
+    const stack = screen.getByLabelText('좌석 2 스택 (BB)');
     await user.clear(stack);
     await user.type(stack, '1o0');
 
@@ -106,7 +106,7 @@ describe('SessionSetupForm', () => {
         initialForm={validForm()}
       />,
     );
-    const stack = screen.getByLabelText('Seat 2 stack in BB');
+    const stack = screen.getByLabelText('좌석 2 스택 (BB)');
     await user.clear(stack);
     await user.type(stack, '93.701');
     expect(stack).toHaveValue('93.701');
@@ -133,7 +133,7 @@ describe('SessionSetupForm', () => {
       />,
     );
 
-    const nickname = screen.getByLabelText('Seat 3 nickname');
+    const nickname = screen.getByLabelText('좌석 3 닉네임');
     await user.clear(nickname);
     await user.type(nickname, 'Neme');
 
@@ -161,8 +161,8 @@ describe('SessionSetupForm', () => {
         initialForm={validForm()}
       />,
     );
-    await user.type(screen.getByLabelText('Seat 3 nickname'), 'Someone');
-    expect(await screen.findByText(/no existing player matches/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText('좌석 3 닉네임'), 'Someone');
+    expect(await screen.findByText(/일치하는 기존 플레이어가 없습니다/u)).toBeInTheDocument();
   });
 
   it('SHOWS a server rejection instead of swallowing it', async () => {
@@ -216,12 +216,12 @@ describe('SessionSetupForm', () => {
       />,
     );
     for (const seat of SEAT_INDEXES) {
-      expect(screen.getByLabelText(`Seat ${seat + 1} occupancy`)).toBeInTheDocument();
-      expect(screen.getByLabelText(`Seat ${seat + 1} is Hero`)).toBeInTheDocument();
-      expect(screen.getByLabelText(`Seat ${seat + 1} has the button`)).toBeInTheDocument();
+      expect(screen.getByLabelText(`좌석 ${seat + 1} 상태`)).toBeInTheDocument();
+      expect(screen.getByLabelText(`좌석 ${seat + 1} 내 좌석`)).toBeInTheDocument();
+      expect(screen.getByLabelText(`좌석 ${seat + 1} BTN`)).toBeInTheDocument();
     }
     // HUD entry exists, is collapsed, and is never required to start.
-    const hud = screen.getAllByText(/HUD snapshot \(optional\)/i);
+    const hud = screen.getAllByText(/HUD 스냅샷 \(선택\)/u);
     expect(hud.length).toBe(3);
     expect(startButton()).toBeEnabled();
   });
@@ -236,9 +236,9 @@ describe('SessionSetupForm', () => {
         initialForm={validForm()}
       />,
     );
-    await user.click(screen.getByLabelText('Seat 3 is Hero'));
-    expect(screen.getByLabelText('Seat 3 is Hero')).toBeChecked();
-    expect(screen.getByLabelText('Seat 1 is Hero')).not.toBeChecked();
+    await user.click(screen.getByLabelText('좌석 3 내 좌석'));
+    expect(screen.getByLabelText('좌석 3 내 좌석')).toBeChecked();
+    expect(screen.getByLabelText('좌석 1 내 좌석')).not.toBeChecked();
     expect(startButton()).toBeEnabled();
   });
 
@@ -252,8 +252,8 @@ describe('SessionSetupForm', () => {
         initialForm={validForm()}
       />,
     );
-    await user.selectOptions(screen.getByLabelText('Seat 2 occupancy'), 'EMPTY');
-    await user.selectOptions(screen.getByLabelText('Seat 3 occupancy'), 'EMPTY');
+    await user.selectOptions(screen.getByLabelText('좌석 2 상태'), 'EMPTY');
+    await user.selectOptions(screen.getByLabelText('좌석 3 상태'), 'EMPTY');
     expect(startButton()).toBeDisabled();
     expect(screen.getAllByText(/At least two dealt-in seats are needed/i).length).toBeGreaterThan(
       0,

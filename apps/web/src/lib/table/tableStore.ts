@@ -21,10 +21,11 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { asId, cryptoIdFactory, type IdFactory } from '@gto-self/shared';
 import {
+  SEAT_INDEXES,
   advanceButton,
-  applyAutoTopUp,
   applyCommand,
   applyHandResult,
+  applySeatAutoTopUps,
   engineError,
   startHand as engineStartHand,
   toView,
@@ -44,8 +45,21 @@ export interface TableStoreInit {
   readonly sessionId: string;
   /** The stored table, exactly as the server read it back. */
   readonly table: TableState;
-  /** The session's between-hands policy, or `null` when it records none. */
+  /**
+   * The session's between-hands DEFAULT, or `null` when it records none. It is what each
+   * occupied seat was seeded from; it is NOT applied to any seat by itself — see
+   * `seedSeatAutoTopUp` and `startHand`.
+   */
   readonly autoTopUp?: AutoTopUpPolicy | null;
+  /**
+   * Each seat's OWN stored policy, keyed by physical seat. A seat with no entry records no
+   * preference, which is a different fact from an entry whose `enabled` is false.
+   *
+   * Omitted means "the caller has none to give" (component-test harnesses), NOT "no seat
+   * tops up": the seeding below still gives every occupied seat the session default, so a
+   * caller that forgets this prop cannot silently turn auto top-up off.
+   */
+  readonly seatAutoTopUp?: Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>>;
   /**
    * Injected so tests and replay are deterministic (ADR-0007). Defaults to
    * `cryptoIdFactory`; referencing it costs nothing, and `crypto.randomUUID` is only
@@ -61,7 +75,14 @@ export interface TableStoreState {
    * the engine's own documented sequence — never edited field by field here.
    */
   readonly table: TableState;
+  /**
+   * The session DEFAULT only. Displayed, and used to seed a legacy session's seats at
+   * creation — never applied to a seat on its own (a seat the user switched OFF must stay
+   * off, which is the whole point of the per-seat preference).
+   */
   readonly autoTopUp: AutoTopUpPolicy | null;
+  /** Each seat's OWN policy. The authoritative top-up input for `startHand`. */
+  readonly seatAutoTopUp: Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>>;
   readonly hand: Hand | null;
   /** Always `toView(hand)`, or `null` when there is no hand. Never hand-maintained. */
   readonly view: HandView | null;
@@ -78,6 +99,14 @@ export interface TableStoreState {
   undo(): void;
   dismissError(): void;
   selectSeat(seat: SeatIndex | null): void;
+  /**
+   * Set (or, with `null`, clear) ONE seat's own auto top-up preference.
+   *
+   * A synchronous in-memory write, like every other transition here: it does not await,
+   * fetch or persist. Persistence is the CALLER's, after this returns, so the path from a
+   * click to a rendered change never contains a network request (ADR-0043).
+   */
+  setSeatAutoTopUp(seat: SeatIndex, policy: AutoTopUpPolicy | null): void;
 }
 
 export type TableStore = StoreApi<TableStoreState>;
@@ -88,6 +117,38 @@ export type TableStore = StoreApi<TableStoreState>;
  */
 export function canStartHand(state: TableStoreState): boolean {
   return state.hand === null || state.hand.state.phase === 'COMPLETE';
+}
+
+/**
+ * Total, pure. Every OCCUPIED seat with no policy of its own gets the session default.
+ *
+ * This is the SAME seeding rule the server applies when a session is created
+ * (`server/session-service.ts` — `seedSeatAutoTopUp`, over `plan.seats`: ACTIVE or
+ * SITTING_OUT with a player, never EMPTY). It is repeated here for LEGACY sessions only —
+ * rows written before the per-seat columns existed carry no per-seat entries at all, and
+ * loading one must not silently switch its auto top-up off.
+ *
+ * A `null` session default seeds NOTHING: no seat records a policy, which is a different
+ * fact from every seat recording a disabled one. A seat that already has its own entry is
+ * never overwritten — the user's own choice always wins over the default it came from.
+ */
+export function seedSeatAutoTopUp(
+  table: TableState,
+  sessionPolicy: AutoTopUpPolicy | null,
+  stored: Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>>,
+): Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>> {
+  if (sessionPolicy === null) return stored;
+
+  const seeded: Partial<Record<SeatIndex, AutoTopUpPolicy>> = { ...stored };
+  let added = false;
+  for (const seat of SEAT_INDEXES) {
+    if (seeded[seat] !== undefined) continue;
+    const tableSeat = table.seats[seat];
+    if (tableSeat.occupancy === 'EMPTY' || tableSeat.playerId === null) continue;
+    seeded[seat] = sessionPolicy;
+    added = true;
+  }
+  return added ? seeded : stored;
 }
 
 export function createTableStore(init: TableStoreInit): TableStore {
@@ -106,6 +167,11 @@ export function createTableStore(init: TableStoreInit): TableStore {
       sessionId: init.sessionId,
       table: init.table,
       autoTopUp: init.autoTopUp ?? null,
+      seatAutoTopUp: seedSeatAutoTopUp(
+        init.table,
+        init.autoTopUp ?? null,
+        init.seatAutoTopUp ?? {},
+      ),
       hand: null,
       view: null,
       lastError: null,
@@ -129,16 +195,15 @@ export function createTableStore(init: TableStoreInit): TableStore {
           // The engine's own documented between-hands sequence: write the ending stacks
           // back, top up, THEN move the button (`table.ts` — top-up before the button
           // search, because a revived seat must be eligible again by the time it runs).
+          //
+          // Top-up reads the PER-SEAT policies and nothing else. The session default is
+          // deliberately NOT also applied: it is only what the seats were seeded from, and
+          // applying it as well would top up a seat the user had switched off.
           const settled = applyHandResult(table, previous);
           if (!settled.ok) return fail(settled.error);
-          const policy = state.autoTopUp;
-          let toppedUp = settled.value;
-          if (policy !== null) {
-            const applied = applyAutoTopUp(toppedUp, policy);
-            if (!applied.ok) return fail(applied.error);
-            toppedUp = applied.value;
-          }
-          const advanced = advanceButton(toppedUp);
+          const toppedUp = applySeatAutoTopUps(settled.value, state.seatAutoTopUp);
+          if (!toppedUp.ok) return fail(toppedUp.error);
+          const advanced = advanceButton(toppedUp.value);
           if (!advanced.ok) return fail(advanced.error);
           table = advanced.value;
         }
@@ -180,6 +245,16 @@ export function createTableStore(init: TableStoreInit): TableStore {
 
       selectSeat(seat: SeatIndex | null) {
         set({ selectedSeat: seat });
+      },
+
+      setSeatAutoTopUp(seat: SeatIndex, policy: AutoTopUpPolicy | null) {
+        const next: Partial<Record<SeatIndex, AutoTopUpPolicy>> = { ...get().seatAutoTopUp };
+        // `null` REMOVES the entry rather than storing a disabled one: "records no
+        // preference" and "records a preference that is off" are different facts, and the
+        // engine treats them differently at seeding time.
+        if (policy === null) delete next[seat];
+        else next[seat] = policy;
+        set({ seatAutoTopUp: next });
       },
     };
   });

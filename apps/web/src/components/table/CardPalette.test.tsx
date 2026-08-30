@@ -46,7 +46,14 @@ function renderHarness(table: TableState): TableStore {
     return (
       <>
         <CardPalette entry={entry} view={view} />
-        <AwardPanel view={view} />
+        {/* The reveal wiring lives in `TableRoot` and is exercised in `AwardPanel.test.tsx`;
+            this harness only needs the panel's award half. */}
+        <AwardPanel
+          view={view}
+          nicknameForSeat={() => null}
+          revealSeat={null}
+          onRevealSeat={() => {}}
+        />
         <ActionDock view={view} hotkeysSuppressed={entry.capturing} />
         <p data-testid="harness-error">{lastError === null ? '' : lastError.code}</p>
       </>
@@ -141,6 +148,17 @@ const typeAtPalette = (key: string): void => {
 const typeAtWindow = (key: string): void => {
   act(() => {
     fireEvent.keyDown(window, { key });
+  });
+};
+
+/**
+ * A key typed at the focused palette carrying both `key` and `code`, so a Korean (or
+ * other non-Latin) IME can be simulated: it rewrites `key` to a jamo, or to `'Process'`
+ * while composing, but never touches `code`, the physical key position.
+ */
+const typeAtPalettePhysical = (key: string, code: string): void => {
+  act(() => {
+    fireEvent.keyDown(paletteEl(), { key, code });
   });
 };
 
@@ -289,7 +307,7 @@ describe('CardPalette — keyboard ownership survives a mouse click', () => {
     await user.click(screen.getByTestId('palette-As'));
 
     expect(paletteEl()).toHaveAttribute('data-capturing', 'true');
-    expect(paletteEl()).toHaveTextContent('keyboard: palette');
+    expect(paletteEl()).toHaveTextContent('키보드: 카드 입력');
 
     // Typed at whatever really has focus — not at the section by fiat.
     await user.keyboard('kd');
@@ -346,10 +364,54 @@ describe('CardPalette — keyboard ownership survives a mouse click', () => {
     start(store);
 
     expect(paletteEl()).toHaveAttribute('data-capturing', 'false');
-    expect(paletteEl()).toHaveTextContent('keyboard: action dock');
+    expect(paletteEl()).toHaveTextContent('키보드: 액션');
     await user.keyboard('a');
 
     expect(handState(store).seats[3].status).toBe('ALL_IN');
+  });
+});
+
+describe('CardPalette — card entry survives a non-Latin IME', () => {
+  /**
+   * The real-user bug: with a Korean (Hangul) input source active, a browser `keydown`
+   * does not deliver `event.key === 'a'`. It delivers the Hangul jamo, or `'Process'`
+   * while the IME is composing. Rank and suit keys must still resolve off `event.code`.
+   */
+  it('picks the ace of clubs from Hangul jamo carrying the physical A and C keys', () => {
+    const store = renderHarness(fourHanded());
+    start(store);
+    focusPalette();
+
+    // Physical `A` key, but the IME reports the jamo for it, not the Latin letter.
+    typeAtPalettePhysical('ㅁ', 'KeyA');
+    expect(screen.getByTestId('card-palette-pending')).toHaveTextContent('A?');
+
+    // Physical `C` key, reported as `'Process'` while the IME is composing.
+    typeAtPalettePhysical('Process', 'KeyC');
+
+    expect(screen.getByTestId('pick-Ac')).toBeInTheDocument();
+    expect(paletteEl()).toHaveAttribute('data-needed', '1');
+
+    clickCard('Kd');
+
+    expect(handState(store).seats[0].holeCards).toEqual(
+      expect.arrayContaining([card('Ac'), card('Kd')]),
+    );
+    expect(handState(store).seats[0].holeCards).toHaveLength(2);
+  });
+
+  it('Escape still clears the pick when the IME rewrites `key`', () => {
+    const store = renderHarness(fourHanded());
+    start(store);
+    focusPalette();
+    typeAtPalettePhysical('ㅁ', 'KeyA');
+    expect(paletteEl()).toHaveAttribute('data-needed', '2');
+
+    // Escape is a named key: an IME never rewrites it away from the literal 'Escape'.
+    typeAtPalettePhysical('Escape', 'Escape');
+
+    expect(screen.queryByTestId('card-palette')).not.toBeInTheDocument();
+    expect(handState(store).seats[0].holeCards).toHaveLength(0);
   });
 });
 
@@ -540,12 +602,15 @@ describe('AwardPanel', () => {
     expect(after[2]).toBe(before[2]);
   });
 
-  it('surfaces NO_WINNERS rather than pre-validating the selection', () => {
+  it('refuses to submit an award with no winner picked, and dispatches nothing', () => {
     const store = renderHarness(fourHanded());
     toShowdown(store);
 
+    // A known-illegal `NO_WINNERS` command is not a way to ask the user a question: the
+    // button is disabled until every pending pot has a winner.
+    expect(screen.getByTestId('award-submit')).toBeDisabled();
     fireEvent.click(screen.getByTestId('award-submit'));
-    expect(screen.getByTestId('harness-error')).toHaveTextContent('NO_WINNERS');
+    expect(screen.getByTestId('harness-error')).toHaveTextContent('');
     expect(handState(store).phase).not.toBe('COMPLETE');
   });
 });

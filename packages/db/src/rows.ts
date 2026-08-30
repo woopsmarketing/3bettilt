@@ -470,6 +470,18 @@ export interface SessionRecord {
    * threshold and the column it needs.
    */
   readonly autoTopUp: AutoTopUpPolicy | null;
+  /**
+   * Each seat's OWN policy, keyed by physical seat. A seat with no entry records none.
+   *
+   * A SIBLING of `autoTopUp`, never nested inside `table`: auto top-up is session state,
+   * not table configuration (ADR-0045), and `TableState` is the engine's own type. The
+   * session-level `autoTopUp` above is the DEFAULT each occupied seat is seeded from when
+   * the session is created; a seat is free to diverge from it afterwards.
+   *
+   * Stored on `session_seats`, with the same two columns and the same `threshold =
+   * targetStack` rule as the session row.
+   */
+  readonly seatAutoTopUp: Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>>;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   /** Set when the sitting ended. `null` while it is live. */
@@ -478,7 +490,13 @@ export interface SessionRecord {
 
 const OCCUPANCIES: readonly SeatOccupancy[] = ['ACTIVE', 'SITTING_OUT', 'EMPTY'];
 
-function decodeSessionSeatRow(row: SessionSeatRow): DbResult<TableSeat> {
+/** One seat row: the `TableSeat` the engine knows about, plus the seat's own policy. */
+interface DecodedSessionSeat {
+  readonly seat: TableSeat;
+  readonly autoTopUp: AutoTopUpPolicy | null;
+}
+
+function decodeSessionSeatRow(row: SessionSeatRow): DbResult<DecodedSessionSeat> {
   const seat = decodeSeat(row.seat, 'seat', 'session_seats');
   if (!seat.ok) return seat;
   if (!(OCCUPANCIES as readonly string[]).includes(row.occupancy)) {
@@ -504,46 +522,64 @@ function decodeSessionSeatRow(row: SessionSeatRow): DbResult<TableSeat> {
       field: 'stack',
     });
   }
+  const autoTopUp = decodeAutoTopUpPair(
+    row.autoTopUpEnabled,
+    row.autoTopUpTargetStack,
+    'session_seats',
+    row.sessionId,
+    `session_seats ${row.sessionId} seat ${row.seat}`,
+  );
+  if (!autoTopUp.ok) return autoTopUp;
   return ok({
-    seat: seat.value,
-    occupancy,
-    playerId: row.playerId === null ? null : asId<'Player'>(row.playerId),
-    stack: stack.value,
+    seat: {
+      seat: seat.value,
+      occupancy,
+      playerId: row.playerId === null ? null : asId<'Player'>(row.playerId),
+      stack: stack.value,
+    },
+    autoTopUp: autoTopUp.value,
   });
 }
 
 /**
  * The two `auto_top_up_*` columns as one policy, or `null` when neither is set. Both
  * present or neither: a half-written policy is a corrupt row, not a policy with a guessed
- * half. `threshold` is not stored — it is `targetStack` by construction until Phase 8 makes
- * it editable — so it is re-derived here rather than defaulted to something else.
+ * half. `threshold` is not stored — it is `targetStack` by construction — so it is
+ * re-derived here rather than defaulted to something else.
+ *
+ * ONE decoder for both `sessions` and `session_seats`, so the session default and a seat's
+ * own policy can never disagree about what a stored policy means.
  */
-function decodeAutoTopUp(row: SessionRow): DbResult<AutoTopUpPolicy | null> {
-  const enabled = row.autoTopUpEnabled;
-  const target = row.autoTopUpTargetStack;
+function decodeAutoTopUpPair(
+  enabled: number | null,
+  target: number | null,
+  table: string,
+  id: string,
+  subject: string,
+): DbResult<AutoTopUpPolicy | null> {
   if (enabled === null && target === null) return ok(null);
   if (enabled === null || target === null) {
     return dbErr(
       'CORRUPT_ROW',
-      `session ${row.id}: auto_top_up_enabled and auto_top_up_target_stack must both be set or both be null`,
-      { table: 'sessions', id: row.id, field: 'auto_top_up_enabled' },
+      `${subject}: auto_top_up_enabled and auto_top_up_target_stack must both be set or both be null`,
+      { table, id, field: 'auto_top_up_enabled' },
     );
   }
   if (enabled !== 0 && enabled !== 1) {
-    return dbErr('CORRUPT_ROW', `sessions.auto_top_up_enabled must be 0 or 1, got ${enabled}`, {
-      table: 'sessions',
-      id: row.id,
+    return dbErr('CORRUPT_ROW', `${table}.auto_top_up_enabled must be 0 or 1, got ${enabled}`, {
+      table,
+      id,
       field: 'auto_top_up_enabled',
       actual: String(enabled),
     });
   }
-  const targetStack = decodeMoney(target, 'auto_top_up_target_stack', 'sessions');
+  const targetStack = decodeMoney(target, 'auto_top_up_target_stack', table);
   if (!targetStack.ok) return targetStack;
   if (targetStack.value <= 0) {
     return dbErr(
       'CORRUPT_ROW',
-      `sessions.auto_top_up_target_stack must be positive, got ${targetStack.value}`,
-      { table: 'sessions', id: row.id, field: 'auto_top_up_target_stack' },
+      `${table}.auto_top_up_target_stack must be positive, got ${targetStack.value}`,
+      { table, id, field: 'auto_top_up_target_stack' },
     );
   }
   return ok({
@@ -551,6 +587,17 @@ function decodeAutoTopUp(row: SessionRow): DbResult<AutoTopUpPolicy | null> {
     targetStack: targetStack.value,
     threshold: targetStack.value,
   });
+}
+
+/** The session-level DEFAULT policy. See `decodeAutoTopUpPair`. */
+function decodeAutoTopUp(row: SessionRow): DbResult<AutoTopUpPolicy | null> {
+  return decodeAutoTopUpPair(
+    row.autoTopUpEnabled,
+    row.autoTopUpTargetStack,
+    'sessions',
+    row.id,
+    `session ${row.id}`,
+  );
 }
 
 export function decodeSessionRow(
@@ -578,16 +625,19 @@ export function decodeSessionRow(
     );
   }
   const bySeat = new Map<SeatIndex, TableSeat>();
+  const seatAutoTopUp: Partial<Record<SeatIndex, AutoTopUpPolicy>> = {};
   for (const seatRow of seatRows) {
     const decoded = decodeSessionSeatRow(seatRow);
     if (!decoded.ok) return decoded;
-    if (bySeat.has(decoded.value.seat)) {
-      return dbErr('CORRUPT_ROW', `session ${row.id} has seat ${decoded.value.seat} twice`, {
+    const seat = decoded.value.seat.seat;
+    if (bySeat.has(seat)) {
+      return dbErr('CORRUPT_ROW', `session ${row.id} has seat ${seat} twice`, {
         table: 'session_seats',
         id: row.id,
       });
     }
-    bySeat.set(decoded.value.seat, decoded.value);
+    bySeat.set(seat, decoded.value.seat);
+    if (decoded.value.autoTopUp !== null) seatAutoTopUp[seat] = decoded.value.autoTopUp;
   }
   const missing = ([0, 1, 2, 3, 4, 5] as const).find((seat) => !bySeat.has(seat));
   if (missing !== undefined) {
@@ -626,6 +676,7 @@ export function decodeSessionRow(
     label: row.label,
     presetId: row.presetId,
     autoTopUp: autoTopUp.value,
+    seatAutoTopUp,
     table: {
       config: config.value,
       seats: makeBySeat((seat) => {

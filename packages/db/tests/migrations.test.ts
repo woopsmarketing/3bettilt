@@ -54,6 +54,8 @@ const INTEGRAL_COLUMNS: readonly (readonly [string, string])[] = [
   ['sessions', 'auto_top_up_enabled'],
   ['sessions', 'auto_top_up_target_stack'],
   ['session_seats', 'stack'],
+  ['session_seats', 'auto_top_up_enabled'],
+  ['session_seats', 'auto_top_up_target_stack'],
   ['hands', 'started_at'],
   ['hands', 'finished_at'],
   ['hand_players', 'starting_stack'],
@@ -206,7 +208,7 @@ describe('migrations', () => {
         )
         .run();
       handle.sqlite
-        .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 100000)`)
+        .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 100000, null, null)`)
         .run();
 
       // The write the review reproduced: accepted before, stored as a REAL, and only
@@ -216,7 +218,7 @@ describe('migrations', () => {
       ).toThrow(/CHECK constraint failed/u);
       expect(() =>
         handle.sqlite
-          .prepare(`insert into session_seats values ('s1', 1, 'ACTIVE', 'p1', 0.5)`)
+          .prepare(`insert into session_seats values ('s1', 1, 'ACTIVE', 'p1', 0.5, null, null)`)
           .run(),
       ).toThrow(/CHECK constraint failed/u);
 
@@ -368,6 +370,108 @@ describe('migrations', () => {
           .all() as readonly { readonly name: string }[];
         expect(indexes.filter((i) => i.name === 'sessions_created_idx')).toHaveLength(1);
         // No leftover scratch table from a table-recreate.
+        expect(
+          after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
+        ).toEqual([]);
+      } finally {
+        after.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The same UPGRADE path for `0003`, which adds the per-seat auto top-up columns to
+   * `session_seats` — a table with rows that a generated 12-step recreate would DROP, and
+   * whose rows are the child side of a CASCADE from `sessions`. The seat rows below are the
+   * assertion that matters (ADR-0046).
+   */
+  it('applies 0003 to a populated database that already has 0000..0002', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gto-self-migrate-0003-'));
+    try {
+      const older = join(dir, 'drizzle-0002');
+      mkdirSync(join(older, 'meta'), { recursive: true });
+      const journal = JSON.parse(
+        readFileSync(join(defaultMigrationsFolder(), 'meta', '_journal.json'), 'utf8'),
+      ) as { entries: { tag: string; idx: number }[] };
+      const kept = journal.entries.filter((entry) => entry.idx <= 2);
+      expect(kept).toHaveLength(3);
+      for (const entry of kept) {
+        cpSync(
+          join(defaultMigrationsFolder(), `${entry.tag}.sql`),
+          join(older, `${entry.tag}.sql`),
+        );
+      }
+      writeFileSync(
+        join(older, 'meta', '_journal.json'),
+        JSON.stringify({ ...journal, entries: kept }),
+      );
+
+      const url = join(dir, 'upgrade.db');
+      const before = openDatabase({ url, migrationsFolder: older });
+      try {
+        before.sqlite
+          .prepare(
+            `insert into players values ('p1', 'Dan', 'dan', null, 1700000000000, 1700000000000, 0)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into sessions values ('s1', 'grind', null, '{}', 0, 0, 3, 1700000000000, 1700000000000, null, 1, 100000)`,
+          )
+          .run();
+        // Five columns: at 0002 `session_seats` does not have the policy columns yet.
+        before.sqlite
+          .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 93701)`)
+          .run();
+        before.sqlite.prepare(`insert into session_seats values ('s1', 1, 'EMPTY', null, 0)`).run();
+      } finally {
+        before.close();
+      }
+
+      const after = openDatabase({ url });
+      try {
+        // Both seat rows survived, with every stored value unchanged and a NULL policy.
+        expect(
+          after.sqlite
+            .prepare(
+              `select seat, occupancy, player_id, stack, auto_top_up_enabled as e,
+                      auto_top_up_target_stack as t from session_seats order by seat`,
+            )
+            .all(),
+        ).toEqual([
+          { seat: 0, occupancy: 'ACTIVE', player_id: 'p1', stack: 93_701, e: null, t: null },
+          { seat: 1, occupancy: 'EMPTY', player_id: null, stack: 0, e: null, t: null },
+        ]);
+        // The session's own 0002 policy columns are untouched by 0003.
+        expect(
+          after.sqlite
+            .prepare(
+              `select auto_top_up_enabled as e, auto_top_up_target_stack as t from sessions where id = 's1'`,
+            )
+            .get(),
+        ).toEqual({ e: 1, t: 100_000 });
+        // The new constraints are live on the upgraded table.
+        expect(() =>
+          after.sqlite
+            .prepare(
+              `update session_seats set auto_top_up_enabled = 1, auto_top_up_target_stack = 100000.5 where seat = 0`,
+            )
+            .run(),
+        ).toThrow(/CHECK constraint failed: session_seats_auto_top_up_target_stack_range/u);
+        expect(() =>
+          after.sqlite
+            .prepare(`update session_seats set auto_top_up_enabled = 1 where seat = 0`)
+            .run(),
+        ).toThrow(/CHECK constraint failed: session_seats_auto_top_up_pair/u);
+        // The index the schema declares is still there exactly once, and no scratch table.
+        const indexes = after.sqlite
+          .prepare(
+            `select name from sqlite_master where type = 'index' and tbl_name = 'session_seats'`,
+          )
+          .all() as readonly { readonly name: string }[];
+        expect(indexes.filter((i) => i.name === 'session_seats_player_idx')).toHaveLength(1);
         expect(
           after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
         ).toEqual([]);

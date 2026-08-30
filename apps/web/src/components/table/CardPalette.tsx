@@ -12,9 +12,10 @@
  *    There is no React-side used-card engine: nothing here scans seats or the board
  *    (`prompt` D2). The ONE piece of local card state is `session.picks` — the cards of the
  *    current *unsubmitted* selection, which by definition are not in engine state yet.
- * 3. **The palette opens and closes itself.** `cardEntryRequest(view, heroSeat)` is the
- *    whole lifecycle: it answers HERO while the hero's hole cards are unset, BOARD while
- *    the engine is waiting for a street, and `null` otherwise. Submitting the last card
+ * 3. **The palette opens and closes itself.** `cardEntryRequest(view, heroSeat, revealSeat)`
+ *    is the whole lifecycle: it answers HERO while the hero's hole cards are unset, BOARD
+ *    while the engine is waiting for a street, REVEAL while the user is recording a hand an
+ *    opponent showed at showdown, and `null` otherwise. Submitting the last card
  *    changes engine state, which changes that answer, which closes the palette. There is
  *    no "Go to flop" button and no close timer.
  * 4. **One keyboard owner, decided by EXPLICIT state.** `engagedKey` is set when the user
@@ -48,6 +49,8 @@ import {
   suitForKey,
   type CardEntryRequest,
 } from '../../lib/table/cardEntry.js';
+import { resolveTypedKey } from '../../lib/table/keys.js';
+import { cardEntryHeading } from '../../lib/table/copy.js';
 import { useTableStore, useTableStoreApi } from './TableStoreProvider.js';
 
 const SUIT_GLYPH: Readonly<Record<string, string>> = { s: '♠', h: '♥', d: '♦', c: '♣' };
@@ -87,9 +90,18 @@ export interface CardEntry {
 export interface UseCardEntryOptions {
   readonly view: HandView | null;
   readonly heroSeat: SeatIndex | null;
+  /**
+   * The seat the user said SHOWED at showdown, nominated in `AwardPanel` and owned by
+   * `TableRoot`. Omitted/`null` — the usual case — leaves HERO and BOARD entry untouched.
+   */
+  readonly revealSeat?: SeatIndex | null;
 }
 
-export function useCardEntry({ view, heroSeat }: UseCardEntryOptions): CardEntry {
+export function useCardEntry({
+  view,
+  heroSeat,
+  revealSeat = null,
+}: UseCardEntryOptions): CardEntry {
   const api = useTableStoreApi();
   const apply = useTableStore((state) => state.apply);
 
@@ -98,7 +110,7 @@ export function useCardEntry({ view, heroSeat }: UseCardEntryOptions): CardEntry
   /** Which request the user has engaged. Claimed by the user, never read off the DOM. */
   const [engagedKey, setEngagedKey] = useState<string | null>(null);
 
-  const request = cardEntryRequest(view, heroSeat);
+  const request = cardEntryRequest(view, heroSeat, revealSeat);
   const key = request?.key ?? null;
   // Everything below is scoped to the CURRENT request key, so state belonging to a
   // finished session can never leak into the next one.
@@ -200,19 +212,17 @@ export function CardPalette({ entry, view }: CardPaletteProps) {
     return (
       <section
         data-testid="card-palette-closed"
-        className="flex items-center gap-3 border-t border-surface-700 bg-surface-900 px-4 py-2 text-[0.7rem] text-ink-500"
+        className="flex min-w-0 items-center gap-3 pt-1 text-[0.7rem] text-ink-500"
       >
-        <span className="uppercase tracking-widest">{request.label}</span>
-        <span>
-          {request.count} card{request.count === 1 ? '' : 's'} still needed
-        </span>
+        <span className="uppercase tracking-widest">{cardEntryHeading(request)}</span>
+        <span>{request.count}장 더 필요합니다</span>
         <button
           type="button"
           data-testid="card-palette-open"
           onClick={entry.reopen}
           className="rounded border border-ink-500 px-2 py-0.5 text-ink-300 hover:border-actor-500"
         >
-          Enter cards
+          카드 입력
         </button>
       </section>
     );
@@ -220,7 +230,13 @@ export function CardPalette({ entry, view }: CardPaletteProps) {
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
     if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
-    if (entry.handleKey(event.key)) {
+    // Resolves the physical rank/suit letter regardless of active input method — a Korean
+    // IME rewrites `event.key` to a jamo (or to `'Process'` while composing), but never
+    // `event.code` (`lib/table/keys.ts`). `Escape` and `Backspace` are named keys with no
+    // `KeyX`/`DigitX` code, so the resolver returns `null` for them and `event.key` flows
+    // through to `handleKey` unchanged, exactly as before.
+    const pressed = resolveTypedKey(event) ?? event.key;
+    if (entry.handleKey(pressed)) {
       // Consumed by the palette. The dock's window listener also sees this event, and is
       // inert because `capturing` is true in the same commit — not because of this call.
       event.preventDefault();
@@ -234,7 +250,7 @@ export function CardPalette({ entry, view }: CardPaletteProps) {
       data-testid="card-palette"
       data-capturing={entry.capturing ? 'true' : 'false'}
       data-needed={remaining}
-      aria-label={`Card palette — ${request.label}`}
+      aria-label={`카드 입력 — ${cardEntryHeading(request)}`}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onFocus={() => entry.engage()}
@@ -247,12 +263,12 @@ export function CardPalette({ entry, view }: CardPaletteProps) {
         if (next !== null && containerRef.current?.contains(next) === true) return;
         entry.release();
       }}
-      className="flex flex-col gap-2 border-t border-surface-700 bg-surface-900 px-4 py-2 outline-none focus:border-actor-500"
+      className="flex min-w-0 flex-1 flex-col gap-1 rounded-md outline-none ring-actor-500 focus:ring-1"
     >
       <div className="flex items-center gap-3 text-[0.7rem]">
-        <span className="uppercase tracking-widest text-ink-500">{request.label}</span>
+        <span className="uppercase tracking-widest text-ink-500">{cardEntryHeading(request)}</span>
         <span data-testid="card-palette-remaining" className="text-ink-300">
-          needs {remaining} more card{remaining === 1 ? '' : 's'}
+          {remaining}장 남음
         </span>
         <span className="flex items-center gap-1" data-testid="card-palette-picks">
           {entry.picks.map((card) => (
@@ -267,12 +283,12 @@ export function CardPalette({ entry, view }: CardPaletteProps) {
         </span>
         {entry.pendingRank !== null && (
           <span data-testid="card-palette-pending" className="tabular text-actor-500">
-            {entry.pendingRank}? — press a suit (s h d c)
+            {entry.pendingRank}? — 수트를 누르세요 (s h d c)
           </span>
         )}
         <span className="ml-auto flex items-center gap-2 text-ink-700">
           <span data-testid="card-palette-owner">
-            {entry.capturing ? 'keyboard: palette' : 'keyboard: action dock'}
+            {entry.capturing ? '키보드: 카드 입력' : '키보드: 액션'}
           </span>
           <button
             type="button"
@@ -280,14 +296,14 @@ export function CardPalette({ entry, view }: CardPaletteProps) {
             onClick={entry.cancel}
             className="rounded border border-surface-600 px-2 py-0.5 text-ink-300 hover:border-danger-500"
           >
-            Esc — clear
+            Esc — 지우기
           </button>
         </span>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-0.5">
         {PALETTE_SUITS.map((suit) => (
-          <div key={suit} className="flex items-center gap-1">
+          <div key={suit} className="flex items-center gap-0.5">
             {PALETTE_RANKS.map((rank) => {
               const card = makeCard(rank, suit);
               const picked = entry.picks.includes(card);
@@ -310,7 +326,7 @@ export function CardPalette({ entry, view }: CardPaletteProps) {
                     entry.engage();
                     entry.pick(card);
                   }}
-                  className={`tabular h-7 w-9 rounded border text-xs font-semibold ${
+                  className={`tabular h-6 w-8 rounded border text-[0.7rem] font-semibold ${
                     disabled
                       ? 'border-surface-700 bg-surface-800 text-ink-700'
                       : red

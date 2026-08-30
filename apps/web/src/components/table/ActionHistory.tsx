@@ -10,10 +10,14 @@
  *    are deliberately not `ActionRecord`s (nobody chose them), but they are the first
  *    thing that happens in a hand and the log would be dishonest without them. They are
  *    read off the log verbatim; nothing is inferred or added up here.
+ *
+ * Every verb and street name comes from the exhaustive maps in `lib/table/copy.ts`, so a
+ * new engine event is a compile error rather than an untranslated row.
  */
 import { Money } from '@gto-self/shared';
 import type { MilliBB } from '@gto-self/shared';
 import type { ActionRecord, HandEvent, HandView, SeatIndex, Street } from '@gto-self/poker-core';
+import { ACTION_LABEL, POSITION_LABEL, STREET_LABEL, seatLabel } from '../../lib/table/copy.js';
 
 type PostEvent = HandEvent & {
   readonly kind: 'POST_ANTE' | 'POST_DEAD_BLIND' | 'POST_SB' | 'POST_BB';
@@ -29,13 +33,6 @@ function isPost(event: HandEvent): event is PostEvent {
     event.kind === 'POST_BB'
   );
 }
-
-const POST_LABEL: Readonly<Record<PostEvent['kind'], string>> = {
-  POST_ANTE: 'ante',
-  POST_DEAD_BLIND: 'dead blind',
-  POST_SB: 'small blind',
-  POST_BB: 'big blind',
-};
 
 interface Row {
   readonly key: string;
@@ -54,15 +51,19 @@ interface Group {
 function actionRow(record: ActionRecord): Row {
   const amount =
     record.toAmount !== null
-      ? `to ${Money.formatBB(record.toAmount, { maxDecimals: 3 })}`
+      ? // `→ X` is the raise-TO marker: the amount is the seat's resulting street
+        // contribution, not the extra it just put in.
+        `→ ${Money.formatBB(record.toAmount, { maxDecimals: 3 })}`
       : Money.isPositive(record.amount)
         ? Money.formatBB(record.amount, { maxDecimals: 3 })
         : '';
   return {
     key: `a-${record.seq}`,
     seat: record.seat,
-    who: record.position ?? `seat ${record.seat + 1}`,
-    label: record.kind.toLowerCase().replace('_', ' ') + (record.isAllIn ? ' (all in)' : ''),
+    who: record.position === null ? seatLabel(record.seat) : POSITION_LABEL[record.position],
+    // `ALL_IN` already says all-in; only the other verbs need the suffix.
+    label:
+      ACTION_LABEL[record.kind] + (record.isAllIn && record.kind !== 'ALL_IN' ? ' (올인)' : ''),
     amount,
     forced: false,
   };
@@ -83,11 +84,12 @@ function buildGroups(view: HandView, events: readonly HandEvent[]): readonly Gro
   if (posts.length > 0) {
     const rows = openGroup('PREFLOP');
     for (const post of posts) {
+      const position = view.seats[post.seat].position;
       rows.push({
         key: `e-${post.seq}`,
         seat: post.seat,
-        who: view.seats[post.seat].position ?? `seat ${post.seat + 1}`,
-        label: POST_LABEL[post.kind],
+        who: position === null ? seatLabel(post.seat) : POSITION_LABEL[position],
+        label: ACTION_LABEL[post.kind],
         amount: Money.formatBB(post.amount, { maxDecimals: 3 }),
         forced: true,
       });
@@ -112,25 +114,27 @@ export function ActionHistory({ view, events, nicknameForSeat }: ActionHistoryPr
   return (
     <section
       data-testid="action-history"
-      aria-label="Action history"
-      className="flex min-h-0 flex-1 flex-col rounded-lg border border-surface-700 bg-surface-800"
+      aria-label="액션 기록"
+      className="flex min-h-0 flex-1 flex-col rounded-md border border-surface-700 bg-surface-800"
     >
-      <h2 className="border-b border-surface-700 px-3 py-2 text-[0.65rem] uppercase tracking-widest text-ink-500">
-        history
+      <h2 className="border-b border-surface-700 px-2 py-1 text-[0.6rem] uppercase tracking-widest text-ink-500">
+        액션 기록
       </h2>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
         {groups.length === 0 ? (
-          <p className="text-xs text-ink-700">No actions yet.</p>
+          <p className="text-[0.7rem] text-ink-700">아직 액션이 없습니다.</p>
         ) : (
           groups.map((group, index) => (
-            <div key={`${group.street}-${index}`} className="mb-2">
-              <p className="text-[0.6rem] uppercase tracking-widest text-ink-700">{group.street}</p>
+            <div key={`${group.street}-${index}`} className="mb-1.5">
+              <p className="text-[0.6rem] uppercase tracking-widest text-ink-700">
+                {STREET_LABEL[group.street]}
+              </p>
               <ul>
                 {group.rows.map((row) => (
                   <li
                     key={row.key}
                     data-testid="history-row"
-                    className={`grid grid-cols-[4.5rem_minmax(0,1fr)_5rem] items-baseline gap-2 py-0.5 text-xs ${
+                    className={`grid grid-cols-[4.5rem_minmax(0,1fr)_5rem] items-baseline gap-2 py-0.5 text-[0.7rem] ${
                       row.forced ? 'text-ink-500' : 'text-ink-300'
                     }`}
                   >

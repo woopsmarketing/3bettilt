@@ -3,7 +3,8 @@
 Single source of truth for where the project is. The orchestrator updates this after
 every phase; phase agents report, they do not edit it.
 
-**Last updated:** 2026-08-29, after Phases 4-7 (Poker Table Alpha).
+**Last updated:** 2026-08-31, after the first Alpha feedback round. Phases 4-7 stay accepted;
+this round is corrections to them, not a reopening.
 
 ## Completed
 
@@ -125,6 +126,40 @@ every phase; phase agents report, they do not edit it.
   card palette owned the keyboard. Both were reproduced in a real browser before and after the
   fix. Decisions recorded as **ADR-0043..0048**.
 
+- **First Alpha feedback round, 2026-08-31.** The user ran the Alpha by hand and reported six
+  things. All six are done, and none of them was found by the existing suite:
+  - **Hotkeys did not work.** Not a logic bug: a Korean input method rewrites `event.key`, so
+    every key was dead for the primary user and alive for every test, which drives a US
+    keyboard. Keys now resolve from the physical key (ADR-0049), proved in a real browser with
+    raw Hangul key events, not only in unit tests.
+  - **Accidental split winner.** The engine's split arithmetic was reviewed and is correct; the
+    award panel toggled, so correcting a misclick ticked two winners and really did split the
+    pot. Selection now replaces, and a split must be armed (ADR-0051).
+  - **No opponent SHOW / MUCK.** SHOW records `SET_HOLE_CARDS { revealed: true }`; MUCK is
+    unknown information and gets no engine event (ADR-0052).
+  - **Bottom-of-screen layout.** The dock is pinned in every phase and the award panel's submit
+    button can no longer land under it (ADR-0054), with both halves pinned by E2E assertions
+    that were confirmed to fail against the old layout.
+  - **Per-seat auto top-up** replaces the one session-wide switch (ADR-0050), stored on
+    `session_seats` by additive migration `0003`.
+  - **Korean-first UI** (ADR-0053).
+- **Verified against a copy of the user's REAL database**, not a fixture: it sat at migration
+  0002 with 2 sessions, 12 seat rows and 9 players. After `0003` every seat row survived with
+  exact stacks, the session-level columns were untouched, and both existing sessions still
+  render. In the browser a seat at 85.68 BB with the switch on returned to 100 BB, a winner
+  holding 119.08 BB with the switch off was not trimmed, and only the toggled seat's row was
+  written.
+- **A second independent adversarial review** (fresh context, read-only, no desired conclusion)
+  found **1 MAJOR and 4 MINORs**; all five are fixed, each with a test that was confirmed to
+  fail without its fix. The MAJOR: a per-seat top-up target of `0` or a negative number was
+  refused by the server but accepted by the client, and the store took it — so the engine
+  correctly refused `STACK_NOT_POSITIVE` at the next deal and **no hand could be started at
+  all** until the user found the poisoned seat. The client now refuses it exactly as the
+  server does. The others: a tautological layout assertion that re-read its own source
+  string, a server action that would write a policy onto an EMPTY seat or a closed session,
+  unsequenced per-seat saves that could raise a false "not saved" banner, and a cross-hand
+  guard that was live but untested.
+
 ## Next
 
 - **Hands-on testing by the user.** Launch with `pnpm dev` and open
@@ -146,17 +181,25 @@ every phase; phase agents report, they do not edit it.
 - **`updateSessionTable` is never called.** Stack changes across hands (wins, losses, auto
   top-up) advance in memory only, so a reloaded session returns to its configured stacks.
   Same fix as the item above.
-- **No showdown reveal for opponents.** `SET_HOLE_CARDS` is engine-reachable for any seat but
-  only Hero's palette is mounted, so a contested showdown is settled by the user picking the
-  winner. Deliberate: there is no hand evaluator and none is planned in this scope.
+- **A MUCK mark is not persisted and does not restrict an award.** Opponent SHOW / MUCK now
+  exists (ADR-0052). SHOW writes a real hole-card event; MUCK is per-hand UI state, because a
+  muck is unknown information and inventing an event for it would be a claim the engine could
+  be asked to replay. Whether a mucked seat may still win a pot is deliberately undecided —
+  that is a poker rule with no fixture behind it (`CLAUDE.md` rule 7). There is still no hand
+  evaluator: the user picks the winner and the engine settles it.
 - **The observed splash fee has no input.** `AWARD_POTS` always sends `fee: null` (ADR-0032 —
   no automatic trigger is invented). An observed fee cannot yet be recorded from the UI.
 - **`S` (sit-out toggle) from `docs/UX.md` is not bound.** It is not in the Phase 6 key map;
   seat occupancy is set at session setup only until Phase 8.
-- **Split pots have no UI test.** Multiple winners per pot work and the engine splits them, but
-  only engine-level tests cover it.
-- **The card palette costs ~120px above the dock**, so a very short viewport can push the
-  action dock off-screen. Desktop-first, no responsive work done (deliberate, prompt scope).
+- **The felt has visible dead space at 1440x800.** The seat rows are compact and the pot/board
+  sit in a large empty middle. Functional, and deliberately not chased further — the prompt
+  rules out pixel work — but it is the obvious next density win if the user wants one.
+- **A save of a per-seat auto top-up preference is not retried.** If the write fails the
+  preference still applies in this browser for this session and a banner says so; a reload
+  loses it. Same write boundary as the item at the top of this list.
+- **Per-seat auto top-up cannot be cleared back to "no preference" from the UI** — the switch
+  writes enabled/disabled, and only the repository can write `null`. Harmless: a disabled
+  policy and no policy behave identically.
 - **`apps/web` typechecks as `moduleResolution: nodenext`** (required by Turbopack). Relative
   imports must carry `.js`, `next/link` is unusable as a default import, and
   `@testing-library/user-event` must be imported as a named import. Future web phases inherit
@@ -250,16 +293,18 @@ every phase; phase agents report, they do not edit it.
 
 ## Test status
 
-Poker Table Alpha gate, 2026-08-29, run on frozen source after the review fixes landed.
+Alpha feedback round gate, 2026-08-31, run on frozen source.
 
 | Suite                | Result                         |
 | -------------------- | ------------------------------ |
 | `pnpm typecheck`     | pass                           |
 | `pnpm lint`          | pass                           |
 | `pnpm lint:licences` | pass                           |
-| `pnpm test`          | pass — **66 files, 856 tests** |
+| `pnpm test`          | pass — **72 files, 979 tests** |
 | `pnpm build`         | pass                           |
-| `pnpm e2e`           | pass — **11 Playwright tests** |
+| `pnpm e2e`           | pass — **15 Playwright tests** |
+
+(Poker Table Alpha gate, 2026-08-29: 66 files / 856 tests, 11 Playwright tests.)
 
 Evidence beyond the suite passing:
 
@@ -280,3 +325,14 @@ Evidence beyond the suite passing:
   raise-**by** — passed against all 116 tests, because every raise test acted from a seat with
   zero street contribution. Three tests raising from the SB, the BB and over an existing raise
   now pin it, and were confirmed to fail against that mutation.
+- **Migration `0003` was verified against the user's OWN database**, copied out of `.data/`
+  rather than constructed: it sat at 0002 with 2 sessions, 12 seat rows and 9 players, and
+  after the upgrade every seat row was byte-identical, the session-level policy columns were
+  untouched, the declared index was present exactly once, no `__new%` scratch table existed,
+  and both sessions still rendered. The same upgrade is now a permanent test.
+- **The Korean input path was proved in a real browser, not simulated in a test.** Raw CDP key
+  events carrying a Hangul jamo with the physical `code` fold the hand and enter cards. The old
+  code passes every unit test and fails this.
+- **Two layout invariants are pinned by E2E and were confirmed to fail before the fix**: the
+  action dock stays inside the viewport with the palette open, and the award panel's submit
+  button stays clear of the dock.
