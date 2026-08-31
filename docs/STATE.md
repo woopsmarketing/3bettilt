@@ -3,8 +3,8 @@
 Single source of truth for where the project is. The orchestrator updates this after
 every phase; phase agents report, they do not edit it.
 
-**Last updated:** 2026-08-31, after the first Alpha feedback round. Phases 4-7 stay accepted;
-this round is corrections to them, not a reopening.
+**Last updated:** 2026-09-01, after the Strategy C0+C1 milestone (history capture +
+post-session player learning). Strategy A+B and Phases 1-7 stay accepted.
 
 ## Completed
 
@@ -184,6 +184,44 @@ this round is corrections to them, not a reopening.
     full worked examples with real-engine numbers, 39-item weak-areas list, and a 13-item
     report-vs-code discrepancy audit (all dispositioned).
   - **MILESTONE ACCEPTED — final frozen-source gate green, 2026-09-01** (table below).
+- **Strategy C0+C1 milestone (history capture + post-session player learning) COMPLETE,
+  2026-09-01.** Decisions: **ADR-0059** (reuse the Phase-3 hand tables; persist once at
+  `phase === 'COMPLETE'`, off the action path, exactly-once via the `hands.id` PK with a
+  typed `ALREADY_PERSISTED` outcome), **ADR-0060** (completed raw hands immutable at DB
+  level — migration `0004` triggers: `hand_events`/`hand_players` insert-only, `hands`
+  no-delete and no-update-once-finished), **ADR-0061** (new `packages/analysis-core`, the
+  only package allowed to import both `poker-core` and `player-core`; nothing but
+  `apps/web` may import it; deterministic — no clock/RNG/ids), **ADR-0062** (snapshots are
+  versioned all-history recomputations gated by `(algorithmVersion, inputHash)` →
+  `NO_CHANGES`; snapshot confidence `n/(n+K)`, K=30 PRODUCT HEURISTIC, display states
+  UNKNOWN/LEARNING/KNOWN — separate from ADR-0036's levels; `player_observations` is
+  never written by analysis).
+  - **C0**: `insertCompletedHand` + client hook `useCompletedHandSaves` fire an unawaited
+    persist when a hand completes; failure shows a non-reverting 재시도 banner; header
+    shows `저장된 핸드 N`. `hands` gained `source`/`schema_version` (migration `0004`).
+  - **C1**: migration `0005` added 7 insert-only tables (`analysis_runs`,
+    `analysis_run_players`, `player_model_snapshots`, `player_model_stats`,
+    `player_spot_stats`, `player_model_bet_sizes`, `player_model_show_evidence`; 26
+    triggers total pinned by the tripwire test). `analysis-core` extracts
+    opportunity-based observations from the real action flow (an opportunity exists iff
+    the engine put that seat on the clock); `runSessionAnalysis` recomputes each affected
+    player from their FULL cross-session history in one all-or-nothing transaction;
+    "세션 분석 및 반영" button (safe-boundary gated) + result summary + Player Model panel
+    (counts always shown beside rates; position-null and positional rows never merged).
+    Perf measured: ~88ms/100 hands, ~608ms/1000, NO_CHANGES re-run ~2-4ms.
+  - **Strategy A+B is bit-identical by pin and by tripwire**: the §39 behavioral
+    regression test plus `strategy-core/tests/layering.test.ts` (static import scan of
+    strategy-core/gto-core for `player-core`/`analysis-core`/`@gto-self/db`, proven to
+    fail on a planted import).
+  - **Independent adversarial review (R1)**: 1 BLOCKER / 2 MAJOR / 8 MINOR. Fixed: the
+    BLOCKER (session `hand_number` high-water mark never advanced — a reloaded session
+    restarted numbering and every later hand hit `UNIQUE(session_id, hand_number)`,
+    permanently unstorable; now advanced in the hand's own transaction, seeded on load,
+    with an honest CONFLICT banner and a reload-then-play E2E proven to fail pre-fix),
+    the vacuous-§39-test MAJOR, and MINORs 4/5/6 (fixture location, `inArray` chunking,
+    `localeCompare` tiebreak). Reports: `docs/reports/C0C1_*.md`; user-facing report:
+    `docs/PLAYER_HISTORY_LEARNING_MVP_REPORT.md`.
+  - **Strategy C2 (adaptive recommendations) deliberately NOT started.**
 - Phases 1, 2, 3, 4, 5, 6 and 7 are **accepted** — none is reopened.
 - **Poker Table Alpha reached, 2026-08-29.** A person can open the app in a browser, configure
   a session, and manually enter a complete practice hand: hole cards, F/C/R/A/Z from the
@@ -282,14 +320,27 @@ this round is corrections to them, not a reopening.
     worst blocking window ~130→~64ms; needs a small `strategy-core` export, recorded in
     `STRATEGY_FIX_POSTFLOP.md`, not done.
 
-- **Nothing entered at the table is persisted.** Phases 4-7 write the SESSION only. The live
-  table, the hand event log, cards and awards live in memory; a page reload discards them
-  (ADR-0043). The table says so plainly in the UI, because losing entered work silently would
-  violate rule 3. The write boundary and its reconciliation rules are Phase 8 work, and
-  **persisted undo stays deferred until then** — there is nothing written yet to reconcile.
-- **`updateSessionTable` is never called.** Stack changes across hands (wins, losses, auto
-  top-up) advance in memory only, so a reloaded session returns to its configured stacks.
-  Same fix as the item above.
+- **Only COMPLETED hands are persisted (C0, ADR-0059).** A hand that reaches
+  `phase === 'COMPLETE'` is stored durably exactly once; an IN-PROGRESS hand still lives in
+  memory only and a reload discards it — full live-hand recovery remains Phase 8 work, and
+  **persisted undo stays deferred until then**. A completed-but-unsaved hand (persist
+  failed) survives for retry only until the page closes; closing the tab loses it
+  (documented, accepted this milestone). Two tabs playing the same session collide on hand
+  numbering — the second tab gets an honest CONFLICT banner whose retry cannot succeed;
+  server-side renumbering would need a new ADR.
+- **Stacks are still not persisted across hands.** `updateSessionTable` remains uncalled:
+  wins/losses/auto top-up advance in memory only, and a reloaded session returns to its
+  configured stacks. `sessions.hand_number` IS now advanced (by `insertCompletedHand`, the
+  R1 BLOCKER fix), so numbering survives reload even though stacks do not.
+- **C0+C1 deferred review findings (R1 MINORs, documented not fixed):** the analysis VPIP
+  denominator (true opportunity count) is not directly comparable to the manually entered
+  HUD VPIP shown elsewhere; a delayed cbet widens the `CBET_TURN`/`CBET_RIVER` denominators
+  (algorithm v1 definition — a versioned algorithm change can rebuild all snapshots from
+  raw history); hero's own hole cards are `revealed:false` and therefore never become SHOW
+  evidence; UNFINISHED `hands` header rows remain mutable (immutability begins at
+  `finished_at` — by design, ADR-0060, but noted as future risk); run-level
+  `observationCount` is zero on an all-NO_CHANGES run and deliberately not surfaced in the
+  summary UI.
 - **A MUCK mark is not persisted and does not restrict an award.** Opponent SHOW / MUCK now
   exists (ADR-0052). SHOW writes a real hole-card event; MUCK is per-hand UI state, because a
   muck is unknown information and inventing an event for it would be a claim the engine could
@@ -403,14 +454,19 @@ this round is corrections to them, not a reopening.
 
 ## Test status
 
-Strategy A+B (REFERENCE engine) final frozen-source gate, 2026-09-01.
+Strategy C0+C1 (history capture + player learning) final frozen-source gate, 2026-09-01.
 
 | Suite                       | Result                            |
 | --------------------------- | --------------------------------- |
 | `pnpm verify` (typecheck + test + lint + lint:licences + build) | pass — exit 0 |
-| `pnpm test`                 | pass — **106 files, 1826 tests**  |
-| — `strategy-core` project   | pass — 777 tests                  |
-| `pnpm e2e`                  | pass — **23 Playwright tests**    |
+| `pnpm test`                 | pass — **2091 tests** (3 skipped opt-in bench) |
+| — `db` project              | pass — 135 tests                  |
+| — `analysis-core` project   | pass — 66 tests                   |
+| — `player-core` project     | pass — 202 tests                  |
+| — `strategy-core` project   | pass — 783 tests                  |
+| `pnpm e2e`                  | pass — **26 Playwright tests**    |
+
+(Strategy A+B gate, 2026-09-01: 106 files / 1826 tests, 23 Playwright tests.)
 
 (Alpha feedback round gate, 2026-08-31: 72 files / 979 tests, 15 Playwright tests.)
 

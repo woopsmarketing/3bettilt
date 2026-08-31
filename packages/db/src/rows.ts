@@ -13,6 +13,8 @@ import {
   isOk,
   Money,
   ok,
+  parseCards,
+  type Card,
   type HandId,
   type MilliBB,
   type PlayerId,
@@ -33,35 +35,76 @@ import {
   type TableState,
 } from '@gto-self/poker-core';
 import {
+  BET_SIZE_BUCKETS,
+  BET_SIZE_KINDS,
   createHudSnapshot,
   createNote,
   createObservation,
   createPlayer,
+  isModelStatKey,
   isObservedMetric,
   isObservedPosition,
+  LINEUP_SHAPES,
+  MODEL_STAT_KEYS,
   normalizeNickname,
+  OBSERVED_POSITIONS,
+  OBSERVED_STREETS,
+  POSITION_RELATIONS,
+  POSTFLOP_SPOT_FAMILIES,
+  POT_TYPES,
+  PREFLOP_SIZE_BUCKETS,
+  PREFLOP_SPOT_FAMILIES,
   recordObservation,
   setArchived,
+  snapshotConfidence,
+  spotKey,
+  validateSnapshotConfidenceConfig,
   validateTimestamp,
+  type BetSizeObservation,
+  type ModelStatCount,
   type ObservedMetric,
   type ObservedPosition,
+  type ObservedStreet,
   type Player,
   type PlayerHudSnapshot,
+  type PlayerModelSnapshot,
   type PlayerNote,
   type PlayerObservation,
+  type ShowEvidence,
+  type SnapshotConfidenceConfig,
+  type SpotDescriptor,
+  type SpotStatCount,
   type Timestamp,
 } from '@gto-self/player-core';
 import { dbErr, fromEngineError, fromPlayerError, type DbResult } from './errors.js';
+import {
+  ANALYSIS_PLAYER_OUTCOMES,
+  ANALYSIS_RUN_STATUSES,
+  HAND_SOURCES,
+  SHOW_OUTCOMES,
+  type AnalysisPlayerOutcome,
+  type AnalysisRunId,
+  type AnalysisRunStatus,
+  type HandSource,
+  type ModelSnapshotId,
+} from './schema.js';
 import type {
+  analysisRunPlayers,
+  analysisRuns,
   gamePresets,
   handEvents,
   handPlayers,
   hands,
   playerHudSnapshotStats,
   playerHudSnapshots,
+  playerModelBetSizes,
+  playerModelShowEvidence,
+  playerModelSnapshots,
+  playerModelStats,
   playerNotes,
   playerObservations,
   players,
+  playerSpotStats,
   sessionSeats,
   sessions,
 } from './schema.js';
@@ -77,6 +120,13 @@ export type SessionSeatRow = typeof sessionSeats.$inferSelect;
 export type HandRow = typeof hands.$inferSelect;
 export type HandPlayerRow = typeof handPlayers.$inferSelect;
 export type HandEventRow = typeof handEvents.$inferSelect;
+export type AnalysisRunRow = typeof analysisRuns.$inferSelect;
+export type AnalysisRunPlayerRow = typeof analysisRunPlayers.$inferSelect;
+export type ModelSnapshotRow = typeof playerModelSnapshots.$inferSelect;
+export type ModelStatRow = typeof playerModelStats.$inferSelect;
+export type SpotStatRow = typeof playerSpotStats.$inferSelect;
+export type ModelBetSizeRow = typeof playerModelBetSizes.$inferSelect;
+export type ModelShowEvidenceRow = typeof playerModelShowEvidence.$inferSelect;
 
 // ---------------------------------------------------------------------------
 // primitives
@@ -706,6 +756,10 @@ export interface HandRecord {
   readonly handNumber: number;
   readonly startedAt: Timestamp;
   readonly finishedAt: Timestamp | null;
+  /** How the hand reached us (ADR-0059f). */
+  readonly source: HandSource;
+  /** Version of the stored representation of this hand's log. */
+  readonly schemaVersion: number;
 }
 
 export interface HandSeatRecord {
@@ -731,12 +785,31 @@ export function decodeHandRow(row: HandRow): DbResult<HandRecord> {
       actual: String(row.handNumber),
     });
   }
+  if (!(HAND_SOURCES as readonly string[]).includes(row.source)) {
+    return dbErr('CORRUPT_ROW', `unknown hand source "${row.source}"`, {
+      table: 'hands',
+      id: row.id,
+      field: 'source',
+      expected: HAND_SOURCES.join(' | '),
+      actual: row.source,
+    });
+  }
+  if (!Number.isInteger(row.schemaVersion) || row.schemaVersion < 1) {
+    return dbErr('CORRUPT_ROW', 'hands.schema_version must be a positive integer', {
+      table: 'hands',
+      id: row.id,
+      field: 'schema_version',
+      actual: String(row.schemaVersion),
+    });
+  }
   return ok({
     id: asId<'Hand'>(row.id),
     sessionId: asId<'Session'>(row.sessionId),
     handNumber: row.handNumber,
     startedAt: startedAt.value,
     finishedAt,
+    source: row.source as HandSource,
+    schemaVersion: row.schemaVersion,
   });
 }
 
@@ -796,4 +869,518 @@ export function collect<T>(results: readonly DbResult<T>[]): DbResult<readonly T
     values.push(result.value);
   }
   return ok(values);
+}
+
+// ---------------------------------------------------------------------------
+// The derived player-learning layer (ADR-0062)
+// ---------------------------------------------------------------------------
+
+/** Internal. Membership in one of `player-core`'s vocabulary arrays, as a type guard. */
+function memberOf<T extends string>(values: readonly T[], value: string): value is T {
+  return (values as readonly string[]).includes(value);
+}
+
+/** Internal. A `CORRUPT_ROW` for a column holding a value outside its vocabulary. */
+function badMember<T>(
+  table: string,
+  field: string,
+  value: string,
+  expected: readonly string[],
+  id?: string,
+): DbResult<T> {
+  return dbErr('CORRUPT_ROW', `${table}.${field} holds unknown value "${value}"`, {
+    table,
+    field,
+    expected: expected.join(' | '),
+    actual: value,
+    ...(id === undefined ? {} : { id }),
+  });
+}
+
+/** Internal. A non-negative integer count. */
+function decodeCount(value: number, field: string, table: string): DbResult<number> {
+  if (!Number.isInteger(value) || value < 0) {
+    return dbErr('CORRUPT_ROW', `${table}.${field} must be a non-negative integer, got ${value}`, {
+      table,
+      field,
+      actual: String(value),
+    });
+  }
+  return ok(value);
+}
+
+export interface AnalysisRunRecord {
+  readonly id: AnalysisRunId;
+  readonly sessionId: SessionId;
+  readonly startedAt: Timestamp;
+  readonly finishedAt: Timestamp;
+  readonly algorithmVersion: number;
+  readonly status: AnalysisRunStatus;
+  readonly handCount: number;
+  readonly playerCount: number;
+  readonly observationCount: number;
+  readonly showCount: number;
+  /** Verbatim failure metadata as the caller supplied it. Never re-interpreted here. */
+  readonly errorJson: string | null;
+}
+
+export interface AnalysisRunPlayerRecord {
+  readonly runId: AnalysisRunId;
+  readonly playerId: PlayerId;
+  readonly outcome: AnalysisPlayerOutcome;
+  readonly snapshotId: ModelSnapshotId | null;
+  readonly errorJson: string | null;
+}
+
+/** One run with every per-player outcome it reported. */
+export interface AnalysisRunReport {
+  readonly run: AnalysisRunRecord;
+  /** Ordered by player id, so two reads of the same run are identical. */
+  readonly players: readonly AnalysisRunPlayerRecord[];
+}
+
+export function decodeAnalysisRunRow(row: AnalysisRunRow): DbResult<AnalysisRunRecord> {
+  const startedAt = decodeTimestamp(row.startedAt, 'started_at', 'analysis_runs');
+  if (!startedAt.ok) return startedAt;
+  const finishedAt = decodeTimestamp(row.finishedAt, 'finished_at', 'analysis_runs');
+  if (!finishedAt.ok) return finishedAt;
+  if (!memberOf(ANALYSIS_RUN_STATUSES, row.status)) {
+    return badMember('analysis_runs', 'status', row.status, ANALYSIS_RUN_STATUSES, row.id);
+  }
+  const counts = collect([
+    decodeCount(row.algorithmVersion, 'algorithm_version', 'analysis_runs'),
+    decodeCount(row.handCount, 'hand_count', 'analysis_runs'),
+    decodeCount(row.playerCount, 'player_count', 'analysis_runs'),
+    decodeCount(row.observationCount, 'observation_count', 'analysis_runs'),
+    decodeCount(row.showCount, 'show_count', 'analysis_runs'),
+  ]);
+  if (!counts.ok) return counts;
+  return ok({
+    id: asId<'AnalysisRun'>(row.id),
+    sessionId: asId<'Session'>(row.sessionId),
+    startedAt: startedAt.value,
+    finishedAt: finishedAt.value,
+    algorithmVersion: row.algorithmVersion,
+    status: row.status,
+    handCount: row.handCount,
+    playerCount: row.playerCount,
+    observationCount: row.observationCount,
+    showCount: row.showCount,
+    errorJson: row.errorJson,
+  });
+}
+
+export function decodeAnalysisRunPlayerRow(
+  row: AnalysisRunPlayerRow,
+): DbResult<AnalysisRunPlayerRecord> {
+  if (!memberOf(ANALYSIS_PLAYER_OUTCOMES, row.outcome)) {
+    return badMember(
+      'analysis_run_players',
+      'outcome',
+      row.outcome,
+      ANALYSIS_PLAYER_OUTCOMES,
+      row.runId,
+    );
+  }
+  return ok({
+    runId: asId<'AnalysisRun'>(row.runId),
+    playerId: asId<'Player'>(row.playerId),
+    outcome: row.outcome,
+    snapshotId: row.snapshotId === null ? null : asId<'ModelSnapshot'>(row.snapshotId),
+    errorJson: row.errorJson,
+  });
+}
+
+/**
+ * The snapshot's confidence configuration, rebuilt and re-validated through `player-core`'s
+ * own validator. Every per-row `SnapshotConfidence` is then reproduced from the row's stored
+ * opportunity count with `snapshotConfidence(n, config)` — pure integer arithmetic, so the
+ * reconstruction is bit-identical to what the engine computed rather than approximately
+ * equal to it, and no derived weight is stored anywhere.
+ */
+function decodeConfidenceConfig(row: ModelSnapshotRow): DbResult<SnapshotConfidenceConfig> {
+  const config: SnapshotConfidenceConfig = {
+    k: row.confidenceK,
+    learningThreshold: row.confidenceLearningThreshold,
+    knownThreshold: row.confidenceKnownThreshold,
+  };
+  const validated = validateSnapshotConfidenceConfig(config);
+  if (!validated.ok) {
+    return fromPlayerError(validated.error, { table: 'player_model_snapshots', id: row.id });
+  }
+  return ok(config);
+}
+
+function decodeModelStatRow(
+  row: ModelStatRow,
+  config: SnapshotConfidenceConfig,
+): DbResult<ModelStatCount> {
+  if (!isModelStatKey(row.statKey)) {
+    return badMember(
+      'player_model_stats',
+      'stat_key',
+      row.statKey,
+      MODEL_STAT_KEYS,
+      row.snapshotId,
+    );
+  }
+  if (row.position !== null && !isObservedPosition(row.position)) {
+    return badMember(
+      'player_model_stats',
+      'position',
+      row.position,
+      OBSERVED_POSITIONS,
+      row.snapshotId,
+    );
+  }
+  const counts = collect([
+    decodeCount(row.opportunities, 'opportunities', 'player_model_stats'),
+    decodeCount(row.actions, 'actions', 'player_model_stats'),
+    decodeCount(row.confidenceOpportunities, 'confidence_opportunities', 'player_model_stats'),
+  ]);
+  if (!counts.ok) return counts;
+  return ok({
+    key: row.statKey,
+    position: row.position,
+    opportunities: row.opportunities,
+    actions: row.actions,
+    confidence: snapshotConfidence(row.confidenceOpportunities, config),
+  });
+}
+
+/**
+ * The spot descriptor is rebuilt from its COLUMNS — the lossless record — and the stored
+ * `spot_key` is then re-derived from it with `player-core`'s own `spotKey`. A disagreement
+ * is a corrupt row, not a preference for one column over the other: the key is a lossy
+ * projection kept for grouping, and nothing may ever have to parse one back into dimensions.
+ */
+function decodeSpotStatRow(
+  row: SpotStatRow,
+  config: SnapshotConfidenceConfig,
+): DbResult<SpotStatCount> {
+  const id = row.snapshotId;
+  if (!isObservedPosition(row.position)) {
+    return badMember('player_spot_stats', 'position', row.position, OBSERVED_POSITIONS, id);
+  }
+  if (!memberOf(LINEUP_SHAPES, row.lineup)) {
+    return badMember('player_spot_stats', 'lineup', row.lineup, LINEUP_SHAPES, id);
+  }
+  let spot: SpotDescriptor;
+  if (row.phase === 'PREFLOP') {
+    if (!memberOf(PREFLOP_SPOT_FAMILIES, row.family)) {
+      return badMember('player_spot_stats', 'family', row.family, PREFLOP_SPOT_FAMILIES, id);
+    }
+    if (row.opponentPosition !== null && !isObservedPosition(row.opponentPosition)) {
+      return badMember(
+        'player_spot_stats',
+        'opponent_position',
+        row.opponentPosition,
+        OBSERVED_POSITIONS,
+        id,
+      );
+    }
+    spot = {
+      phase: 'PREFLOP',
+      family: row.family,
+      position: row.position,
+      opponentPosition: row.opponentPosition,
+      lineup: row.lineup,
+    };
+  } else if (row.phase === 'POSTFLOP') {
+    if (!memberOf(POSTFLOP_SPOT_FAMILIES, row.family)) {
+      return badMember('player_spot_stats', 'family', row.family, POSTFLOP_SPOT_FAMILIES, id);
+    }
+    if (row.street === null || !memberOf(OBSERVED_STREETS, row.street)) {
+      return badMember('player_spot_stats', 'street', String(row.street), OBSERVED_STREETS, id);
+    }
+    if (row.relation === null || !memberOf(POSITION_RELATIONS, row.relation)) {
+      return badMember(
+        'player_spot_stats',
+        'relation',
+        String(row.relation),
+        POSITION_RELATIONS,
+        id,
+      );
+    }
+    if (row.potType === null || !memberOf(POT_TYPES, row.potType)) {
+      return badMember('player_spot_stats', 'pot_type', String(row.potType), POT_TYPES, id);
+    }
+    if (row.facingSize === null || !memberOf(BET_SIZE_BUCKETS, row.facingSize)) {
+      return badMember(
+        'player_spot_stats',
+        'facing_size',
+        String(row.facingSize),
+        BET_SIZE_BUCKETS,
+        id,
+      );
+    }
+    spot = {
+      phase: 'POSTFLOP',
+      street: row.street,
+      family: row.family,
+      position: row.position,
+      relation: row.relation,
+      lineup: row.lineup,
+      potType: row.potType,
+      facingSize: row.facingSize,
+    };
+  } else {
+    return badMember('player_spot_stats', 'phase', row.phase, ['PREFLOP', 'POSTFLOP'], id);
+  }
+  const derived = spotKey(spot);
+  if (derived !== row.spotKey) {
+    return dbErr(
+      'CORRUPT_ROW',
+      `player_spot_stats.spot_key disagrees with its dimensions: stored "${row.spotKey}", derived "${derived}"`,
+      { table: 'player_spot_stats', id, field: 'spot_key', expected: derived, actual: row.spotKey },
+    );
+  }
+  const counts = collect(
+    (
+      [
+        [row.opportunities, 'opportunities'],
+        [row.effectFold, 'effect_fold'],
+        [row.effectCheck, 'effect_check'],
+        [row.effectCall, 'effect_call'],
+        [row.effectBet, 'effect_bet'],
+        [row.effectRaise, 'effect_raise'],
+        [row.verbFold, 'verb_fold'],
+        [row.verbCheck, 'verb_check'],
+        [row.verbCall, 'verb_call'],
+        [row.verbBet, 'verb_bet'],
+        [row.verbRaise, 'verb_raise'],
+        [row.verbAllIn, 'verb_all_in'],
+        [row.confidenceOpportunities, 'confidence_opportunities'],
+      ] as readonly (readonly [number, string])[]
+    ).map(([value, field]) => decodeCount(value, field, 'player_spot_stats')),
+  );
+  if (!counts.ok) return counts;
+  return ok({
+    spotKey: row.spotKey,
+    spot,
+    opportunities: row.opportunities,
+    // Built in `OBSERVED_ACTION_EFFECTS` / `OBSERVED_ACTIONS` order, which is the order
+    // `analysis-core` emits, so `JSON.stringify` of a reloaded snapshot is byte-identical.
+    effects: {
+      FOLD: row.effectFold,
+      CHECK: row.effectCheck,
+      CALL: row.effectCall,
+      BET: row.effectBet,
+      RAISE: row.effectRaise,
+    },
+    verbs: {
+      FOLD: row.verbFold,
+      CHECK: row.verbCheck,
+      CALL: row.verbCall,
+      BET: row.verbBet,
+      RAISE: row.verbRaise,
+      ALL_IN: row.verbAllIn,
+    },
+    confidence: snapshotConfidence(row.confidenceOpportunities, config),
+  });
+}
+
+function decodeBetSizeRow(row: ModelBetSizeRow): DbResult<BetSizeObservation> {
+  const id = row.snapshotId;
+  if (!memberOf(BET_SIZE_KINDS, row.kind)) {
+    return badMember('player_model_bet_sizes', 'kind', row.kind, BET_SIZE_KINDS, id);
+  }
+  const buckets = [...BET_SIZE_BUCKETS, ...PREFLOP_SIZE_BUCKETS] as readonly string[];
+  if (!buckets.includes(row.bucket)) {
+    return badMember('player_model_bet_sizes', 'bucket', row.bucket, buckets, id);
+  }
+  const amounts = collect(
+    (
+      [
+        [row.toAmount, 'to_amount'],
+        [row.amount, 'amount'],
+        [row.potBefore, 'pot_before'],
+        [row.currentBetBefore, 'current_bet_before'],
+        [row.bigBlind, 'big_blind'],
+      ] as readonly (readonly [number, string])[]
+    ).map(([value, field]) => decodeMoney(value, field, 'player_model_bet_sizes')),
+  );
+  if (!amounts.ok) return amounts;
+  return ok({
+    handId: asId<'Hand'>(row.handId),
+    playerId: asId<'Player'>(row.playerId),
+    kind: row.kind,
+    spotKey: row.spotKey,
+    toAmount: row.toAmount,
+    amount: row.amount,
+    potBefore: row.potBefore,
+    currentBetBefore: row.currentBetBefore,
+    bigBlind: row.bigBlind,
+    bucket: row.bucket as BetSizeObservation['bucket'],
+  });
+}
+
+/** Internal. `"As Kd"` -> cards, through `shared`'s own parser. `""` is zero cards. */
+function decodeCardText(text: string, field: string, id: string): DbResult<readonly Card[]> {
+  if (text.length === 0) return ok([]);
+  const parsed = parseCards(text);
+  if (!parsed.ok) {
+    return dbErr('CORRUPT_ROW', `player_model_show_evidence.${field}: ${parsed.error}`, {
+      table: 'player_model_show_evidence',
+      id,
+      field,
+      actual: text,
+    });
+  }
+  return ok(parsed.value);
+}
+
+function decodeShowEvidenceRow(row: ModelShowEvidenceRow): DbResult<ShowEvidence> {
+  const id = row.snapshotId;
+  if (!isObservedPosition(row.position)) {
+    return badMember(
+      'player_model_show_evidence',
+      'position',
+      row.position,
+      OBSERVED_POSITIONS,
+      id,
+    );
+  }
+  const streets = ['PREFLOP', ...OBSERVED_STREETS] as readonly ('PREFLOP' | ObservedStreet)[];
+  if (!memberOf(streets, row.lastStreet)) {
+    return badMember('player_model_show_evidence', 'last_street', row.lastStreet, streets, id);
+  }
+  if (!memberOf(SHOW_OUTCOMES, row.outcome)) {
+    return badMember('player_model_show_evidence', 'outcome', row.outcome, SHOW_OUTCOMES, id);
+  }
+  const cards = decodeCardText(row.cardsText, 'cards_text', id);
+  if (!cards.ok) return cards;
+  // A reveal is 1 or 2 cards: the engine accepts a partial reveal and a partial reveal is
+  // preserved as entered, so this is NOT a "must be a pair" check.
+  if (cards.value.length < 1 || cards.value.length > 2) {
+    return dbErr(
+      'CORRUPT_ROW',
+      `player_model_show_evidence.cards_text must hold 1 or 2 cards, got ${cards.value.length}`,
+      { table: 'player_model_show_evidence', id, field: 'cards_text', actual: row.cardsText },
+    );
+  }
+  const board = decodeCardText(row.boardText, 'board_text', id);
+  if (!board.ok) return board;
+  if (![0, 3, 4, 5].includes(board.value.length)) {
+    return dbErr(
+      'CORRUPT_ROW',
+      `player_model_show_evidence.board_text must hold 0, 3, 4 or 5 cards, got ${board.value.length}`,
+      { table: 'player_model_show_evidence', id, field: 'board_text', actual: row.boardText },
+    );
+  }
+  const raw = parseJson(row.spotKeysJson, 'spot_keys_json', 'player_model_show_evidence', id);
+  if (!raw.ok) return raw;
+  if (!Array.isArray(raw.value) || raw.value.some((key) => typeof key !== 'string')) {
+    return dbErr(
+      'CORRUPT_ROW',
+      'player_model_show_evidence.spot_keys_json must be an array of strings',
+      { table: 'player_model_show_evidence', id, field: 'spot_keys_json' },
+    );
+  }
+  const wonGross = decodeMoney(row.wonGross, 'won_gross', 'player_model_show_evidence');
+  if (!wonGross.ok) return wonGross;
+  return ok({
+    handId: asId<'Hand'>(row.handId),
+    playerId: asId<'Player'>(row.playerId),
+    position: row.position,
+    cards: cards.value,
+    board: board.value,
+    lastStreet: row.lastStreet,
+    spotKeys: raw.value as readonly string[],
+    outcome: row.outcome,
+    wonGross: row.wonGross,
+  });
+}
+
+/** The child rows of one snapshot, each already ordered by its `ordinal` column. */
+export interface ModelSnapshotChildRows {
+  readonly stats: readonly ModelStatRow[];
+  readonly spots: readonly SpotStatRow[];
+  readonly betSizes: readonly ModelBetSizeRow[];
+  readonly showEvidence: readonly ModelShowEvidenceRow[];
+}
+
+/** A snapshot header without its content — the version list the profile UI renders. */
+export interface ModelSnapshotHeader {
+  readonly snapshotId: ModelSnapshotId;
+  readonly playerId: PlayerId;
+  readonly modelVersion: number;
+  readonly createdAt: Timestamp;
+  readonly sourceHandCount: number;
+  readonly analysisRunId: AnalysisRunId;
+}
+
+export function decodeModelSnapshotHeader(row: ModelSnapshotRow): DbResult<ModelSnapshotHeader> {
+  const createdAt = decodeTimestamp(row.createdAt, 'created_at', 'player_model_snapshots');
+  if (!createdAt.ok) return createdAt;
+  const counts = collect([
+    decodeCount(row.modelVersion, 'model_version', 'player_model_snapshots'),
+    decodeCount(row.sourceHandCount, 'source_hand_count', 'player_model_snapshots'),
+  ]);
+  if (!counts.ok) return counts;
+  return ok({
+    snapshotId: asId<'ModelSnapshot'>(row.id),
+    playerId: asId<'Player'>(row.playerId),
+    modelVersion: row.modelVersion,
+    createdAt: createdAt.value,
+    sourceHandCount: row.sourceHandCount,
+    analysisRunId: asId<'AnalysisRun'>(row.analysisRunId),
+  });
+}
+
+/**
+ * The whole snapshot, reassembled from its header and its four child tables.
+ *
+ * Array order comes from each child table's `ordinal` column rather than from a sort this
+ * layer re-derives, so the reloaded `PlayerModelContent` is element-for-element what the
+ * engine produced — the acceptance property is `JSON.stringify` equality, and a re-derived
+ * sort would be a second opinion about `analysis-core`'s ordering.
+ */
+export function decodeModelSnapshot(
+  row: ModelSnapshotRow,
+  children: ModelSnapshotChildRows,
+): DbResult<PlayerModelSnapshot> {
+  const header = decodeModelSnapshotHeader(row);
+  if (!header.ok) return header;
+  const config = decodeConfidenceConfig(row);
+  if (!config.ok) return config;
+  const counts = collect([
+    decodeCount(row.algorithmVersion, 'algorithm_version', 'player_model_snapshots'),
+    decodeCount(row.sourceObservationCount, 'source_observation_count', 'player_model_snapshots'),
+    decodeCount(row.sourceShowCount, 'source_show_count', 'player_model_snapshots'),
+    decodeCount(
+      row.confidenceOverallOpportunities,
+      'confidence_overall_opportunities',
+      'player_model_snapshots',
+    ),
+  ]);
+  if (!counts.ok) return counts;
+  const globalStats = collect(children.stats.map((stat) => decodeModelStatRow(stat, config.value)));
+  if (!globalStats.ok) return globalStats;
+  const spotStats = collect(children.spots.map((spot) => decodeSpotStatRow(spot, config.value)));
+  if (!spotStats.ok) return spotStats;
+  const betSizes = collect(children.betSizes.map(decodeBetSizeRow));
+  if (!betSizes.ok) return betSizes;
+  const showEvidence = collect(children.showEvidence.map(decodeShowEvidenceRow));
+  if (!showEvidence.ok) return showEvidence;
+  return ok({
+    playerId: header.value.playerId,
+    analysisAlgorithmVersion: row.algorithmVersion,
+    inputHash: row.inputHash,
+    sourceHandCount: row.sourceHandCount,
+    sourceObservationCount: row.sourceObservationCount,
+    sourceShowCount: row.sourceShowCount,
+    globalStats: globalStats.value,
+    spotStats: spotStats.value,
+    showEvidence: showEvidence.value,
+    betSizes: betSizes.value,
+    confidence: {
+      k: config.value.k,
+      learningThreshold: config.value.learningThreshold,
+      knownThreshold: config.value.knownThreshold,
+      overall: snapshotConfidence(row.confidenceOverallOpportunities, config.value),
+    },
+    modelVersion: header.value.modelVersion,
+    createdAt: header.value.createdAt,
+  });
 }

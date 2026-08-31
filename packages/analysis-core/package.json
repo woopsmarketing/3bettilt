@@ -1,0 +1,22 @@
+{
+  "name": "@gto-self/analysis-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Deterministic event-log to player-observation interpreter: opportunity extraction, spot classification, player model snapshots.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --project analysis-core"
+  },
+  "dependencies": {
+    "@gto-self/shared": "workspace:*",
+    "@gto-self/poker-core": "workspace:*",
+    "@gto-self/player-core": "workspace:*"
+  }
+}

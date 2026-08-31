@@ -48,6 +48,9 @@ test('a seat sat out mid-hand deals one fewer seat on the NEXT hand, leaving the
   await expect(page.getByTestId('seat-3')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
   expect(await page.getByTestId('pot').textContent()).toBe(potBefore);
 
+  // Nothing has reached the server on the toggle's own path or on the live hand's.
+  expect(requests).toEqual([]);
+
   // Finish hand 1: three folds ends a four-handed hand uncontested.
   await foldOut(page, 3);
   await expect(page.getByTestId('start-hand')).toBeEnabled();
@@ -62,7 +65,11 @@ test('a seat sat out mid-hand deals one fewer seat on the NEXT hand, leaving the
   // The toggle no longer claims to be pending: there is no hand holding it up anymore.
   await expect(page.getByTestId('seat-3-occupancy-state')).toContainText('켬');
 
-  expect(requests).toEqual([]);
+  // The only request this whole window fired is the completed-hand persist for hand 1, sent
+  // after that hand was already COMPLETE (ADR-0059). The toggle itself, the live hand and
+  // the next deal still reach nothing.
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toMatch(/^POST http:\/\/127\.0\.0\.1:\d+\/table\/[^/]+$/u);
 });
 
 /**

@@ -65,10 +65,17 @@ import type {
 } from '@gto-self/poker-core';
 import type { IdFactory } from '@gto-self/shared';
 import type { LoadPlayerProfileAction } from '../../lib/table/contract.js';
+import type { PersistCompletedHandAction } from '../../lib/table/history-contract.js';
 import type {
   UpdateSeatAutoTopUpAction,
   UpdateSeatOccupancyAction,
 } from '../../lib/session-setup/contract.js';
+// TYPES only. `analysis-contract.ts` has no runtime dependency on `@gto-self/db` and this
+// import is erased, so no client bundle gains an edge to a native module (ADR-0044).
+import type {
+  GetPlayerModelAction,
+  RunSessionAnalysisAction,
+} from '../../server/analysis-contract.js';
 import { resolveTypedKey } from '../../lib/table/keys.js';
 import { canStartHand } from '../../lib/table/tableStore.js';
 import { slotClassForSeat } from '../../lib/table/layout.js';
@@ -85,7 +92,9 @@ import { ActionDock, isTypingTarget } from './ActionDock.js';
 import { ActionHistory } from './ActionHistory.js';
 import { KeyboardHints } from './KeyboardHints.js';
 import { PlayerProfilePanel } from './PlayerProfilePanel.js';
+import { SessionAnalysisControl } from './SessionAnalysisControl.js';
 import { StrategyPanel } from './StrategyPanel.js';
+import { useCompletedHandSaves } from './useCompletedHandSaves.js';
 
 export interface TableRootProps {
   readonly sessionId: string;
@@ -116,6 +125,25 @@ export interface TableRootProps {
    * toggle still applies to this session in this browser, it is simply not persisted.
    */
   readonly updateSeatOccupancy?: UpdateSeatOccupancyAction;
+  /**
+   * Server action behind completed-hand persistence (ADR-0059). Fired once per hand, AFTER
+   * it reaches `COMPLETE`, unawaited. Optional: without it the table still plays, the hand is
+   * simply not stored — which is exactly Phases 4-7's behaviour.
+   */
+  readonly persistCompletedHand?: PersistCompletedHandAction;
+  /**
+   * How many completed hands of this session were already stored when the page loaded.
+   * `null` means the count could not be read, which is NOT "none stored".
+   */
+  readonly storedHandCount?: number | null;
+  /**
+   * Server actions behind 세션 분석 및 반영 (ADR-0062). BOTH are required for the control to
+   * render: a button that could start a run but never show a model, or the reverse, is worse
+   * than no button. Optional as a pair, so the component tests that render this table without
+   * a server still get exactly Phases 4-7's table.
+   */
+  readonly runSessionAnalysis?: RunSessionAnalysisAction;
+  readonly getPlayerModel?: GetPlayerModelAction;
   /** Deterministic ids for tests. The app leaves it out and gets `cryptoIdFactory`. */
   readonly ids?: IdFactory;
 }
@@ -168,6 +196,10 @@ function TableScreen({
   loadPlayerProfile,
   updateSeatAutoTopUp,
   updateSeatOccupancy,
+  persistCompletedHand,
+  storedHandCount,
+  runSessionAnalysis,
+  getPlayerModel,
 }: TableRootProps) {
   // The store's table, not the prop: it advances (settle -> top up -> button) once per
   // completed hand, and the prop is only ever the value the page loaded with.
@@ -184,6 +216,16 @@ function TableScreen({
   const setSeatAutoTopUp = useTableStore((state) => state.setSeatAutoTopUp);
   const setSeatOccupancy = useTableStore((state) => state.setSeatOccupancy);
   const tableStoreApi = useTableStoreApi();
+
+  // Completed-hand persistence (ADR-0059). The hook watches the store's hand and fires ONCE,
+  // unawaited, when it reaches `COMPLETE` — after the transition and after the render, never
+  // in front of them. Start Hand is never gated on it.
+  const handSaves = useCompletedHandSaves({
+    sessionId,
+    hand,
+    persist: persistCompletedHand,
+    loadedHandCount: storedHandCount ?? null,
+  });
 
   // A save that failed, per seat. It is SHOWN, never swallowed, and it never reverts what
   // the user set: the preference is already in effect for this session in this browser.
@@ -310,6 +352,11 @@ function TableScreen({
     [handNumber],
   );
 
+  // Whether the post-session analysis overlay is up. It is a MODAL surface, so the table
+  // stands its own hotkey listener down while it is (see the `keydown` effect below) and the
+  // action dock's listener is suppressed the same way the card palette suppresses it.
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+
   // Phase 7's card entry. It is owned HERE, not inside the palette, because two siblings
   // depend on it: the palette renders it, and the dock is told whether it still owns the
   // keyboard. One piece of state, read by both in the same commit — see `CardPalette.tsx`.
@@ -332,6 +379,10 @@ function TableScreen({
       if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
       if (isTypingTarget(event.target)) return;
       if (paletteOwnsKeyboard) return;
+      // The analysis overlay is modal: while it is up it owns the keyboard, exactly as the
+      // card palette does (ADR-0048). `Esc` is handled by the overlay's own listener, and `S`
+      // must never reach through a dialog the user is reading to sit a seat out behind it.
+      if (analysisOpen) return;
       if (event.key === 'Escape') {
         selectSeat(null);
         return;
@@ -345,7 +396,7 @@ function TableScreen({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectSeat, paletteOwnsKeyboard, selectedSeat, handleToggleSeatOccupancy]);
+  }, [selectSeat, paletteOwnsKeyboard, analysisOpen, selectedSeat, handleToggleSeatOccupancy]);
 
   const nicknameForSeat = useCallback(
     (seat: SeatIndex): string | null => {
@@ -403,6 +454,28 @@ function TableScreen({
           세션은 저장됩니다. 진행 중인 핸드는 저장되지 않으며, 새로고침하면 사라집니다.
         </p>
 
+        {/* The other half of that promise, and the only place the user can SEE that the
+            completion write boundary did its job: hands that finished ARE durable. It is
+            the count the page loaded with plus every hand this table has since stored
+            (ADR-0059) — never a guess, and `?` when the count itself could not be read. */}
+        <p data-testid="stored-hand-count" className="text-[0.6rem] text-ink-500">
+          {`저장된 핸드 ${handSaves.storedHandCount === null ? '?' : handSaves.storedHandCount}`}
+        </p>
+
+        {/* The session-level control, beside the session-level count it acts on (prompt §26).
+            Rendered only when BOTH actions exist — see the prop docs. */}
+        {runSessionAnalysis !== undefined && getPlayerModel !== undefined && (
+          <SessionAnalysisControl
+            sessionId={sessionId}
+            handPhase={view === null ? null : view.phase.kind}
+            savesInFlight={handSaves.savesInFlight}
+            unsavedHandCount={handSaves.failures.length}
+            runSessionAnalysis={runSessionAnalysis}
+            getPlayerModel={getPlayerModel}
+            onOpenChange={setAnalysisOpen}
+          />
+        )}
+
         {/* The SESSION DEFAULT, and it says so: it is only what each occupied seat was
             seeded from. Each seat's own chip is authoritative, and a seat that diverged
             from this default is not described by it. */}
@@ -457,6 +530,33 @@ function TableScreen({
           {failedOccupancySaves.map(([seat, detail]) => (
             <li key={seat}>
               {`좌석 ${Number(seat) + 1}: 자리비움 설정이 저장되지 않았습니다 (${detail}). 이 브라우저의 이번 세션에만 적용됩니다.`}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* A COMPLETED hand that did not reach the database (ADR-0059e). The in-memory hand is
+          untouched and the next hand may be dealt immediately; the encoded log stays queued
+          here, so 재시도 sends exactly what completion produced. It is never dismissed by
+          anything but a successful save — a hand silently dropped is the one outcome
+          `prompt` §10 forbids. */}
+      {handSaves.failures.length > 0 && (
+        <ul
+          data-testid="hand-save-error"
+          role="alert"
+          className="shrink-0 border-b border-danger-500 px-3 py-0.5 text-[0.65rem] text-danger-500"
+        >
+          {handSaves.failures.map((failure) => (
+            <li key={failure.handId} className="flex items-center gap-2">
+              <span>{`핸드 ${failure.handNumber} 기록 저장 실패 (${failure.detail}). 이 핸드는 아직 저장되지 않았습니다.`}</span>
+              <button
+                type="button"
+                data-testid={`hand-save-retry-${failure.handNumber}`}
+                onClick={() => handSaves.retry(failure.handId)}
+                className="rounded border border-danger-500 px-1.5 py-0.5 text-[0.6rem] font-semibold"
+              >
+                재시도
+              </button>
             </li>
           ))}
         </ul>
@@ -591,7 +691,9 @@ function TableScreen({
         </div>
       </section>
 
-      <ActionDock view={view} hotkeysSuppressed={cardEntry.capturing} />
+      {/* The dock's hotkeys stand down for the modal overlay for the same reason they stand
+          down for the card palette: one keystroke must mean one thing (ADR-0048). */}
+      <ActionDock view={view} hotkeysSuppressed={cardEntry.capturing || analysisOpen} />
     </main>
   );
 }

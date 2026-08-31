@@ -112,6 +112,18 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3
 
+  packages/analysis-core:
+    dependencies:
+      '@gto-self/player-core':
+        specifier: workspace:*
+        version: link:../player-core
+      '@gto-self/poker-core':
+        specifier: workspace:*
+        version: link:../poker-core
+      '@gto-self/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/coinpoker-parser:
     dependencies:
       '@gto-self/poker-core':

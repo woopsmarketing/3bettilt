@@ -81,18 +81,73 @@ describe('insert-only tables', () => {
       .prepare(`select entered_text, value_centipercent from player_hud_snapshot_stats`)
       .get() as { readonly entered_text: string; readonly value_centipercent: number } | undefined;
 
+  /**
+   * EXHAUSTIVE, deliberately. `drizzle-kit` cannot emit a trigger, so the guards live in
+   * hand-maintained migrations that no schema diff will ever update for us; this list is the
+   * only tripwire that notices a guard that was dropped, renamed, or never added for a new
+   * table (ADR-0037, extended to raw hand history by ADR-0060).
+   */
   it('the guards are real database objects, created by the committed migration', () => {
     const triggers = handle.sqlite
       .prepare(`select name from sqlite_master where type = 'trigger' order by name`)
       .all() as readonly { readonly name: string }[];
     expect(triggers.map((row) => row.name)).toEqual([
+      // 0005 — the derived player-learning layer (ADR-0062a).
+      'analysis_run_players_no_delete',
+      'analysis_run_players_no_update',
+      'analysis_runs_no_delete',
+      'analysis_runs_no_update',
+      // 0004 — raw hand history (ADR-0060).
+      'hand_events_no_delete',
+      'hand_events_no_update',
+      'hand_players_no_delete',
+      'hand_players_no_update',
+      'hands_no_delete',
+      'hands_no_update_once_finished',
+      // 0001 — the manually entered tables (ADR-0037).
       'player_hud_snapshot_stats_no_delete',
       'player_hud_snapshot_stats_no_update',
       'player_hud_snapshots_no_delete',
       'player_hud_snapshots_no_update',
+      // 0005 — the derived player-learning layer, continued (ADR-0062a).
+      'player_model_bet_sizes_no_delete',
+      'player_model_bet_sizes_no_update',
+      'player_model_show_evidence_no_delete',
+      'player_model_show_evidence_no_update',
+      'player_model_snapshots_no_delete',
+      'player_model_snapshots_no_update',
+      'player_model_stats_no_delete',
+      'player_model_stats_no_update',
+      // 0001 — the manually entered tables, continued (ADR-0037).
       'player_notes_no_delete',
       'player_notes_no_update',
+      // 0005 — the derived player-learning layer, continued (ADR-0062a).
+      'player_spot_stats_no_delete',
+      'player_spot_stats_no_update',
     ]);
+  });
+
+  /**
+   * The `hands` guard is CONDITIONAL, and the condition is the whole point: an unfinished
+   * header may still be marked finished exactly once, and after that the row is frozen.
+   * A trigger that fired on every UPDATE would have made ADR-0059's write path impossible;
+   * one that fired on none would have left history rewritable.
+   */
+  it('the hands guard is conditional on finished_at, and DELETE is unconditional', () => {
+    const ddl = new Map(
+      (
+        handle.sqlite
+          .prepare(`select name, sql from sqlite_master where type = 'trigger'`)
+          .all() as readonly { readonly name: string; readonly sql: string }[]
+      ).map((row) => [row.name, row.sql.toLowerCase()]),
+    );
+    expect(ddl.get('hands_no_update_once_finished')).toMatch(
+      /when\s+old\.[`"]?finished_at[`"]?\s+is\s+not\s+null/u,
+    );
+    expect(ddl.get('hands_no_delete')).not.toMatch(/\bwhen\b/u);
+    for (const name of ['hand_events_no_update', 'hand_players_no_update'] as const) {
+      expect(ddl.get(name)).not.toMatch(/\bwhen\b/u);
+    }
   });
 
   it('REJECTS a raw Drizzle update of a note body, built from the barrel export', () => {

@@ -15,7 +15,13 @@ import { insertSession } from '../src/repositories/sessions.js';
 import { insertPlayer } from '../src/repositories/players.js';
 import { openTestDatabase, type DatabaseHandle } from '../src/client.js';
 import { handEvents } from '../src/schema.js';
-import { BB, buildFixtureHand, buildTable, FIXTURE_FEE } from './fixture.js';
+import {
+  BB,
+  buildFixtureHand,
+  buildTable,
+  FIXTURE_FEE,
+  withoutInsertOnlyGuards,
+} from './fixture.js';
 
 const T0 = timestamp(1_700_000_000_000);
 const T1 = timestamp(1_700_000_060_000);
@@ -226,7 +232,12 @@ describe('hand persistence', () => {
   it('reports a corrupt row when a meta column disagrees with the stored payload', () => {
     const hand = buildFixtureHand();
     unwrap(handRepository.insertHand(handle.db, { sessionId: SESSION, hand, startedAt: T0 }));
-    handle.sqlite.prepare(`update hand_events set origin = 'ENGINE' where seq = 12`).run();
+    // `hand_events` is insert-only since ADR-0060, so this corruption is only reachable the
+    // way it would really happen: a database edited by OTHER MEANS. The read-time check is
+    // what this test is about, and it must still catch it.
+    withoutInsertOnlyGuards(handle, () => {
+      handle.sqlite.prepare(`update hand_events set origin = 'ENGINE' where seq = 12`).run();
+    });
     const loaded = handRepository.loadStoredHand(handle.db, HAND);
     expect(loaded.ok).toBe(false);
     if (!loaded.ok) expect(loaded.error.code).toBe('CORRUPT_ROW');
@@ -235,9 +246,11 @@ describe('hand persistence', () => {
   it('reports a corrupt row when a stored payload is not a valid event', () => {
     const hand = buildFixtureHand();
     unwrap(handRepository.insertHand(handle.db, { sessionId: SESSION, hand, startedAt: T0 }));
-    handle.sqlite
-      .prepare(`update hand_events set payload_json = '{"kind":"NOT_AN_EVENT"}' where seq = 5`)
-      .run();
+    withoutInsertOnlyGuards(handle, () => {
+      handle.sqlite
+        .prepare(`update hand_events set payload_json = '{"kind":"NOT_AN_EVENT"}' where seq = 5`)
+        .run();
+    });
     const loaded = handRepository.loadStoredHand(handle.db, HAND);
     expect(loaded.ok).toBe(false);
     if (!loaded.ok) expect(loaded.error.code).toBe('CORRUPT_ROW');

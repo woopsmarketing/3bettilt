@@ -21,8 +21,10 @@ import {
   type PlayerId,
 } from '@gto-self/shared';
 import {
+  allIn,
   applyCommands,
   awardPots,
+  betTo,
   call,
   check,
   createTable,
@@ -33,6 +35,7 @@ import {
   seatPlayer,
   setButtonSeat,
   setHeroSeat,
+  setHoleCards,
   startHand,
   type Hand,
   type TableConfig,
@@ -105,6 +108,76 @@ export function buildFixtureHand(
         check(),
         check(),
         awardPots([{ potIndex: 0, winners: [0] }], FIXTURE_FEE),
+      ],
+      ids,
+    ),
+  );
+}
+
+/** Four seats; seat 3 is SHORT, which is what makes a side pot and an uncalled return. */
+export function buildShowdownTable(config: TableConfig = MANUAL_FEE_PRESET): TableState {
+  let table = unwrap(createTable(config));
+  const stacks = [BB(100), BB(100), BB(100), BB(8)] as const;
+  for (const seat of [0, 1, 2, 3] as const) {
+    table = unwrap(
+      seatPlayer(table, seat, asId<'Player'>(`seat-${seat}`) as PlayerId, stacks[seat]),
+    );
+  }
+  table = unwrap(setButtonSeat(table, 0));
+  return unwrap(setHeroSeat(table, 0));
+}
+
+/** Hero's own hole cards in `buildShowdownFixtureHand`, entered but NOT revealed. */
+export const SHOWDOWN_HERO_CARDS = 'As Ks';
+/** Seat 2's SHOWN cards at showdown — `revealed: true`, the only card evidence C1 may use. */
+export const SHOWDOWN_SHOWN_CARDS = 'Ad Kd';
+
+/**
+ * The C0 raw-history fixture: everything a completed hand can carry that the base fixture
+ * does not.
+ *
+ * - MULTIWAY: three seats see a flop, and the short stack's all-in splits the pot in two.
+ * - HERO CARDS entered privately (`revealed: false`) at the top of the hand.
+ * - A SHOWDOWN REVEAL by seat 2 (`revealed: true`).
+ * - A MUCK by seat 3: it reaches showdown all-in and NO event is ever emitted for its cards
+ *   (ADR-0052 — a muck is unknown information, not a hidden holding).
+ * - An UNCALLED RETURN: seat 2's river bet is folded to while seat 3 is already all-in, so
+ *   the hand still goes to showdown with the bet returned.
+ * - A SPLIT award on the main pot (two `shares`) beside a single-winner side pot, each with
+ *   its own rake and fee.
+ */
+export function buildShowdownFixtureHand(
+  table: TableState = buildShowdownTable(),
+  handId = 'hand-showdown-1',
+): Hand {
+  const ids = fixtureIds('sd');
+  const hand = unwrap(startHand(table, { handId: asId<'Hand'>(handId) as HandId }, ids));
+  return unwrap(
+    applyCommands(
+      hand,
+      [
+        setHoleCards(0, unwrap(parseCards(SHOWDOWN_HERO_CARDS)), false),
+        allIn(),
+        raiseTo(BB(25)),
+        fold(),
+        call(),
+        dealBoard(unwrap(parseCards('Ah 7d 2c'))),
+        check(),
+        check(),
+        dealBoard(unwrap(parseCards('9s'))),
+        check(),
+        check(),
+        dealBoard(unwrap(parseCards('3h'))),
+        betTo(BB(30)),
+        fold(),
+        setHoleCards(2, unwrap(parseCards(SHOWDOWN_SHOWN_CARDS)), true),
+        awardPots(
+          [
+            { potIndex: 0, winners: [2, 3] },
+            { potIndex: 1, winners: [2] },
+          ],
+          FIXTURE_FEE,
+        ),
       ],
       ids,
     ),

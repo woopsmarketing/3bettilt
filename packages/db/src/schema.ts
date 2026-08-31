@@ -37,17 +37,37 @@ import {
   uniqueIndex,
   type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core';
-import { Money } from '@gto-self/shared';
+import { Money, type Id } from '@gto-self/shared';
 import {
+  BET_SIZE_BUCKETS,
+  BET_SIZE_KINDS,
   HUD_STAT_KEYS,
+  LINEUP_SHAPES,
   MAX_CENTI_PERCENT,
   MAX_HAND_SAMPLE,
   MAX_NOTE_LENGTH,
   MAX_OBSERVATION_COUNT,
   MAX_TIMESTAMP,
+  MODEL_STAT_KEYS,
   OBSERVED_METRICS,
   OBSERVED_POSITIONS,
+  OBSERVED_STREETS,
+  POSITION_RELATIONS,
+  POSTFLOP_SPOT_FAMILIES,
+  POT_TYPES,
+  PREFLOP_SIZE_BUCKETS,
+  PREFLOP_SPOT_FAMILIES,
+  type ShowOutcome,
 } from '@gto-self/player-core';
+
+/**
+ * `player-core`'s `ShowOutcome` members as a runtime list. `model.ts` exports the type but
+ * no array for it, and `player-core` is out of this WP's boundary; the `Record` keeps the
+ * list exhaustive AT COMPILE TIME in both directions — a new member fails to type here, and
+ * a removed one fails too — so the CHECK cannot drift from the union.
+ */
+const SHOW_OUTCOME_MEMBERS: Record<ShowOutcome, true> = { WON: true, LOST: true, UNKNOWN: true };
+export const SHOW_OUTCOMES = Object.keys(SHOW_OUTCOME_MEMBERS) as readonly ShowOutcome[];
 
 /**
  * A SQL literal list for a CHECK, built from a domain constant so the constraint and the
@@ -88,6 +108,10 @@ const moneyRange = (column: AnySQLiteColumn): SQL =>
   sql`${isIntegral(column)} and ${column} >= ${sql.raw(String(-MAX_MONEY))} and ${column} <= ${sql.raw(String(MAX_MONEY))}`;
 
 const seatRange = (column: AnySQLiteColumn): SQL => sql`${column} >= 0 and ${column} <= 5`;
+
+/** `0 <= column <= MAX_OBSERVATION_COUNT`, for an opportunity/action/sample count. */
+const countRange = (column: AnySQLiteColumn): SQL =>
+  sql`${isIntegral(column)} and ${column} >= 0 and ${column} <= ${sql.raw(String(MAX_OBSERVATION_COUNT))}`;
 
 // ---------------------------------------------------------------------------
 // game_presets
@@ -536,12 +560,39 @@ export const sessionSeats = sqliteTable(
 // ---------------------------------------------------------------------------
 
 /**
+ * How a stored hand reached us (ADR-0059f). A CHECKed enum, unlike `hand_events.kind`:
+ * this vocabulary is ours, not the engine's, and it is part of what a later import path
+ * must declare about itself.
+ *
+ * `MANUAL_PRACTICE` — played at our own training table.
+ * `MANUAL_REVIEW`  — entered by hand while reviewing a hand from elsewhere.
+ *
+ * There is deliberately no `IMPORTED`/`SCRAPED` member: nothing in this product reads a
+ * poker client (`CLAUDE.md`, hard product boundary).
+ */
+export const HAND_SOURCES = ['MANUAL_PRACTICE', 'MANUAL_REVIEW'] as const;
+export type HandSource = (typeof HAND_SOURCES)[number];
+
+/** The stored-representation version every hand this milestone writes carries. */
+export const CURRENT_HAND_SCHEMA_VERSION = 1;
+
+/**
  * A hand header. The hand ITSELF is its ordered `hand_events` log; this row carries only
  * what the log does not: which session it belongs to, and when it was recorded.
  *
  * `hand_number` is duplicated from `HAND_STARTED` because a "session's hands in order" read
  * needs an indexed column. It is a CHECKED projection, not drift: the repository refuses to
  * write a header whose `hand_number` disagrees with the log's own.
+ *
+ * `source` and `schema_version` were added additively by `0004_completed_hand_history.sql`
+ * (ADR-0059f). `source` says HOW the hand reached us — today always `MANUAL_PRACTICE`,
+ * because nothing else can enter one. `schema_version` is the version of the STORED
+ * REPRESENTATION (the event-log encoding in `hand_events.payload_json`), so a later
+ * encoding change can be migrated per row instead of guessed at on read.
+ *
+ * A finished hand is IMMUTABLE in the database: `0004` adds `BEFORE DELETE` on every row
+ * and `BEFORE UPDATE ... WHEN OLD.finished_at IS NOT NULL` triggers (ADR-0060). Read that
+ * migration alongside this file.
  */
 export const hands = sqliteTable(
   'hands',
@@ -554,6 +605,10 @@ export const hands = sqliteTable(
     startedAt: integer('started_at').notNull(),
     /** Set when the hand reached COMPLETE. NULL while it is still being entered. */
     finishedAt: integer('finished_at'),
+    /** How the hand reached us. `MANUAL_PRACTICE` for a hand played at our own table. */
+    source: text('source').notNull().default('MANUAL_PRACTICE'),
+    /** Version of the stored representation of the log. 1 = `encodeHandEvent` as of C0. */
+    schemaVersion: integer('schema_version').notNull().default(1),
   },
   (t) => [
     uniqueIndex('hands_session_hand_number_unique').on(t.sessionId, t.handNumber),
@@ -563,6 +618,11 @@ export const hands = sqliteTable(
     check(
       'hands_finished_at_range',
       sql`${t.finishedAt} is null or (${isIntegral(t.finishedAt)} and ${t.finishedAt} >= ${t.startedAt} and ${t.finishedAt} <= ${sql.raw(String(MAX_TIMESTAMP))})`,
+    ),
+    check('hands_source', sql`${t.source} in ${inList(HAND_SOURCES)}`),
+    check(
+      'hands_schema_version_positive',
+      sql`${isIntegral(t.schemaVersion)} and ${t.schemaVersion} >= 1`,
     ),
   ],
 );
@@ -638,5 +698,502 @@ export const handEvents = sqliteTable(
     check('hand_events_origin', sql`${t.origin} in ('USER', 'ENGINE')`),
     check('hand_events_kind_not_empty', sql`length(${t.kind}) > 0`),
     check('hand_events_event_id_not_empty', sql`length(${t.eventId}) > 0`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// analysis_runs + analysis_run_players
+// ---------------------------------------------------------------------------
+
+/**
+ * How a whole analysis run ended (prompt §33, ADR-0062d).
+ *
+ * `PARTIAL` is a first-class outcome, not an error to be rounded to `FAILED` or hidden as
+ * `SUCCESS`: one player's computation failing must be reported as exactly that.
+ */
+export const ANALYSIS_RUN_STATUSES = ['SUCCESS', 'PARTIAL', 'FAILED'] as const;
+export type AnalysisRunStatus = (typeof ANALYSIS_RUN_STATUSES)[number];
+
+/**
+ * What the run did for ONE player.
+ *
+ * `NO_CHANGES` is the idempotency outcome (ADR-0062c): the player's latest snapshot was
+ * computed from the same input hash under the same algorithm version, so nothing was
+ * written. It is a success, and it is deliberately distinguishable from `SNAPSHOT_CREATED`.
+ */
+export const ANALYSIS_PLAYER_OUTCOMES = ['SNAPSHOT_CREATED', 'NO_CHANGES', 'FAILED'] as const;
+export type AnalysisPlayerOutcome = (typeof ANALYSIS_PLAYER_OUTCOMES)[number];
+
+/** Caller-supplied branded ids for the two derived-layer roots (ADR-0007, ADR-0040). */
+export type AnalysisRunId = Id<'AnalysisRun'>;
+export type ModelSnapshotId = Id<'ModelSnapshot'>;
+
+/**
+ * One audited execution of "세션 분석 및 반영" (prompt §15).
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE (`0005`, same pattern as ADR-0037/ADR-0060): a run
+ * is a historical fact. A re-run is a NEW row.
+ *
+ * The run has no `input_hash` column on purpose. Input identity is PER PLAYER — one run
+ * covers many players, each with its own eligible hand set — so the hash lives on
+ * `player_model_snapshots`, where the `NO_CHANGES` gate actually compares it.
+ *
+ * The counts are what the run OBSERVED across the players it processed; they are recorded
+ * for audit and are never summed into a player's model.
+ */
+export const analysisRuns = sqliteTable(
+  'analysis_runs',
+  {
+    id: text('id').primaryKey(),
+    /** The session whose completed hands defined the run's SCOPE (ADR-0062b). */
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    startedAt: integer('started_at').notNull(),
+    finishedAt: integer('finished_at').notNull(),
+    /** `ANALYSIS_ALGORITHM_VERSION` the run executed under. */
+    algorithmVersion: integer('algorithm_version').notNull(),
+    status: text('status').notNull(),
+    handCount: integer('hand_count').notNull(),
+    playerCount: integer('player_count').notNull(),
+    observationCount: integer('observation_count').notNull(),
+    showCount: integer('show_count').notNull(),
+    /** Run-level failure metadata, verbatim JSON. NULL when the run did not fail overall. */
+    errorJson: text('error_json'),
+  },
+  (t) => [
+    index('analysis_runs_session_started_idx').on(t.sessionId, t.startedAt, t.id),
+    check('analysis_runs_id_not_empty', sql`length(${t.id}) > 0`),
+    check('analysis_runs_started_at_range', timeWindow(t.startedAt)),
+    check(
+      'analysis_runs_finished_at_range',
+      sql`${isIntegral(t.finishedAt)} and ${t.finishedAt} >= ${t.startedAt} and ${t.finishedAt} <= ${sql.raw(String(MAX_TIMESTAMP))}`,
+    ),
+    check(
+      'analysis_runs_algorithm_version_positive',
+      sql`${isIntegral(t.algorithmVersion)} and ${t.algorithmVersion} >= 1`,
+    ),
+    check('analysis_runs_status', sql`${t.status} in ${inList(ANALYSIS_RUN_STATUSES)}`),
+    check('analysis_runs_hand_count_range', countRange(t.handCount)),
+    check('analysis_runs_player_count_range', countRange(t.playerCount)),
+    check('analysis_runs_observation_count_range', countRange(t.observationCount)),
+    check('analysis_runs_show_count_range', countRange(t.showCount)),
+    check(
+      'analysis_runs_error_json_not_empty',
+      sql`${t.errorJson} is null or length(${t.errorJson}) > 0`,
+    ),
+  ],
+);
+
+/**
+ * The per-player outcome of one run (prompt §33). PK `(run_id, player_id)`: a run reports
+ * exactly one outcome per player, and a second report would be a bug, not a second row.
+ *
+ * `snapshot_id` is non-NULL exactly when the outcome is `SNAPSHOT_CREATED` — enforced by
+ * CHECK, so "created a snapshot" cannot be claimed without pointing at one.
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE.
+ */
+export const analysisRunPlayers = sqliteTable(
+  'analysis_run_players',
+  {
+    runId: text('run_id')
+      .notNull()
+      .references(() => analysisRuns.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    outcome: text('outcome').notNull(),
+    snapshotId: text('snapshot_id').references((): AnySQLiteColumn => playerModelSnapshots.id, {
+      onDelete: 'restrict',
+      onUpdate: 'restrict',
+    }),
+    /** This player's failure metadata, verbatim JSON. NULL unless the outcome is `FAILED`. */
+    errorJson: text('error_json'),
+  },
+  (t) => [
+    primaryKey({ name: 'analysis_run_players_pk', columns: [t.runId, t.playerId] }),
+    index('analysis_run_players_player_idx').on(t.playerId, t.runId),
+    check('analysis_run_players_outcome', sql`${t.outcome} in ${inList(ANALYSIS_PLAYER_OUTCOMES)}`),
+    // Written the long way so it means the same thing in SQLite and PostgreSQL.
+    check(
+      'analysis_run_players_snapshot_iff_created',
+      sql`(${t.outcome} = 'SNAPSHOT_CREATED' and ${t.snapshotId} is not null) or (${t.outcome} <> 'SNAPSHOT_CREATED' and ${t.snapshotId} is null)`,
+    ),
+    check(
+      'analysis_run_players_error_only_when_failed',
+      sql`${t.errorJson} is null or (${t.outcome} = 'FAILED' and length(${t.errorJson}) > 0)`,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// player_model_snapshots (+ its four child tables)
+// ---------------------------------------------------------------------------
+
+/**
+ * One immutable, versioned DERIVED player model (prompt §21, §24, ADR-0062c).
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE. `v1` is never overwritten when `v2` arrives:
+ * `UNIQUE(player_id, model_version)` plus the insert-only triggers make a rewrite
+ * impossible, and the repository assigns `latest + 1` inside the same transaction that
+ * writes the row.
+ *
+ * `input_hash` + `algorithm_version` are the idempotency gate: a run whose recomputation
+ * produces both values equal to this player's latest snapshot writes NOTHING and reports
+ * `NO_CHANGES`. They are the reason a second click cannot double a count.
+ *
+ * The confidence CONFIG is stored (`k` and both display thresholds) rather than the
+ * derived weights: a stored `weightBps` would be a second opinion that could drift from
+ * `player-core`'s own integer formula, while an old snapshot without its `k` would be
+ * uninterpretable. Each child row therefore stores the OPPORTUNITY COUNT its confidence
+ * was computed from, and `snapshotConfidence(n, config)` reproduces the record exactly —
+ * the formula is pure integer arithmetic, so this is bit-identical, not approximately
+ * equal. Bet-size bucket boundaries are deliberately NOT stored: the bucket LABEL each
+ * observation was given is stored verbatim, so the boundaries are not needed to read a
+ * snapshot back, and `algorithm_version` records which engine produced them.
+ */
+export const playerModelSnapshots = sqliteTable(
+  'player_model_snapshots',
+  {
+    id: text('id').primaryKey(),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    /** Monotonic per player, starting at 1. Assigned by the repository as `latest + 1`. */
+    modelVersion: integer('model_version').notNull(),
+    analysisRunId: text('analysis_run_id')
+      .notNull()
+      .references(() => analysisRuns.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    algorithmVersion: integer('algorithm_version').notNull(),
+    /** Deterministic identity of the eligible raw-hand set this was computed from. */
+    inputHash: text('input_hash').notNull(),
+    sourceHandCount: integer('source_hand_count').notNull(),
+    sourceObservationCount: integer('source_observation_count').notNull(),
+    sourceShowCount: integer('source_show_count').notNull(),
+    createdAt: integer('created_at').notNull(),
+    /** `SnapshotConfidenceMetadata.k` — the `K` in `n / (n + K)` actually applied. */
+    confidenceK: integer('confidence_k').notNull(),
+    confidenceLearningThreshold: integer('confidence_learning_threshold').notNull(),
+    confidenceKnownThreshold: integer('confidence_known_threshold').notNull(),
+    /** The sample `SnapshotConfidenceMetadata.overall` was computed from. */
+    confidenceOverallOpportunities: integer('confidence_overall_opportunities').notNull(),
+  },
+  (t) => [
+    uniqueIndex('player_model_snapshots_player_version_unique').on(t.playerId, t.modelVersion),
+    index('player_model_snapshots_player_created_idx').on(t.playerId, t.createdAt, t.id),
+    index('player_model_snapshots_run_idx').on(t.analysisRunId),
+    check('player_model_snapshots_id_not_empty', sql`length(${t.id}) > 0`),
+    check(
+      'player_model_snapshots_model_version_positive',
+      sql`${isIntegral(t.modelVersion)} and ${t.modelVersion} >= 1`,
+    ),
+    check(
+      'player_model_snapshots_algorithm_version_positive',
+      sql`${isIntegral(t.algorithmVersion)} and ${t.algorithmVersion} >= 1`,
+    ),
+    check('player_model_snapshots_input_hash_not_empty', sql`length(${t.inputHash}) > 0`),
+    check('player_model_snapshots_source_hand_count_range', countRange(t.sourceHandCount)),
+    check(
+      'player_model_snapshots_source_observation_count_range',
+      countRange(t.sourceObservationCount),
+    ),
+    check('player_model_snapshots_source_show_count_range', countRange(t.sourceShowCount)),
+    check('player_model_snapshots_created_at_range', timeWindow(t.createdAt)),
+    check(
+      'player_model_snapshots_confidence_k_positive',
+      sql`${isIntegral(t.confidenceK)} and ${t.confidenceK} >= 1`,
+    ),
+    check(
+      'player_model_snapshots_confidence_thresholds',
+      sql`${isIntegral(t.confidenceLearningThreshold)} and ${t.confidenceLearningThreshold} >= 1 and ${isIntegral(t.confidenceKnownThreshold)} and ${t.confidenceLearningThreshold} < ${t.confidenceKnownThreshold}`,
+    ),
+    check(
+      'player_model_snapshots_confidence_overall_range',
+      countRange(t.confidenceOverallOpportunities),
+    ),
+  ],
+);
+
+/**
+ * `PlayerModelContent.globalStats` — one `ModelStatCount` per row.
+ *
+ * `position` is NULLABLE and `NULL` is its OWN bucket ("every position together"), never
+ * the sum of the six positional rows and never merged with them (ADR-0035, ADR-0062).
+ * Exactly as `player_observations` does it, TWO partial unique indexes enforce that,
+ * because a plain `UNIQUE(..., position)` admits two NULL rows in both dialects.
+ *
+ * `ordinal` preserves the engine's own array order, so a reload reproduces
+ * `globalStats` element-for-element rather than re-deriving a sort this layer would have
+ * to keep in step with `analysis-core`.
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE.
+ */
+export const playerModelStats = sqliteTable(
+  'player_model_stats',
+  {
+    snapshotId: text('snapshot_id')
+      .notNull()
+      .references(() => playerModelSnapshots.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    ordinal: integer('ordinal').notNull(),
+    statKey: text('stat_key').notNull(),
+    /** NULL is a distinct bucket, never "unknown" and never "all positions summed". */
+    position: text('position'),
+    opportunities: integer('opportunities').notNull(),
+    actions: integer('actions').notNull(),
+    /** The sample `SnapshotConfidence` was computed from; the weight is derived on read. */
+    confidenceOpportunities: integer('confidence_opportunities').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'player_model_stats_pk', columns: [t.snapshotId, t.ordinal] }),
+    uniqueIndex('player_model_stats_context_unique')
+      .on(t.snapshotId, t.statKey, t.position)
+      .where(sql`${t.position} is not null`),
+    uniqueIndex('player_model_stats_context_null_position_unique')
+      .on(t.snapshotId, t.statKey)
+      .where(sql`${t.position} is null`),
+    check('player_model_stats_ordinal_non_negative', sql`${t.ordinal} >= 0`),
+    check('player_model_stats_key', sql`${t.statKey} in ${inList(MODEL_STAT_KEYS)}`),
+    check(
+      'player_model_stats_position',
+      sql`${t.position} is null or ${t.position} in ${inList(OBSERVED_POSITIONS)}`,
+    ),
+    check('player_model_stats_opportunities_range', countRange(t.opportunities)),
+    check('player_model_stats_actions_range', countRange(t.actions)),
+    check(
+      'player_model_stats_actions_within_opportunities',
+      sql`${t.actions} <= ${t.opportunities}`,
+    ),
+    check('player_model_stats_confidence_range', countRange(t.confidenceOpportunities)),
+  ],
+);
+
+/**
+ * `PlayerModelContent.spotStats` — one `SpotStatCount` per row (ADR-0062a's
+ * `player_spot_stats`).
+ *
+ * The `SpotDescriptor` is stored as COLUMNS, and the canonical `spot_key` is stored beside
+ * them. Both, deliberately: the columns are the lossless record (a key is a lossy
+ * projection and nothing should ever have to parse one back into dimensions), and the key
+ * is what the UI groups and looks up by. They cannot drift, because the decoder re-derives
+ * the key with `player-core`'s own `spotKey` and reports `CORRUPT_ROW` on a disagreement.
+ *
+ * The phase discriminator is enforced: a PREFLOP row carries `opponent_position` and no
+ * postflop dimension; a POSTFLOP row carries all four postflop dimensions and no
+ * `opponent_position`.
+ *
+ * Effect and verb counts are explicit columns rather than a JSON document: they are the
+ * numbers a later query will actually filter and aggregate on, and their sums are CHECKed
+ * against `opportunities`, which a blob could not be. `ALL_IN` has no effect column on
+ * purpose — an all-in FUNCTIONED as a call, a bet or a raise, and its verb is preserved
+ * separately so the shove is still visible (`CLAUDE.md` rule 3).
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE.
+ */
+export const playerSpotStats = sqliteTable(
+  'player_spot_stats',
+  {
+    snapshotId: text('snapshot_id')
+      .notNull()
+      .references(() => playerModelSnapshots.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    ordinal: integer('ordinal').notNull(),
+    spotKey: text('spot_key').notNull(),
+    phase: text('phase').notNull(),
+    /** A `PreflopSpotFamily` on a PREFLOP row, a `PostflopSpotFamily` on a POSTFLOP row. */
+    family: text('family').notNull(),
+    position: text('position').notNull(),
+    /** PREFLOP only: who created the situation. NULL for RFI / VS_LIMP / BB_OPTION. */
+    opponentPosition: text('opponent_position'),
+    lineup: text('lineup').notNull(),
+    /** POSTFLOP only. */
+    street: text('street'),
+    /** POSTFLOP only. */
+    relation: text('relation'),
+    /** POSTFLOP only. */
+    potType: text('pot_type'),
+    /** POSTFLOP only. `NONE` when not facing a bet — a bucket, not a zero-sized bet. */
+    facingSize: text('facing_size'),
+    opportunities: integer('opportunities').notNull(),
+    effectFold: integer('effect_fold').notNull(),
+    effectCheck: integer('effect_check').notNull(),
+    effectCall: integer('effect_call').notNull(),
+    effectBet: integer('effect_bet').notNull(),
+    effectRaise: integer('effect_raise').notNull(),
+    verbFold: integer('verb_fold').notNull(),
+    verbCheck: integer('verb_check').notNull(),
+    verbCall: integer('verb_call').notNull(),
+    verbBet: integer('verb_bet').notNull(),
+    verbRaise: integer('verb_raise').notNull(),
+    verbAllIn: integer('verb_all_in').notNull(),
+    confidenceOpportunities: integer('confidence_opportunities').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'player_spot_stats_pk', columns: [t.snapshotId, t.ordinal] }),
+    uniqueIndex('player_spot_stats_spot_unique').on(t.snapshotId, t.spotKey),
+    index('player_spot_stats_spot_key_idx').on(t.spotKey),
+    check('player_spot_stats_ordinal_non_negative', sql`${t.ordinal} >= 0`),
+    check('player_spot_stats_spot_key_not_empty', sql`length(${t.spotKey}) > 0`),
+    check('player_spot_stats_phase', sql`${t.phase} in ('PREFLOP', 'POSTFLOP')`),
+    check(
+      'player_spot_stats_family',
+      sql`(${t.phase} = 'PREFLOP' and ${t.family} in ${inList(PREFLOP_SPOT_FAMILIES)}) or (${t.phase} = 'POSTFLOP' and ${t.family} in ${inList(POSTFLOP_SPOT_FAMILIES)})`,
+    ),
+    check('player_spot_stats_position', sql`${t.position} in ${inList(OBSERVED_POSITIONS)}`),
+    check('player_spot_stats_lineup', sql`${t.lineup} in ${inList(LINEUP_SHAPES)}`),
+    check(
+      'player_spot_stats_preflop_dimensions',
+      sql`${t.phase} <> 'PREFLOP' or (${t.street} is null and ${t.relation} is null and ${t.potType} is null and ${t.facingSize} is null and (${t.opponentPosition} is null or ${t.opponentPosition} in ${inList(OBSERVED_POSITIONS)}))`,
+    ),
+    check(
+      'player_spot_stats_postflop_dimensions',
+      sql`${t.phase} <> 'POSTFLOP' or (${t.opponentPosition} is null and ${t.street} in ${inList(OBSERVED_STREETS)} and ${t.relation} in ${inList(POSITION_RELATIONS)} and ${t.potType} in ${inList(POT_TYPES)} and ${t.facingSize} in ${inList(BET_SIZE_BUCKETS)})`,
+    ),
+    check('player_spot_stats_opportunities_range', countRange(t.opportunities)),
+    check('player_spot_stats_effect_fold_range', countRange(t.effectFold)),
+    check('player_spot_stats_effect_check_range', countRange(t.effectCheck)),
+    check('player_spot_stats_effect_call_range', countRange(t.effectCall)),
+    check('player_spot_stats_effect_bet_range', countRange(t.effectBet)),
+    check('player_spot_stats_effect_raise_range', countRange(t.effectRaise)),
+    check('player_spot_stats_verb_fold_range', countRange(t.verbFold)),
+    check('player_spot_stats_verb_check_range', countRange(t.verbCheck)),
+    check('player_spot_stats_verb_call_range', countRange(t.verbCall)),
+    check('player_spot_stats_verb_bet_range', countRange(t.verbBet)),
+    check('player_spot_stats_verb_raise_range', countRange(t.verbRaise)),
+    check('player_spot_stats_verb_all_in_range', countRange(t.verbAllIn)),
+    // Every decision in the bucket is classified exactly once, under both vocabularies.
+    check(
+      'player_spot_stats_effects_sum',
+      sql`${t.effectFold} + ${t.effectCheck} + ${t.effectCall} + ${t.effectBet} + ${t.effectRaise} = ${t.opportunities}`,
+    ),
+    check(
+      'player_spot_stats_verbs_sum',
+      sql`${t.verbFold} + ${t.verbCheck} + ${t.verbCall} + ${t.verbBet} + ${t.verbRaise} + ${t.verbAllIn} = ${t.opportunities}`,
+    ),
+    check('player_spot_stats_confidence_range', countRange(t.confidenceOpportunities)),
+  ],
+);
+
+/**
+ * `PlayerModelContent.betSizes` — one aggressive action, with the ACTUAL integer milliBB
+ * amounts preserved (prompt §19, `CLAUDE.md` rules 1 and 3).
+ *
+ * A separate table rather than a JSON document on the snapshot: this list grows linearly
+ * with hands and its whole point is that the raw amounts stay queryable. `bucket` is the
+ * explicitly-heuristic LABEL beside them, never instead of them, and it accepts a member of
+ * either bucket vocabulary because a preflop raise is bucketed in big blinds and a postflop
+ * bet as a fraction of the pot.
+ *
+ * `hand_id` is a real foreign key: an observation is evidence about a stored hand, and one
+ * that outlived its hand would be unauditable. Raw history cannot be deleted anyway
+ * (ADR-0060), so RESTRICT here is a statement of intent rather than a live constraint.
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE.
+ */
+export const playerModelBetSizes = sqliteTable(
+  'player_model_bet_sizes',
+  {
+    snapshotId: text('snapshot_id')
+      .notNull()
+      .references(() => playerModelSnapshots.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    ordinal: integer('ordinal').notNull(),
+    handId: text('hand_id')
+      .notNull()
+      .references(() => hands.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    kind: text('kind').notNull(),
+    spotKey: text('spot_key').notNull(),
+    /** The player's street contribution AFTER the action — raise-TO semantics. milliBB. */
+    toAmount: integer('to_amount').notNull(),
+    amount: integer('amount').notNull(),
+    potBefore: integer('pot_before').notNull(),
+    currentBetBefore: integer('current_bet_before').notNull(),
+    bigBlind: integer('big_blind').notNull(),
+    bucket: text('bucket').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'player_model_bet_sizes_pk', columns: [t.snapshotId, t.ordinal] }),
+    index('player_model_bet_sizes_hand_idx').on(t.handId),
+    index('player_model_bet_sizes_snapshot_kind_idx').on(t.snapshotId, t.kind),
+    check('player_model_bet_sizes_ordinal_non_negative', sql`${t.ordinal} >= 0`),
+    check('player_model_bet_sizes_kind', sql`${t.kind} in ${inList(BET_SIZE_KINDS)}`),
+    check('player_model_bet_sizes_spot_key_not_empty', sql`length(${t.spotKey}) > 0`),
+    check('player_model_bet_sizes_to_amount_range', moneyRange(t.toAmount)),
+    check('player_model_bet_sizes_amount_range', moneyRange(t.amount)),
+    check('player_model_bet_sizes_pot_before_range', moneyRange(t.potBefore)),
+    check('player_model_bet_sizes_current_bet_before_range', moneyRange(t.currentBetBefore)),
+    check('player_model_bet_sizes_big_blind_range', moneyRange(t.bigBlind)),
+    check(
+      'player_model_bet_sizes_bucket',
+      // Deduplicated: the two vocabularies share `SMALL` and `LARGE`.
+      sql`${t.bucket} in ${inList([...new Set([...BET_SIZE_BUCKETS, ...PREFLOP_SIZE_BUCKETS])])}`,
+    ),
+  ],
+);
+
+/**
+ * `PlayerModelContent.showEvidence` — a hand the player EXPLICITLY revealed (ADR-0062f).
+ *
+ * Only a `HOLE_CARDS_SET { revealed: true }` event produces one of these. A MUCK produces
+ * NO row: unknown cards are represented by the absence of a record, never by a guess.
+ *
+ * `cards` and `board` are stored as the canonical card TEXT (`"As Kd"`), which is exactly
+ * what the user would read back, and are decoded through `shared`'s own `parseCards`.
+ * `cards` may legitimately hold ONE card — the engine accepts a partial reveal — so the
+ * CHECK pins the two legal lengths (2 or 5 characters) rather than requiring a pair, and
+ * the board CHECK pins 0 / 3 / 4 / 5 cards.
+ *
+ * `spot_keys_json` is a JSON array of the spot keys the player was observed in during the
+ * hand, in action order. It is a list of already-stored keys, kept in order, with no
+ * queryable dimension of its own — the ADR-0038 case for a document rather than a table.
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE.
+ */
+export const playerModelShowEvidence = sqliteTable(
+  'player_model_show_evidence',
+  {
+    snapshotId: text('snapshot_id')
+      .notNull()
+      .references(() => playerModelSnapshots.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    ordinal: integer('ordinal').notNull(),
+    handId: text('hand_id')
+      .notNull()
+      .references(() => hands.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    position: text('position').notNull(),
+    /** `"As Kd"` — or `"As"` for a legal one-card reveal. */
+    cardsText: text('cards_text').notNull(),
+    /** `""` when no board was dealt; otherwise 3, 4 or 5 cards. */
+    boardText: text('board_text').notNull(),
+    lastStreet: text('last_street').notNull(),
+    spotKeysJson: text('spot_keys_json').notNull(),
+    outcome: text('outcome').notNull(),
+    /** Gross chips won in this hand, milliBB. Zero when the player won nothing. */
+    wonGross: integer('won_gross').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'player_model_show_evidence_pk', columns: [t.snapshotId, t.ordinal] }),
+    uniqueIndex('player_model_show_evidence_hand_unique').on(t.snapshotId, t.handId),
+    index('player_model_show_evidence_hand_idx').on(t.handId),
+    check('player_model_show_evidence_ordinal_non_negative', sql`${t.ordinal} >= 0`),
+    check(
+      'player_model_show_evidence_position',
+      sql`${t.position} in ${inList(OBSERVED_POSITIONS)}`,
+    ),
+    // ONE card is legal (a partial reveal); two is the norm. 2 or 5 characters.
+    check('player_model_show_evidence_cards_length', sql`length(${t.cardsText}) in (2, 5)`),
+    // 0, 3, 4 or 5 cards: "", 8, 11 or 14 characters.
+    check('player_model_show_evidence_board_length', sql`length(${t.boardText}) in (0, 8, 11, 14)`),
+    check(
+      'player_model_show_evidence_last_street',
+      sql`${t.lastStreet} in ${inList(['PREFLOP', ...OBSERVED_STREETS])}`,
+    ),
+    check('player_model_show_evidence_spot_keys_not_empty', sql`length(${t.spotKeysJson}) > 0`),
+    check('player_model_show_evidence_outcome', sql`${t.outcome} in ${inList(SHOW_OUTCOMES)}`),
+    check('player_model_show_evidence_won_gross_range', moneyRange(t.wonGross)),
+    check('player_model_show_evidence_won_gross_non_negative', sql`${t.wonGross} >= 0`),
   ],
 );

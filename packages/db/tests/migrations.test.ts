@@ -29,6 +29,14 @@ const TABLES = [
   'hands',
   'hand_players',
   'hand_events',
+  // 0005 — the derived player-learning layer (ADR-0062a).
+  'analysis_runs',
+  'analysis_run_players',
+  'player_model_snapshots',
+  'player_model_stats',
+  'player_spot_stats',
+  'player_model_bet_sizes',
+  'player_model_show_evidence',
 ];
 
 /**
@@ -58,8 +66,70 @@ const INTEGRAL_COLUMNS: readonly (readonly [string, string])[] = [
   ['session_seats', 'auto_top_up_target_stack'],
   ['hands', 'started_at'],
   ['hands', 'finished_at'],
+  ['hands', 'schema_version'],
   ['hand_players', 'starting_stack'],
+  ['analysis_runs', 'started_at'],
+  ['analysis_runs', 'finished_at'],
+  ['analysis_runs', 'algorithm_version'],
+  ['analysis_runs', 'hand_count'],
+  ['analysis_runs', 'player_count'],
+  ['analysis_runs', 'observation_count'],
+  ['analysis_runs', 'show_count'],
+  ['player_model_snapshots', 'model_version'],
+  ['player_model_snapshots', 'algorithm_version'],
+  ['player_model_snapshots', 'source_hand_count'],
+  ['player_model_snapshots', 'source_observation_count'],
+  ['player_model_snapshots', 'source_show_count'],
+  ['player_model_snapshots', 'created_at'],
+  ['player_model_snapshots', 'confidence_k'],
+  ['player_model_snapshots', 'confidence_learning_threshold'],
+  ['player_model_snapshots', 'confidence_known_threshold'],
+  ['player_model_snapshots', 'confidence_overall_opportunities'],
+  ['player_model_stats', 'opportunities'],
+  ['player_model_stats', 'actions'],
+  ['player_model_stats', 'confidence_opportunities'],
+  ['player_spot_stats', 'opportunities'],
+  ['player_spot_stats', 'effect_fold'],
+  ['player_spot_stats', 'effect_check'],
+  ['player_spot_stats', 'effect_call'],
+  ['player_spot_stats', 'effect_bet'],
+  ['player_spot_stats', 'effect_raise'],
+  ['player_spot_stats', 'verb_fold'],
+  ['player_spot_stats', 'verb_check'],
+  ['player_spot_stats', 'verb_call'],
+  ['player_spot_stats', 'verb_bet'],
+  ['player_spot_stats', 'verb_raise'],
+  ['player_spot_stats', 'verb_all_in'],
+  ['player_spot_stats', 'confidence_opportunities'],
+  ['player_model_bet_sizes', 'to_amount'],
+  ['player_model_bet_sizes', 'amount'],
+  ['player_model_bet_sizes', 'pot_before'],
+  ['player_model_bet_sizes', 'current_bet_before'],
+  ['player_model_bet_sizes', 'big_blind'],
+  ['player_model_show_evidence', 'won_gross'],
 ];
+
+/**
+ * A migrations folder frozen at `idx <= through`, built from the COMMITTED artifacts rather
+ * than retyped, so an upgrade test cannot drift from what actually ships.
+ */
+function freezeMigrations(dir: string, through: number): string {
+  const older = join(dir, `drizzle-${through}`);
+  mkdirSync(join(older, 'meta'), { recursive: true });
+  const journal = JSON.parse(
+    readFileSync(join(defaultMigrationsFolder(), 'meta', '_journal.json'), 'utf8'),
+  ) as { entries: { tag: string; idx: number }[] };
+  const kept = journal.entries.filter((entry) => entry.idx <= through);
+  expect(kept).toHaveLength(through + 1);
+  for (const entry of kept) {
+    cpSync(join(defaultMigrationsFolder(), `${entry.tag}.sql`), join(older, `${entry.tag}.sql`));
+  }
+  writeFileSync(
+    join(older, 'meta', '_journal.json'),
+    JSON.stringify({ ...journal, entries: kept }),
+  );
+  return older;
+}
 
 describe('migrations', () => {
   it('apply from an empty database and create every Phase-3 table', () => {
@@ -475,6 +545,304 @@ describe('migrations', () => {
         expect(
           after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
         ).toEqual([]);
+      } finally {
+        after.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The UPGRADE path for `0004`, on a database that already holds RAW HISTORY.
+   *
+   * This is the one migration in the project where the generated output would have been
+   * catastrophic rather than merely wrong: `drizzle-kit` emits `DROP TABLE hands` for this
+   * diff, and `hand_events`/`hand_players` cascade from it with foreign keys enforced (the
+   * `PRAGMA foreign_keys=OFF` it emits is a no-op inside the migrator's transaction —
+   * ADR-0046). Every stored hand of every past session would be gone.
+   *
+   * So the assertions that matter are the row-by-row ones below: the header, the lineup and
+   * the log survive BYTE-IDENTICALLY, the new columns arrive with their defaults, and the
+   * database is structurally sound afterwards.
+   */
+  it('applies 0004 to a populated database that already has 0000..0003, without losing raw history', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gto-self-migrate-0004-'));
+    try {
+      const older = freezeMigrations(dir, 3);
+      const url = join(dir, 'upgrade.db');
+      const before = openDatabase({ url, migrationsFolder: older });
+      try {
+        before.sqlite
+          .prepare(
+            `insert into players values ('p1', 'Dan', 'dan', null, 1700000000000, 1700000000000, 0)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into sessions values ('s1', 'grind', null, '{}', 0, 0, 2, 1700000000000, 1700000000000, null, 1, 100000)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 93701, 1, 100000)`)
+          .run();
+        // Five columns: at 0003 `hands` has neither `source` nor `schema_version`.
+        before.sqlite
+          .prepare(`insert into hands values ('h1', 's1', 0, 1700000000000, 1700000030000)`)
+          .run();
+        before.sqlite
+          .prepare(`insert into hands values ('h2', 's1', 1, 1700000060000, null)`)
+          .run();
+        before.sqlite.prepare(`insert into hand_players values ('h1', 0, 'p1', 100000)`).run();
+        before.sqlite.prepare(`insert into hand_players values ('h1', 1, null, 50000)`).run();
+        before.sqlite
+          .prepare(
+            `insert into hand_events values ('h1', 0, 'e1', 0, 'USER', 'HAND_STARTED', '{"kind":"HAND_STARTED"}')`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into hand_events values ('h1', 1, 'e2', 1, 'ENGINE', 'HAND_FINISHED', '{"kind":"HAND_FINISHED"}')`,
+          )
+          .run();
+      } finally {
+        before.close();
+      }
+
+      const after = openDatabase({ url });
+      try {
+        // Every pre-existing row survived, unchanged, with the new columns DEFAULTED.
+        expect(
+          after.sqlite
+            .prepare(
+              `select id, session_id, hand_number, started_at, finished_at, source,
+                      schema_version from hands order by hand_number`,
+            )
+            .all(),
+        ).toEqual([
+          {
+            id: 'h1',
+            session_id: 's1',
+            hand_number: 0,
+            started_at: 1_700_000_000_000,
+            finished_at: 1_700_000_030_000,
+            source: 'MANUAL_PRACTICE',
+            schema_version: 1,
+          },
+          {
+            id: 'h2',
+            session_id: 's1',
+            hand_number: 1,
+            started_at: 1_700_000_060_000,
+            finished_at: null,
+            source: 'MANUAL_PRACTICE',
+            schema_version: 1,
+          },
+        ]);
+        expect(after.sqlite.prepare(`select * from hand_players order by seat`).all()).toEqual([
+          { hand_id: 'h1', seat: 0, player_id: 'p1', starting_stack: 100_000 },
+          { hand_id: 'h1', seat: 1, player_id: null, starting_stack: 50_000 },
+        ]);
+        expect(after.sqlite.prepare(`select * from hand_events order by seq`).all()).toEqual([
+          {
+            hand_id: 'h1',
+            seq: 0,
+            event_id: 'e1',
+            command_seq: 0,
+            origin: 'USER',
+            kind: 'HAND_STARTED',
+            payload_json: '{"kind":"HAND_STARTED"}',
+          },
+          {
+            hand_id: 'h1',
+            seq: 1,
+            event_id: 'e2',
+            command_seq: 1,
+            origin: 'ENGINE',
+            kind: 'HAND_FINISHED',
+            payload_json: '{"kind":"HAND_FINISHED"}',
+          },
+        ]);
+        // Nothing else was disturbed on the way past.
+        expect(after.sqlite.prepare(`select count(*) as n from session_seats`).get()).toEqual({
+          n: 1,
+        });
+
+        // The database is structurally sound, and no scratch table from a recreate exists.
+        expect(after.sqlite.pragma('integrity_check')).toEqual([{ integrity_check: 'ok' }]);
+        expect(after.sqlite.pragma('foreign_key_check')).toEqual([]);
+        expect(
+          after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
+        ).toEqual([]);
+        const indexes = after.sqlite
+          .prepare(`select name from sqlite_master where type = 'index' and tbl_name = 'hands'`)
+          .all() as readonly { readonly name: string }[];
+        expect(indexes.filter((i) => i.name === 'hands_session_hand_number_unique')).toHaveLength(
+          1,
+        );
+        expect(indexes.filter((i) => i.name === 'hands_session_started_idx')).toHaveLength(1);
+
+        // The new constraints and the new guards are live on the UPGRADED table, not only
+        // on a database built from scratch.
+        expect(() => after.sqlite.prepare(`update hands set source = 'SCRAPED'`).run()).toThrow(
+          /CHECK constraint failed: hands_source|is immutable once finished/u,
+        );
+        expect(() => after.sqlite.prepare(`delete from hands where id = 'h2'`).run()).toThrow(
+          /is immutable/u,
+        );
+        expect(() => after.sqlite.prepare(`update hand_events set origin = 'USER'`).run()).toThrow(
+          /is insert-only/u,
+        );
+        expect(() =>
+          after.sqlite.prepare(`update hands set hand_number = 9 where id = 'h1'`).run(),
+        ).toThrow(/is immutable once finished/u);
+        // ... and the UNFINISHED header can still be finished exactly once.
+        after.sqlite.prepare(`update hands set finished_at = 1700000090000 where id = 'h2'`).run();
+        expect(
+          after.sqlite.prepare(`select finished_at as f from hands where id = 'h2'`).get(),
+        ).toEqual({ f: 1_700_000_090_000 });
+        expect(() =>
+          after.sqlite
+            .prepare(`update hands set finished_at = 1700000099000 where id = 'h2'`)
+            .run(),
+        ).toThrow(/is immutable once finished/u);
+      } finally {
+        after.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The UPGRADE path for `0005`, the derived player-learning layer (ADR-0062).
+   *
+   * `0005` is purely additive — seven new tables and fourteen triggers — so the risk it
+   * carries is the opposite of `0004`'s: not that it destroys raw history, but that the new
+   * constraints and guards exist only on a database built from scratch. So this test
+   * populates a database at `0004` with real rows in every pre-existing table, migrates, and
+   * then asserts that (a) nothing pre-existing moved, and (b) the new tables, CHECKs and
+   * insert-only triggers are live ON THE UPGRADED FILE.
+   */
+  it('applies 0005 to a populated database that already has 0000..0004', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gto-self-migrate-0005-'));
+    try {
+      const older = freezeMigrations(dir, 4);
+      const url = join(dir, 'upgrade.db');
+      const before = openDatabase({ url, migrationsFolder: older });
+      try {
+        before.sqlite
+          .prepare(
+            `insert into players values ('p1', 'Dan', 'dan', null, 1700000000000, 1700000000000, 0)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into sessions values ('s1', 'grind', null, '{}', 0, 0, 1, 1700000000000, 1700000000000, null, 1, 100000)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 93701, 1, 100000)`)
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into hands values ('h1', 's1', 0, 1700000000000, 1700000030000, 'MANUAL_PRACTICE', 1)`,
+          )
+          .run();
+        before.sqlite.prepare(`insert into hand_players values ('h1', 0, 'p1', 100000)`).run();
+        before.sqlite
+          .prepare(
+            `insert into hand_events values ('h1', 0, 'e1', 0, 'USER', 'HAND_STARTED', '{"kind":"HAND_STARTED"}')`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into player_observations values ('o1', 'p1', 'VPIP', null, 10, 3, 1700000000000, 1700000000000)`,
+          )
+          .run();
+      } finally {
+        before.close();
+      }
+
+      const after = openDatabase({ url });
+      try {
+        // Nothing pre-existing moved. `player_observations` in particular is untouched by
+        // the derived layer and stays the manually-driven surface (ADR-0062a).
+        expect(after.sqlite.prepare(`select * from hands`).all()).toEqual([
+          {
+            id: 'h1',
+            session_id: 's1',
+            hand_number: 0,
+            started_at: 1_700_000_000_000,
+            finished_at: 1_700_000_030_000,
+            source: 'MANUAL_PRACTICE',
+            schema_version: 1,
+          },
+        ]);
+        expect(after.sqlite.prepare(`select * from hand_events`).all()).toHaveLength(1);
+        expect(after.sqlite.prepare(`select * from hand_players`).all()).toHaveLength(1);
+        expect(after.sqlite.prepare(`select * from player_observations`).all()).toEqual([
+          {
+            id: 'o1',
+            player_id: 'p1',
+            metric: 'VPIP',
+            position: null,
+            opportunities: 10,
+            actions: 3,
+            first_observed_at: 1_700_000_000_000,
+            last_observed_at: 1_700_000_000_000,
+          },
+        ]);
+        expect(after.sqlite.pragma('integrity_check')).toEqual([{ integrity_check: 'ok' }]);
+        expect(after.sqlite.pragma('foreign_key_check')).toEqual([]);
+        expect(
+          after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
+        ).toEqual([]);
+
+        // The new tables exist and accept a real run + snapshot on the UPGRADED file.
+        after.sqlite
+          .prepare(
+            `insert into analysis_runs values ('r1', 's1', 1700000040000, 1700000041000, 1, 'SUCCESS', 1, 1, 5, 0, null)`,
+          )
+          .run();
+        after.sqlite
+          .prepare(
+            `insert into player_model_snapshots values ('m1', 'p1', 1, 'r1', 1, 'deadbeef', 1, 5, 0, 1700000041000, 30, 5, 30, 1)`,
+          )
+          .run();
+        after.sqlite
+          .prepare(`insert into player_model_stats values ('m1', 0, 'VPIP', null, 10, 3, 10)`)
+          .run();
+        after.sqlite
+          .prepare(
+            `insert into analysis_run_players values ('r1', 'p1', 'SNAPSHOT_CREATED', 'm1', null)`,
+          )
+          .run();
+
+        // ... and the new CHECKs and guards are live, not merely declared.
+        expect(() =>
+          after.sqlite
+            .prepare(
+              `insert into player_model_snapshots values ('m2', 'p1', 1, 'r1', 1, 'x', 1, 1, 0, 1700000041000, 30, 5, 30, 1)`,
+            )
+            .run(),
+        ).toThrow(/UNIQUE constraint failed/u);
+        expect(() =>
+          after.sqlite
+            .prepare(
+              `insert into analysis_run_players values ('r1', 'p1', 'SNAPSHOT_CREATED', null, null)`,
+            )
+            .run(),
+        ).toThrow(/CHECK constraint failed/u);
+        expect(() =>
+          after.sqlite.prepare(`update player_model_snapshots set input_hash = 'x'`).run(),
+        ).toThrow(/is insert-only/u);
+        expect(() => after.sqlite.prepare(`delete from analysis_runs`).run()).toThrow(
+          /is insert-only/u,
+        );
+        expect(() => after.sqlite.prepare(`delete from player_model_stats`).run()).toThrow(
+          /is insert-only/u,
+        );
       } finally {
         after.close();
       }

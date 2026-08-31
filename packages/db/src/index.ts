@@ -21,3 +21,4 @@ export * from './repositories/notes.js';
 export * from './repositories/observations.js';
 export * from './repositories/sessions.js';
 export * from './repositories/hands.js';
+export * from './repositories/analysis.js';

@@ -29,6 +29,20 @@
       "when": 1788003600000,
       "tag": "0003_per_seat_auto_top_up",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788211721641,
+      "tag": "0004_completed_hand_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788213555193,
+      "tag": "0005_analysis_and_model_snapshots",
+      "breakpoints": true
     }
   ]
 }

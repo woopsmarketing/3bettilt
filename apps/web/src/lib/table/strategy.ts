@@ -389,6 +389,13 @@ export interface ComputeStrategyOptions {
  * CALL is scheduled so that the user's own action commits before any analysis starts. Note
  * what that scheduling does not buy: this function has no yield point, so once it has begun
  * it runs to completion on the main thread.
+ *
+ * **The parameter list is load-bearing for `prompt` §39.** `(HandState, heroSeat, options)`
+ * is the whole input: no player model, no analysis snapshot, no database handle, not even an
+ * optional one. That is what makes "an analysis run cannot change what the panel says" true
+ * by construction rather than by discipline. Adding a player-derived argument — including as
+ * an optional field on `ComputeStrategyOptions` — needs an ADR first, and would have to
+ * defeat `packages/strategy-core/tests/layering.test.ts` on the way.
  */
 export function computeStrategy(
   state: HandState,

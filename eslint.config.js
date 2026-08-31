@@ -15,6 +15,17 @@ const NO_DB = {
   message: 'Domain packages must not depend on persistence.',
 };
 
+/**
+ * `analysis-core` is the event-log -> player-observation interpreter (ADR-0061). Only
+ * `apps/web` composes it; no package imports it, including the two it itself reads. A
+ * package that imported it would be reaching for player-tendency data from inside a layer
+ * that must not have any.
+ */
+const NO_ANALYSIS_CORE = {
+  group: ['@gto-self/analysis-core', '@gto-self/analysis-core/*'],
+  message: 'analysis-core is composed by apps/web only; no package imports it (ADR-0061).',
+};
+
 /** `solver-lab` is a research sandbox and is never shipped (ADR-0013). */
 const NO_SOLVER_LAB = {
   group: ['*solver-lab*'],
@@ -91,6 +102,7 @@ export default tseslint.config(
           message:
             'poker-core is the engine; strategy-core reads it through its own adapter and never the other way round.',
         },
+        NO_ANALYSIS_CORE,
       ]),
     },
   },
@@ -113,6 +125,7 @@ export default tseslint.config(
           message:
             'gto-core (solved data) and strategy-core (the local REFERENCE engine) are mutually unaware.',
         },
+        NO_ANALYSIS_CORE,
       ]),
     },
   },
@@ -140,6 +153,7 @@ export default tseslint.config(
           message:
             'Composing player data with the REFERENCE baseline belongs above both packages, never inside player-core.',
         },
+        NO_ANALYSIS_CORE,
       ]),
     },
   },
@@ -169,6 +183,7 @@ export default tseslint.config(
           message:
             'strategy-core (local REFERENCE) and gto-core (solved data) are separate and mutually unaware.',
         },
+        NO_ANALYSIS_CORE,
       ]),
     },
   },
@@ -192,6 +207,37 @@ export default tseslint.config(
           message:
             'strategy-core (local REFERENCE) and gto-core (solved data) are separate and mutually unaware.',
         },
+        NO_ANALYSIS_CORE,
+      ]),
+    },
+  },
+  {
+    files: ['packages/analysis-core/**/*.ts'],
+    rules: {
+      // ADR-0061. The interpreter reads the poker engine and writes player-domain facts,
+      // so it is the ONE package allowed to import both `poker-core` and `player-core`.
+      // Everything else is banned, and the two bans that matter most are strategy-core and
+      // gto-core: a player model must never read or influence the baseline strategy. That
+      // is the C2 boundary, and it is enforced here rather than trusted.
+      'no-restricted-imports': restrict([
+        NO_UI,
+        NO_DB,
+        NO_SOLVER_LAB,
+        {
+          group: ['@gto-self/strategy-core', '@gto-self/strategy-core/*'],
+          message:
+            'A player model must not read or influence the REFERENCE baseline; combining them is C2 and has no import path today (ADR-0061).',
+        },
+        {
+          group: ['@gto-self/gto-core', '@gto-self/gto-core/*'],
+          message:
+            'analysis-core interprets our own hand history; solved GTO data has no part in it (ADR-0061).',
+        },
+        {
+          group: ['@gto-self/coinpoker-parser', '@gto-self/coinpoker-parser/*'],
+          message:
+            'analysis-core consumes poker-core events, whatever produced them; it never depends on a particular importer.',
+        },
       ]),
     },
   },
@@ -214,7 +260,7 @@ export default tseslint.config(
     rules: {
       // Persistence may import the domain packages — that is the direction the layering
       // allows — but it is storage, not presentation.
-      'no-restricted-imports': restrict([NO_UI, NO_SOLVER_LAB]),
+      'no-restricted-imports': restrict([NO_UI, NO_SOLVER_LAB, NO_ANALYSIS_CORE]),
     },
   },
   {
@@ -238,6 +284,7 @@ export default tseslint.config(
           message:
             'The parser produces poker events; it knows nothing about GTO, strategy or players.',
         },
+        NO_ANALYSIS_CORE,
       ]),
     },
   },
@@ -260,6 +307,8 @@ export default tseslint.config(
             '@gto-self/strategy-core/*',
             '@gto-self/coinpoker-parser',
             '@gto-self/coinpoker-parser/*',
+            '@gto-self/analysis-core',
+            '@gto-self/analysis-core/*',
           ],
           message: 'solver-lab depends on `shared` alone (ADR-0013).',
         },
@@ -290,8 +339,11 @@ export default tseslint.config(
     },
   },
   {
-    // The one place in the app permitted to open the database.
-    files: ['apps/web/src/server/**/*.{ts,tsx}'],
+    // The one place in the app permitted to open the database — plus `apps/web/tests/`,
+    // which is test scaffolding OUTSIDE the Next.js `src/` tree and is never bundled into
+    // any page. The rule above exists to keep a native module out of a client bundle; a
+    // fixture that no route can reach cannot put one there.
+    files: ['apps/web/src/server/**/*.{ts,tsx}', 'apps/web/tests/**/*.{ts,tsx}'],
     rules: { 'no-restricted-imports': restrict([NO_SOLVER_LAB]) },
   },
   {

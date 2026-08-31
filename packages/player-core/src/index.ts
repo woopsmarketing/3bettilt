@@ -17,6 +17,11 @@
  *   averaged into one number.
  * - `PlayerObservation` — counts we recorded ourselves. Rates are derived on demand
  *   (`observedRate`), never stored.
+ *
+ * `model.ts` and `modelConfig.ts` (C1) add the DERIVED player model vocabulary: the spot
+ * descriptor, the observed-action/effect types, the model stat keys, the show evidence
+ * shape, and the confidence/bucket configuration. They are types and pure integer
+ * arithmetic only — still no `poker-core`, no `gto-core`, no `strategy-core`.
  */
 export * from './errors.js';
 export * from './time.js';
@@ -26,3 +31,5 @@ export * from './hud.js';
 export * from './observation.js';
 export * from './notes.js';
 export * from './confidence.js';
+export * from './model.js';
+export * from './modelConfig.js';

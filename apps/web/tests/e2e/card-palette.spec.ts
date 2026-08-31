@@ -98,6 +98,13 @@ test('enters a complete hand: hole cards, three streets, settlement', async ({ p
   await expect(page.getByTestId('award-panel')).toContainText('각 팟의 승자를 고르세요');
   await expect(page.getByTestId('award-amount-0')).toHaveText('27.8 BB');
   await page.getByTestId('award-seat-0-0').click();
+
+  // The whole ENTRY path — hole cards, three streets, every action, the award selection —
+  // has fired no network request at all (`prompt` D1). Asserted HERE, before the submit
+  // that completes the hand, because completion is the one point that is allowed to reach
+  // the server (ADR-0059) and this claim is about everything before it.
+  expect(requests).toEqual([]);
+
   await page.getByTestId('award-submit').click();
 
   await expect(page.getByTestId('phase')).toContainText('완료');
@@ -111,7 +118,11 @@ test('enters a complete hand: hole cards, three streets, settlement', async ({ p
   await expect(page.getByTestId('card-palette')).toHaveAttribute('data-needed', '2');
   await expect(page.getByTestId('palette-As')).toBeEnabled();
 
-  expect(requests).toEqual([]);
+  // And the ONLY request the whole hand ever fires is the completed-hand persist, sent after
+  // the hand was already COMPLETE on screen — one hand finished, so exactly one call. The
+  // second hand is still live and has sent nothing.
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toMatch(/^POST http:\/\/127\.0\.0\.1:\d+\/table\/[^/]+$/u);
 });
 
 test('the palette owns A and C while it is capturing, and the dock owns them otherwise', async ({

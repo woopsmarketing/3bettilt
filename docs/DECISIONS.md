@@ -1491,3 +1491,124 @@ remaining client/DB button divergence is exactly the pre-existing, documented Ph
 web policy: the deal-time advance lives in the store because poker-core's `startHand`
 refusing an undealt button is correct engine behaviour — choosing to advance instead of
 failing is a UI-flow decision.
+
+---
+
+## ADR-0059 — Completed-hand persistence reuses the Phase-3 hand tables and writes once, at `phase === 'COMPLETE'`, off the action path
+
+**Date:** 2026-09-01 · **Phase:** C0 (history capture) · **Status:** accepted
+
+**Context.** Phase 3 already built `hands` / `hand_players` / `hand_events` and a full
+repository (`insertHand`, `loadStoredHand`, …) in `packages/db`, but nothing in `apps/web`
+calls it (ADR-0043 named this Phase-8 work). The C0+C1 milestone needs durable raw history
+for COMPLETED hands only; full in-progress reload/recovery stays deferred.
+
+**Decision.** (a) Reuse the existing tables and repository — building a second hand store
+would be a competing system. (b) A hand is persisted exactly once, in a single
+transaction, when it reaches `HandState.phase === 'COMPLETE'` (awards, rake, fees, and
+`HAND_FINISHED` are final). No mid-hand incremental `appendHandEvents` in this milestone.
+(c) The trigger is a client-side observer of the COMPLETE transition firing an unawaited
+server action; the synchronous action path (ADR-0043) never waits on it. (d) Exactly-once
+is enforced by the DB, not the client: the `hands.id` primary key (the engine's stable
+`handId` from `HAND_STARTED`) plus `UNIQUE(session_id, hand_number)`; a duplicate write
+returns a typed `ALREADY_PERSISTED` no-op, never a second row. (e) A failed write
+surfaces a visible banner with retry and preserves the in-memory hand; it is never
+silently dropped. (f) `hands` gains an additive `source` column
+(`'MANUAL_PRACTICE' | 'MANUAL_REVIEW'`, today always `MANUAL_PRACTICE`) and a
+`schema_version` for forward evolution of the stored representation. (g) Final stacks are
+not duplicated onto the header: the event log is authoritative (ADR-0039) and folding it
+reproduces them; `finished_at` is set in the same insert transaction.
+
+**Consequences.** An unfinished hand still disappears on reload (documented, unchanged).
+Raw history for every completed hand — config, lineup, hero cards, SHOW reveals, ordered
+events, awards, rake, fee — survives reload and feeds C1. Phase 8's live-hand recovery
+can later add incremental appends without changing this boundary.
+
+---
+
+## ADR-0060 — Completed raw hands are immutable at the database level via conditional triggers
+
+**Date:** 2026-09-01 · **Phase:** C0 (history capture) · **Status:** accepted
+
+**Context.** ADR-0037 made manually entered player records insert-only with hand-authored
+SQLite triggers. The hand tables predate C0 and have no such protection: `hands` rows are
+updatable and `hand_events` rows are unguarded, while the milestone requires raw history
+that cannot be silently rewritten.
+
+**Decision.** A new hand-authored migration (same pattern as `0001_insert_only_guards.sql`)
+adds: `hand_events` and `hand_players` refuse every UPDATE and DELETE; `hands` refuses
+every DELETE, and refuses UPDATE on any row whose `finished_at` is already non-null
+(`BEFORE UPDATE … WHEN OLD.finished_at IS NOT NULL → RAISE(ABORT)`). A future
+live-persistence phase can therefore still insert a hand header early and mark it
+finished once, but a finished hand is frozen. Corrections are supersession, not rewrites
+(new record + explicit metadata; no correction UI in this milestone). The trigger-list
+tripwire test in `packages/db` is extended to pin the new triggers.
+
+**Consequences.** `markHandFinished` keeps working for unfinished rows and aborts on
+finished ones — that abort is a bug telling us something tried to rewrite history.
+Analysis and model rebuilds can trust raw history as append-only ground truth.
+
+---
+
+## ADR-0061 — `packages/analysis-core`: the event-log → player-observation interpreter is its own package
+
+**Date:** 2026-09-01 · **Phase:** C1 (player learning) · **Status:** accepted
+
+**Context.** Post-session analysis must fold poker-core event logs into player-domain
+observations. The layering rules forbid `player-core` from importing `poker-core` (and
+vice versa), so the interpreter can live in neither; burying a deterministic engine in
+`apps/web/src/server/` would leave it untestable as a pure domain and invite drift.
+
+**Decision.** New package `packages/analysis-core`, mirroring the `strategy-core`
+precedent (ADR-0055). It may import `@gto-self/shared`, `@gto-self/poker-core` and
+`@gto-self/player-core` — nothing else: never `strategy-core` or `gto-core` (a player
+model must not read or influence baseline strategy — the C2 boundary), never
+`@gto-self/db`, never React/Next. Only `apps/web` may import it, and no existing package
+may. ESLint layering blocks enforce all of this. The package is deterministic by
+construction: no clock, no RNG, no id generation — identical inputs and algorithm version
+produce bit-identical outputs. `docs/ARCHITECTURE.md` carries the layering-diagram
+addendum.
+
+**Consequences.** Opportunity extraction, spot classification and snapshot computation
+get the same unit-test treatment as poker math. Strategy A+B cannot observe player data
+even by accident: `strategy-core` has no import path to `analysis-core` or `player-core`,
+and the regression pin of ADR-0062 asserts behavioural identity.
+
+---
+
+## ADR-0062 — Player model snapshots are versioned all-history recomputations gated by an input-identity hash; snapshot confidence is `n/(n+K)` alongside — not replacing — ADR-0036's levels
+
+**Date:** 2026-09-01 · **Phase:** C1 (player learning) · **Status:** accepted
+
+**Context.** "세션 분석 및 반영" must be idempotent (a second click must not double any
+count), must accumulate the same player across sessions, and must leave Strategy A+B
+bit-identical. The brief's `n/(n+30)` continuous confidence weight coexists with
+ADR-0036's discrete `ConfidenceLevel`, which is accepted and stays.
+
+**Decision.** (a) Derived data lives in new insert-only tables — `analysis_runs`,
+`player_model_snapshots`, `player_spot_stats` — never in `player_observations`, which
+remains the manually-driven live-observation surface and is not written by analysis.
+(b) A snapshot is a full recomputation from ALL eligible completed raw hands linked to
+that player (`hand_players.player_id` on hands with `finished_at` set); the button's
+session scope only discovers which players are affected. No incremental
+`previous + delta` arithmetic. (c) Each snapshot records `analysisAlgorithmVersion` and a
+deterministic `inputHash` over the sorted eligible hand ids; if both equal the player's
+latest snapshot the run reports `NO_CHANGES` and writes no snapshot. Versions per player
+increment monotonically and old snapshots are never overwritten. (d) An `analysis_runs`
+row records scope, input identity, counts, duration and a per-player
+`SUCCESS | PARTIAL | FAILED` outcome; a partial failure is reported as such, and raw
+history is never touched by analysis. (e) Snapshot confidence:
+`confidenceWeightBps = round(10000 · n / (n + K))` with `K = 30`, a PRODUCT HEURISTIC
+(not poker truth), computed per situation from that situation's opportunity count `n`,
+with display states UNKNOWN (n < 5) / LEARNING (5 ≤ n < 30) / KNOWN (n ≥ 30) — display
+thresholds, configurable in one explicit config module. ADR-0036's `ConfidenceLevel`
+buckets are unchanged for their existing surfaces; the two concepts are separate types
+and are never converted into each other implicitly. (f) SHOW evidence comes only from
+`HOLE_CARDS_SET { revealed: true }` events (ADR-0052); a MUCK contributes actions but
+never cards. (g) Acceptance pin: a fixed `StrategyQuery` evaluated before and after
+insert-history → analyze → snapshot must serialize bit-identically.
+
+**Consequences.** Repeated clicks converge (`NO_CHANGES`), multi-session accumulation is
+the natural consequence of all-history recomputation, and a future algorithm can delete
+every derived row and rebuild from raw history. Strategy C2 — combining REFERENCE with
+the empirical model — remains explicitly out of scope and has no import path today.
