@@ -126,6 +126,18 @@ export function vacateSeat(table: TableState, seat: SeatIndex): TableState {
 /**
  * Result. ACTIVE <-> SITTING_OUT is the UX `S` toggle. Errors SEAT_EMPTY when the seat
  * holds no player. Moving to EMPTY is `vacateSeat`, not this.
+ *
+ * `buttonSeat` is NOT touched, not even when this seat holds the button. The button is
+ * ROTATION state, not occupancy state: the seat still holds its player and its chips, and
+ * the seat that sat out is exactly the seat rotation must count FROM. `advanceButton` owns
+ * eligibility and searches clockwise from wherever the button is, including from a seat
+ * that is itself SITTING_OUT, so a sit-out followed by a sit-in is net-zero for rotation.
+ *
+ * Nulling the button here instead (the pre-2026-09 behaviour) made `advanceButton` take its
+ * "no button yet" path and restart at the LOWEST eligible seat — moving the button
+ * backwards on a net-zero toggle — and left a table that had never dealt with no button at
+ * all and no UI able to restore one. `vacateSeat` still clears the button, because there
+ * the player and their chips genuinely leave the table.
  */
 export function setSeatOccupancy(
   table: TableState,
@@ -136,12 +148,7 @@ export function setSeatOccupancy(
   if (current.occupancy === 'EMPTY' || current.playerId === null) {
     return engineErr('SEAT_EMPTY', `Seat ${seat} holds no player`, { seat });
   }
-  const seats = setBySeat(table.seats, seat, { ...current, occupancy });
-  return ok({
-    ...table,
-    seats,
-    buttonSeat: occupancy === 'SITTING_OUT' && table.buttonSeat === seat ? null : table.buttonSeat,
-  });
+  return ok({ ...table, seats: setBySeat(table.seats, seat, { ...current, occupancy }) });
 }
 
 /**
@@ -210,6 +217,11 @@ export function dealtInSeats(table: TableState): readonly SeatIndex[] {
 /**
  * Result. Moves the button to the next dealt-in-eligible seat clockwise, or the lowest
  * one when there is no button yet. Errors NOT_ENOUGH_PLAYERS.
+ *
+ * The search starts at `nextSeat(buttonSeat)` and steps clockwise, so the CURRENT button
+ * seat being ineligible (SITTING_OUT, busted, vacated) changes nothing: the button still
+ * moves to the next eligible seat clockwise from where it sits. Only a genuinely absent
+ * button (`null`) takes the lowest-eligible-seat path.
  *
  * ASSUMPTION: the button moves simply. Dead-button and missed-blind rules are NOT
  * modelled in Phase 1; the user corrects with `setButtonSeat`.

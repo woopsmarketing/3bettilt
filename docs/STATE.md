@@ -112,7 +112,79 @@ this round is corrections to them, not a reopening.
 
 ## Current
 
-- Nothing in flight. Phases 1, 2, 3, 4, 5, 6 and 7 are **accepted** — none is reopened.
+- **Strategy A+B milestone (REFERENCE engine) in flight, started 2026-09-01.** Goal: a
+  deterministic local reference-strategy engine (user-facing 기본전략 · REFERENCE — never
+  labelled GTO) recommending actions/frequencies/sizings preflop through river, plus the
+  between-hands sit-out transition. Orchestrated as work packages; decisions so far:
+  **ADR-0055** (`packages/strategy-core`, separate from `gto-core`, single adapter seam;
+  the rule registries in `src/{preflop,postflop}/rules.ts` are the authoritative rule
+  counts — earlier per-WP counts in this file went stale as fix rounds added rules),
+  **ADR-0056** (SOURCE/DERIVED/HEURISTIC provenance, integer BPS, 5% quantization),
+  **ADR-0057** (between-hands direct `TableState` write).
+  - **A1 done** — ACTIVE↔SITTING_OUT toggle from the running table (SeatOccupancyToggle +
+    `S` hotkey via the existing listener), occupancy-only persistence
+    (`updateSessionSeatOccupancy`, no migration needed), 6→5→4→5 transitions tested, 2 new
+    E2E specs. 867/867 unit, 17/17 E2E at its gate. Report: `docs/reports/STRATEGY_WP_A1.md`.
+  - **A2 done** — `packages/strategy-core` foundation: neutral `StrategyQuery`, adapter
+    seam (`buildStrategyQuery`, 10 typed refusal codes), preflop spot canonicalization
+    (10 families + typed UNSUPPORTED), stack buckets, 1326-combo range model with
+    integer-exact normalization/propagation, 169-class aggregation. 138 tests.
+    Report: `docs/reports/STRATEGY_WP_A2.md`.
+  - **Public anchors verified** against free education pages with citations:
+    `docs/reports/STRATEGY_ANCHORS.md` (RFI bands/sizings SOURCE-grade; IP-3bet and
+    squeeze sizing DERIVED — sources disagree, choice documented; BB defense charts and
+    short-handed ladder HEURISTIC/DERIVED).
+  - **A3 done** — preflop REFERENCE policy: provenance-tagged rules with anchor
+    citations, 13x13 notation parser, clamp-and-degrade sizing legality, per-seat
+    end-of-preflop range propagation with an `offPolicy` flag, no `EXACT` environment
+    claim representable. Report: `docs/reports/STRATEGY_WP_A3.md`.
+  - **B1 done** — hand evaluator (bitmask, ~12M 7-card evals/sec, validated by the exact
+    C(52,5)=2,598,960 frequency-table sweep) + board analyzer (STATIC/DYNAMIC carried as
+    `Provenanced` HEURISTIC with exported criteria) + hero-hand analyzer (draws, nut
+    status, blockers). Report: `docs/reports/STRATEGY_WP_B1.md`.
+  - **B2 done** — deterministic equity engine: HU postflop EXACT on every street (flop
+    84.7ms full range), golden-ratio Weyl deterministic subsampling for
+    multiway/preflop/range-vs-range with measured error bounds, no RNG anywhere.
+    Report: `docs/reports/STRATEGY_WP_B2.md`.
+  - **B3 done** — postflop REFERENCE policy: whole scoring model exported as documented
+    data in `scoreModel.ts` (zero constants in logic code), score→5%-frequency and
+    feature→sizing-bucket tables, multiway scale-down, villain ranges deliberately NOT
+    narrowed postflop (`villainRangeNarrowingApplied: false`, honesty flag), SPR-gated
+    ALL_IN substitution, BTN-vs-BB worked-example fixture. (Its "worst case ~87ms HU flop"
+    claim was later falsified — the true worst shape is a 6-way limped flop, ~106ms here;
+    see the R1B fix round and the report's correction appendix.)
+    Report: `docs/reports/STRATEGY_WP_B3.md`. Package total: 28 files / 690 tests.
+  - **B4 done** — Strategy Panel live in the right aside (기본전략 · REFERENCE): frequencies,
+    추천 primary, sizing, equity, pot odds, SPR, 품질/confidence, ACTUAL-vs-MODEL, honest
+    refusal states, 12 exhaustive Korean copy maps; compute scheduled off the action hot
+    path with measured evidence. Report: `docs/reports/STRATEGY_WP_B4.md` (+ §5.4
+    correction).
+  - **TWO independent adversarial reviews ran** (a fork of this session produced a second
+    reviewer — coordination recorded in the reports): `STRATEGY_REVIEW_R1.md`
+    (2 BLOCKER / 8 MAJOR / 13 MINOR) and `STRATEGY_REVIEW_R1B.md` (0/5/11, two unique
+    MAJORs). All 2 BLOCKERs and all 13 distinct MAJORs across both reviews are FIXED, each
+    with a test proven to fail on revert, across four fix packages:
+    `STRATEGY_FIX_{BUTTON,PREFLOP,POSTFLOP,R1B}.md`. Highlights: VS_ALLIN/FACING_ALL_IN
+    reserved for genuinely collapsed trees (AA no longer flats a short shove; quads can
+    isolate); button survives sit-out (ADR-0058); SB trim is per-class (QJo in, K4o out —
+    SB open now 46.91%); multiway equity normalized to fair share; price-implied floor
+    stops the multiway penalty from folding 100%-equity hands; faced-bet fraction measured
+    from the aggressor's own wager; all-in rendered as ALL IN; benchmark covers 4/5/6-way
+    (true worst shape: 6-way limped flop ~106ms) and stale latency claims corrected.
+  - **Integration gate green after fixes**: workspace vitest 105 files / 1811 tests,
+    strategy-core 766, typecheck/lint/build clean, strategy-panel + seat-occupancy E2E 8/8.
+  - **Independent re-verification (peer session, read-only) came back CLEAN ON BEHAVIOR**:
+    every BLOCKER and 12/13 distinct MAJORs verified genuinely fixed with pins held; R1's
+    M6 (heads-up button) correctly remains partial (documented FLOOR heuristic — see Known
+    issues). Its five doc-hygiene items were all fixed, plus the last live MINOR
+    (`rangeRank` basis inconsistency — now pairwise-consistent with an exact probe on the
+    off-policy path, `docs/reports/STRATEGY_FIX_RANGERANK.md`) and the asymmetric pending
+    label.
+  - **`docs/STRATEGY_MVP_REPORT.md` written** (2,166 lines): all 18 required sections, two
+    full worked examples with real-engine numbers, 39-item weak-areas list, and a 13-item
+    report-vs-code discrepancy audit (all dispositioned).
+  - **MILESTONE ACCEPTED — final frozen-source gate green, 2026-09-01** (table below).
+- Phases 1, 2, 3, 4, 5, 6 and 7 are **accepted** — none is reopened.
 - **Poker Table Alpha reached, 2026-08-29.** A person can open the app in a browser, configure
   a session, and manually enter a complete practice hand: hole cards, F/C/R/A/Z from the
   keyboard or mouse, flop/turn/river through the card palette, settlement, and next hand.
@@ -173,6 +245,43 @@ this round is corrections to them, not a reopening.
 
 ## Known issues / explicit TODOs
 
+- **Strategy A+B — deferred review findings (CLAUDE.md rule 5 requires these listed).** All
+  behavioral findings from the two independent reviews are fixed; these documented
+  deferrals remain (locations per `docs/reports/STRATEGY_REVIEW_R1.md` / `_R1B.md` and the
+  fix reports):
+  - **Heads-up preflop coverage is a FLOOR, not a HU strategy** (R1 M6, partial): the HU
+    button opens the BTN∪SB union (49.62%, HEURISTIC, note says FLOOR in as many words) —
+    still too tight (A2o/A3o fold); HU BB defense and 3-handed ladder reuse are likewise
+    HEURISTIC/DERIVED without HU-specific anchors.
+  - **Isolation-raise share vs a short shove reads the shove as an overbet** in
+    `FACED_BET_SIZE`, keeping the raise mix low (~15%); shape correct, tuning deliberately
+    not done (see `STRATEGY_FIX_R1B.md` residual).
+  - **`heroVsAggressor` vs `heroInPosition` sizing fidelity** (R1 MINOR-6): wants an
+    anchor-doc decision before changing emitted sizes.
+  - Smaller deferrals, all cosmetic/latent and none reachable as wrong output today:
+    rankBasis fallback (`postflop/context.ts`), `DEFAULT_RANGE_EQUITY_MAX_OPS` placement,
+    the latent invariant throw on an all-in-only action set (unreachable from poker-core;
+    marginally widened by the M7 guard — documented so it isn't rediscovered),
+    `equityVsRanges` silently shrinking a >MAX_VILLAIN_RANGES lineup, the dead `NO_HAND`
+    member in `apps/web/src/lib/table/strategy.ts`, an asymmetric pending label in
+    `copy.ts`, the structurally unreachable `OPEN_PLUS_CALLER`-with-hero-as-opener branch,
+    and R1B MINOR-8's remaining dedup items; the equity cache's 64-bit range digest (a
+    collision would return a wrong number undetectably — measured 0 collisions in 160k
+    probes, trade-off documented in `equity/cache.ts`); and `squeezeSizing`'s
+    matching-denominator assumption (correct today, silently wrong if a non-integral
+    squeeze multiplier is ever introduced); `STRONG_SHARE_PERCENTILE`'s three outputs
+    currently have no reader anywhere (dead data — remove or consume in a later phase).
+  - **`LINEUP_SHORT_HANDED` is DERIVED preflop and HEURISTIC postflop — intentional, not
+    drift**: preflop short-handed play maps deterministically from anchor-backed tables
+    (DERIVED per ADR-0056), while the postflop model is authored end-to-end, so nothing
+    postflop can rise above HEURISTIC (`docs/STRATEGY_MVP_REPORT.md` §16/§20).
+  - **Postflop villain ranges are not narrowed by postflop actions**
+    (`villainRangeNarrowingApplied: false` — an honesty flag, deliberate; revisit with a
+    latency budget if it ever matters more than the ~65ms/action it costs).
+  - **Panel compute split follow-up**: a resumable two-phase equity context could cut the
+    worst blocking window ~130→~64ms; needs a small `strategy-core` export, recorded in
+    `STRATEGY_FIX_POSTFLOP.md`, not done.
+
 - **Nothing entered at the table is persisted.** Phases 4-7 write the SESSION only. The live
   table, the hand event log, cards and awards live in memory; a page reload discards them
   (ADR-0043). The table says so plainly in the UI, because losing entered work silently would
@@ -189,8 +298,9 @@ this round is corrections to them, not a reopening.
   evaluator: the user picks the winner and the engine settles it.
 - **The observed splash fee has no input.** `AWARD_POTS` always sends `fee: null` (ADR-0032 —
   no automatic trigger is invented). An observed fee cannot yet be recorded from the UI.
-- **`S` (sit-out toggle) from `docs/UX.md` is not bound.** It is not in the Phase 6 key map;
-  seat occupancy is set at session setup only until Phase 8.
+- ~~`S` (sit-out toggle) is not bound~~ — **done in the Strategy A+B milestone** (WP A1):
+  `S` toggles the selected seat's occupancy via the existing single keydown listener, and
+  `SeatOccupancyToggle` does the same by mouse.
 - **The felt has visible dead space at 1440x800.** The seat rows are compact and the pot/board
   sit in a large empty middle. Functional, and deliberately not chased further — the prompt
   rules out pixel work — but it is the obvious next density win if the user wants one.
@@ -293,16 +403,16 @@ this round is corrections to them, not a reopening.
 
 ## Test status
 
-Alpha feedback round gate, 2026-08-31, run on frozen source.
+Strategy A+B (REFERENCE engine) final frozen-source gate, 2026-09-01.
 
-| Suite                | Result                         |
-| -------------------- | ------------------------------ |
-| `pnpm typecheck`     | pass                           |
-| `pnpm lint`          | pass                           |
-| `pnpm lint:licences` | pass                           |
-| `pnpm test`          | pass — **72 files, 979 tests** |
-| `pnpm build`         | pass                           |
-| `pnpm e2e`           | pass — **15 Playwright tests** |
+| Suite                       | Result                            |
+| --------------------------- | --------------------------------- |
+| `pnpm verify` (typecheck + test + lint + lint:licences + build) | pass — exit 0 |
+| `pnpm test`                 | pass — **106 files, 1826 tests**  |
+| — `strategy-core` project   | pass — 777 tests                  |
+| `pnpm e2e`                  | pass — **23 Playwright tests**    |
+
+(Alpha feedback round gate, 2026-08-31: 72 files / 979 tests, 15 Playwright tests.)
 
 (Poker Table Alpha gate, 2026-08-29: 66 files / 856 tests, 11 Playwright tests.)
 

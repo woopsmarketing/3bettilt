@@ -8,10 +8,13 @@ import type { AutoTopUpPolicy, HandView, SeatIndex, TableState } from '@gto-self
 import type { LoadPlayerProfileAction } from '../../lib/table/contract.js';
 import type {
   SeatAutoTopUpValue,
+  SeatOccupancyValue,
   UpdateSeatAutoTopUpAction,
   UpdateSeatAutoTopUpResult,
+  UpdateSeatOccupancyAction,
+  UpdateSeatOccupancyResult,
 } from '../../lib/session-setup/contract.js';
-import { STREET_LABEL } from '../../lib/table/copy.js';
+import { STRATEGY_ENGINE_LABEL, STREET_LABEL } from '../../lib/table/copy.js';
 import { makeTestTable, testNicknames } from '../../lib/table/testTable.js';
 import { TableRoot } from './TableRoot.js';
 
@@ -38,6 +41,7 @@ interface RenderOverrides {
   readonly autoTopUp?: AutoTopUpPolicy | null;
   readonly seatAutoTopUp?: Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>>;
   readonly updateSeatAutoTopUp?: UpdateSeatAutoTopUpAction;
+  readonly updateSeatOccupancy?: UpdateSeatOccupancyAction;
 }
 
 function renderTable(table: TableState, overrides: RenderOverrides = {}) {
@@ -52,6 +56,7 @@ function renderTable(table: TableState, overrides: RenderOverrides = {}) {
       warnings={[]}
       loadPlayerProfile={overrides.loadPlayerProfile ?? noProfile}
       updateSeatAutoTopUp={overrides.updateSeatAutoTopUp}
+      updateSeatOccupancy={overrides.updateSeatOccupancy}
       ids={sequentialIdFactory('test')}
     />,
   );
@@ -214,7 +219,7 @@ describe('TableRoot', () => {
     // No hand is live and nothing is selected, so the column leads with the log
     // (`lib/table/rightPanel.ts`). The strategy panel belongs to hero's own decision.
     expect(panelKind()).toBe('HISTORY');
-    expect(screen.queryByTestId('strategy-placeholder')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('strategy-panel')).not.toBeInTheDocument();
 
     fireEvent.click(seatEl(1));
     expect(await screen.findByTestId('player-profile')).toBeInTheDocument();
@@ -264,7 +269,7 @@ describe('TableRoot', () => {
     expect(screen.getByTestId('raise-input')).toHaveValue('9');
     // One keypress must not also close an unrelated panel.
     expect(screen.getByTestId('player-profile')).toBeInTheDocument();
-    expect(screen.queryByTestId('strategy-placeholder')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('strategy-panel')).not.toBeInTheDocument();
   });
 
   it('shows a profile load failure instead of an empty panel', async () => {
@@ -689,6 +694,189 @@ describe('TableRoot — per-seat auto top-up', () => {
 });
 
 /**
+ * The seat occupancy toggle (`S` hotkey / table-side chip), on the REAL table.
+ *
+ * `SeatOccupancyToggle` itself holds no state of its own — it renders `table.seats[seat]`
+ * straight out of the store — so a toggle that re-renders SITTING_OUT is proof the store
+ * was written. What the ENGINE does with occupancy across hands (the 6 -> 5 -> 4 -> 5
+ * sequence) is covered by `tableStore.test.ts`; these tests are the wiring: click / `S` ->
+ * store -> server action, and the "current hand is untouched" promise as it actually
+ * renders.
+ */
+describe('TableRoot — seat occupancy', () => {
+  const threeHanded = () => makeTestTable({ seats: [0, 1, 2], heroSeat: 0, buttonSeat: 0 });
+
+  const occupancyChip = (seat: SeatIndex) => screen.getByTestId(`seat-${seat}-occupancy`);
+  const occupancyToggle = (seat: SeatIndex) => screen.getByTestId(`seat-${seat}-occupancy-toggle`);
+  const occupancyState = (seat: SeatIndex) => screen.getByTestId(`seat-${seat}-occupancy-state`);
+
+  const savingOk = () =>
+    vi
+      .fn<UpdateSeatOccupancyAction>()
+      .mockImplementation(async (input: SeatOccupancyValue): Promise<UpdateSeatOccupancyResult> => ({
+        ok: true,
+        seat: input.seat,
+        occupancy: input.occupancy,
+      }));
+
+  it('gives every occupied seat a toggle and empty seats none', () => {
+    renderTable(threeHanded());
+
+    for (const seat of [0, 1, 2] as const) expect(occupancyChip(seat)).toBeInTheDocument();
+    for (const seat of [3, 4, 5] as const) {
+      expect(screen.queryByTestId(`seat-${seat}-occupancy`)).not.toBeInTheDocument();
+    }
+  });
+
+  it('flips a seat SITTING_OUT in one click, and back ACTIVE in one more', async () => {
+    const update = savingOk();
+    renderTable(threeHanded(), { updateSeatOccupancy: update });
+    expect(occupancyChip(1)).toHaveAttribute('data-sitting-out', 'false');
+
+    fireEvent.click(occupancyToggle(1));
+    expect(occupancyChip(1)).toHaveAttribute('data-sitting-out', 'true');
+    // The neighbour is untouched: this is a seat preference, not a table-wide switch.
+    expect(occupancyChip(0)).toHaveAttribute('data-sitting-out', 'false');
+
+    fireEvent.click(occupancyToggle(1));
+    expect(occupancyChip(1)).toHaveAttribute('data-sitting-out', 'false');
+
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    expect(update.mock.calls[0]![0]).toEqual({
+      sessionId: 'session-1',
+      seat: 1,
+      occupancy: 'SITTING_OUT',
+    });
+    expect(update.mock.calls[1]![0]).toEqual({
+      sessionId: 'session-1',
+      seat: 1,
+      occupancy: 'ACTIVE',
+    });
+  });
+
+  it('toggles the SELECTED seat with the S key, and does nothing when no seat is selected', () => {
+    const update = savingOk();
+    renderTable(threeHanded(), { updateSeatOccupancy: update });
+
+    // No seat selected yet: `S` is a no-op.
+    fireEvent.keyDown(window, { key: 's' });
+    expect(update).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('seat-1'));
+    fireEvent.keyDown(window, { key: 's' });
+
+    expect(occupancyChip(1)).toHaveAttribute('data-sitting-out', 'true');
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it('never sits a player out while the user is typing an `s`', () => {
+    const update = savingOk();
+    renderTable(threeHanded(), { updateSeatOccupancy: update });
+    fireEvent.click(screen.getByTestId('seat-1'));
+
+    fireEvent.keyDown(screen.getByTestId('raise-input'), { key: 's' });
+
+    expect(occupancyChip(1)).toHaveAttribute('data-sitting-out', 'false');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not affect the LIVE hand, and says "다음 핸드부터" while it is still in progress', () => {
+    renderTable(threeHanded());
+    fireEvent.click(screen.getByTestId('start-hand'));
+    const potBefore = screen.getByTestId('pot').textContent;
+
+    fireEvent.click(occupancyToggle(1));
+
+    // The store's `table` moved; the live hand did not.
+    expect(occupancyChip(1)).toHaveAttribute('data-sitting-out', 'true');
+    expect(occupancyState(1)).toHaveTextContent('다음 핸드부터');
+    expect(screen.getByTestId('seat-1')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
+    expect(screen.getByTestId('pot').textContent).toBe(potBefore);
+    expect(screen.queryByTestId('engine-error')).not.toBeInTheDocument();
+  });
+
+  it('deals one fewer seat on the NEXT hand after a sit-out, and folding it out settles fine', () => {
+    renderTable(threeHanded());
+    fireEvent.click(screen.getByTestId('start-hand'));
+    fireEvent.click(occupancyToggle(2));
+    // Finish the 3-handed hand in progress: two folds, exactly as `playOneHand` elsewhere.
+    fireEvent.click(screen.getByTestId('dock-F'));
+    fireEvent.click(screen.getByTestId('dock-F'));
+    expect(screen.getByTestId('start-hand')).toBeEnabled();
+
+    fireEvent.click(screen.getByTestId('start-hand'));
+
+    expect(screen.queryByTestId('engine-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('seat-2')).toHaveAttribute('data-status', 'NOT_DEALT_IN');
+    expect(occupancyState(2)).toHaveTextContent('켬');
+  });
+
+  it('says "다음 핸드부터" for a RE-ACTIVATION mid-hand too, not "끔"', () => {
+    // R1 MINOR-12. Re-activation reaches the felt on the next deal exactly as sitting out
+    // does, so the pending flag has to key off the DISAGREEMENT between the live lineup and
+    // the stored occupancy, not off "is this seat still dealt in".
+    renderTable(threeHanded());
+    fireEvent.click(screen.getByTestId('start-hand'));
+    fireEvent.click(occupancyToggle(2));
+    fireEvent.click(screen.getByTestId('dock-F'));
+    fireEvent.click(screen.getByTestId('dock-F'));
+    fireEvent.click(screen.getByTestId('start-hand'));
+    // Seat 2 sat this one out, and the chip agrees with the felt.
+    expect(screen.getByTestId('seat-2')).toHaveAttribute('data-status', 'NOT_DEALT_IN');
+    expect(occupancyState(2)).toHaveTextContent('켬');
+
+    fireEvent.click(occupancyToggle(2));
+
+    // The live hand still does not deal seat 2 in — so the label must not claim otherwise.
+    expect(occupancyChip(2)).toHaveAttribute('data-sitting-out', 'false');
+    expect(screen.getByTestId('seat-2')).toHaveAttribute('data-status', 'NOT_DEALT_IN');
+    expect(occupancyState(2)).toHaveTextContent('다음 핸드부터');
+    expect(occupancyState(2)).not.toHaveTextContent('끔');
+    expect(screen.queryByTestId('engine-error')).not.toBeInTheDocument();
+  });
+
+  it('drops the pending label once a seat and the live hand agree again', () => {
+    // The other half of the same rule: an ACTIVE seat the live hand DOES deal in is settled,
+    // and toggling back and forth returns to the settled label.
+    renderTable(threeHanded());
+    fireEvent.click(screen.getByTestId('start-hand'));
+
+    expect(screen.getByTestId('seat-1')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
+    expect(occupancyState(1)).toHaveTextContent('끔');
+
+    fireEvent.click(occupancyToggle(1));
+    expect(occupancyState(1)).toHaveTextContent('다음 핸드부터');
+    fireEvent.click(occupancyToggle(1));
+    expect(occupancyState(1)).toHaveTextContent('끔');
+  });
+
+  it('surfaces a save that failed WITHOUT reverting what the user set', async () => {
+    const update = vi.fn<UpdateSeatOccupancyAction>().mockResolvedValue({
+      ok: false,
+      issues: [{ seat: 0, field: 'sessionId', message: 'session no longer exists', code: null }],
+    });
+    renderTable(threeHanded(), { updateSeatOccupancy: update });
+
+    fireEvent.click(occupancyToggle(0));
+
+    const banner = await screen.findByTestId('occupancy-save-error');
+    expect(banner).toHaveTextContent('좌석 1');
+    expect(banner).toHaveTextContent('session no longer exists');
+    expect(banner).toHaveTextContent('이 브라우저');
+    expect(occupancyChip(0)).toHaveAttribute('data-sitting-out', 'true');
+  });
+
+  it('works with no server action at all: the preference still applies locally', () => {
+    renderTable(threeHanded());
+
+    fireEvent.click(occupancyToggle(0));
+
+    expect(occupancyChip(0)).toHaveAttribute('data-sitting-out', 'true');
+    expect(screen.queryByTestId('occupancy-save-error')).not.toBeInTheDocument();
+  });
+});
+
+/**
  * The right column's priority, on the REAL table. The rule itself is unit-tested in
  * `lib/table/rightPanel.test.ts`; what these prove is that the table is wired to it, and
  * that `Esc` still means exactly what it meant before the Korean-first pass.
@@ -717,7 +905,7 @@ describe('TableRoot — right-column priority', () => {
     expect(seatEl(0)).toHaveAttribute('data-actor', 'true');
 
     expect(panelKind()).toBe('STRATEGY');
-    expect(screen.getByTestId('strategy-placeholder')).toBeInTheDocument();
+    expect(screen.getByTestId('strategy-panel')).toBeInTheDocument();
     // The log never leaves the column; it simply stops leading it.
     expect(screen.getByTestId('action-history')).toBeInTheDocument();
   });
@@ -729,7 +917,7 @@ describe('TableRoot — right-column priority', () => {
 
     expect(seatEl(0)).toHaveAttribute('data-actor', 'false');
     expect(panelKind()).toBe('HISTORY');
-    expect(screen.queryByTestId('strategy-placeholder')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('strategy-panel')).not.toBeInTheDocument();
   });
 
   /**
@@ -745,7 +933,7 @@ describe('TableRoot — right-column priority', () => {
 
     expect(panelKind()).toBe('PLAYER');
     expect(await screen.findByTestId('player-profile')).toBeInTheDocument();
-    expect(screen.queryByTestId('strategy-placeholder')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('strategy-panel')).not.toBeInTheDocument();
     // Hero is still the actor: the engine has not moved, and the panel has not either.
     expect(seatEl(0)).toHaveAttribute('data-actor', 'true');
 
@@ -755,17 +943,23 @@ describe('TableRoot — right-column priority', () => {
     expect(panelKind()).toBe('STRATEGY');
   });
 
-  it('names no strategy number, frequency or percentage at all', () => {
+  /**
+   * `CLAUDE.md` rule 2 at the surface the user reads. The panel now DOES show frequencies,
+   * so the honesty test is no longer "there is no number" — it is that the engine is named
+   * as the reference policy it is, and that the three letters reserved for solved output
+   * appear nowhere on screen.
+   */
+  it('names the reference engine and never the reserved solved-output label', async () => {
     renderTable(headsUp());
     fireEvent.click(screen.getByTestId('start-hand'));
 
-    const text = screen.getByTestId('strategy-placeholder').textContent ?? '';
-    expect(text).toContain('전략 데이터는 아직 준비되지 않았습니다.');
-    expect(text).toContain('Phase 9');
-    expect(text).toContain('Phase 10');
-    expect(text).not.toContain('%');
-    // `CLAUDE.md` rule 2: the ONLY numerals here are the two roadmap references.
-    expect(text.replace('Phase 9', '').replace('Phase 10', '')).not.toMatch(/\d/u);
+    const panel = await screen.findByTestId('strategy-panel');
+    expect(screen.getByTestId('strategy-engine-label')).toHaveTextContent(
+      STRATEGY_ENGINE_LABEL,
+    );
+    // The whole document, not merely this panel: the label must not leak in anywhere.
+    expect(document.body.textContent ?? '').not.toContain('GTO');
+    expect(panel.textContent ?? '').not.toContain('정답');
   });
 });
 

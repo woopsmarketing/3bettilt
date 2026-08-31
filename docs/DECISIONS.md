@@ -1351,3 +1351,143 @@ viewport height. Two E2E assertions pin both halves, because a layout invariant 
 true today is not an invariant: the dock stays inside the viewport with the palette open, and
 the award submit button's bottom edge stays above the dock's top edge. Both were confirmed to
 FAIL against the pinned-height version before the fix landed, so neither can pass vacuously.
+
+---
+
+## ADR-0055 — `strategy-core` is a separate package from `gto-core`, with one adapter seam onto `poker-core`
+
+**Date:** 2026-09-01 · **Phase:** Strategy A+B (REFERENCE engine) · **Status:** accepted
+
+**Context.** The Strategy A+B milestone needs a deterministic, local REFERENCE strategy
+engine now — calibrated from public education material, quantized, provenance-labelled,
+never presented as GTO. The docs already commit `gto-core` to a different future: the
+Phase 9/10 solved-solution provider surface (ADR-0016, GTO_DESIGN_NOTES notes A–G,
+mock-only until Phase 14). Overloading `gto-core` with a hand-authored reference policy
+would blur "solver output storage" with "our documented default rules" — exactly the
+confusion CLAUDE.md rule 2 exists to prevent.
+
+**Decision.** The REFERENCE engine lives in a new package, `packages/strategy-core`.
+(a) `strategy-core` and `gto-core` are separate, mutually unaware packages; `gto-core`
+remains the untouched Phase-9 placeholder. (b) `@gto-self/poker-core` is importable only
+from `packages/strategy-core/src/adapter/` — the single documented seam (the analogue of
+GTO_DESIGN_NOTES note F) where `buildStrategyQuery` converts engine state into a neutral
+`StrategyQuery` DTO; everything outside the adapter imports `@gto-self/shared` only.
+(c) The neutral DTO's string unions are declared independently, never re-exported from
+poker-core, so the seam cannot silently reverse. (d) `@gto-self/player-core` is banned
+from `strategy-core` entirely: player observations must never influence baseline
+recommendations. (e) The import direction is one-way — `poker-core`, `gto-core`,
+`player-core`, `coinpoker-parser` and `solver-lab` all ban `@gto-self/strategy-core`.
+All of it is enforced in `eslint.config.js` with full pattern lists per the file's
+last-match-wins discipline, and the adapter carve-out was proven by a probe that produced
+the expected lint errors before being removed.
+
+**Consequences.** `apps/web` may import `strategy-core` directly (presentation consumes
+the domain, as with `poker-core`). A future Phase 9/10 `gto-core` provider can replace or
+sit beside the REFERENCE engine behind the same panel without either package knowing about
+the other. The ESLint block for `strategy-core` and the bans added to sibling blocks are
+part of this decision; removing them is reopening it.
+
+---
+
+## ADR-0056 — REFERENCE strategy provenance (`SOURCE | DERIVED | HEURISTIC`), integer BPS frequencies, and 5% quantization
+
+**Date:** 2026-09-01 · **Phase:** Strategy A+B (REFERENCE engine) · **Status:** accepted
+
+**Context.** The REFERENCE engine produces action frequencies and sizings that are not
+solver output and must never claim to be (CLAUDE.md rule 2, GTO_BASELINE.md). The
+existing `MOCK` tag answers "is this real data?"; nothing yet answers "how was this
+value produced?".
+
+**Decision.** Every strategy value carries a provenance from a three-member union:
+`SOURCE` (directly represented by an accepted public reference rule/table, verified
+against the cited page in `docs/reports/STRATEGY_ANCHORS.md`), `DERIVED`
+(deterministically mapped from a nearby reference environment/spot, with the mapping rule
+documented), `HEURISTIC` (our explicit deterministic fallback; requires a mandatory
+explanatory note, enforced at the type level by `Provenanced<T>`). This axis is
+orthogonal to `MOCK`. Neither `DERIVED` nor `HEURISTIC` may ever be labelled GTO, and no
+REFERENCE output of any provenance may be labelled GTO; the user-facing name is
+기본전략 · REFERENCE. Frequencies and range weights are integer basis points 0..10000
+(ADR-0016's convention applied in memory); policy-authored frequencies are quantized to
+5-percentage-point steps (multiples of 500 bps) and every reached recommendation's
+frequencies sum to exactly 10000. Integer apportionment uses largest-remainder with a
+fixed tie-break (larger remainder, then lower index); range conditioning
+(`weight × P(action|combo)`) floors at the total and redistributes the residue, never
+rounds up — a conditioned range may be understated by under one basis point in total,
+never overstated. Stack buckets are `[40,60) [60,80) [80,120) [120,160) [160,∞)` BB,
+compared in integer milliBB; `[80,120)` is the primary reference bucket; below 40 BB is a
+typed `OUT_OF_RANGE` member, not a borrowed policy. Environment mismatch (CoinPoker's
+ante/rake vs the public anchors' assumed environment) is represented explicitly on every
+recommendation; no numerical ante or rake range adjustment is invented in this milestone.
+
+**Consequences.** No fake solver precision can appear in the UI (63.72% is
+unrepresentable by construction for policy-authored values). A strategy number that
+cannot cite an anchor is `HEURISTIC` by definition and says so. Any future storage layer
+or provider must keep these integer conventions or supersede this ADR explicitly.
+
+---
+
+## ADR-0057 — A between-hands table preference writes `TableState` directly; a live `Hand` cannot observe it
+
+**Date:** 2026-09-01 · **Phase:** Strategy A+B (short-handed transition) · **Status:** accepted
+
+**Context.** The sit-out toggle (ACTIVE ↔ SITTING_OUT, the UX `S` key) must never mutate
+an in-progress hand, and the next hand must deal the changed lineup. The implementing
+work package had two designs: a deferred `pendingOccupancy` map applied at the next
+`startHand()`, or a direct `setSeatOccupancy` write to the store's `table`.
+
+**Decision.** Direct write, justified by engine structure rather than care: from
+`HAND_STARTED` onward, `Hand.state` is a pure fold of the hand's own event log and never
+re-reads `TableState`; `applyHandResult`'s `HAND_TABLE_MISMATCH` guard compares
+`playerId` only, never occupancy; and while a hand is live every rendered seat fact comes
+from `SeatView`, with `TableSeat.occupancy` consulted only when no hand exists. So a
+mid-hand occupancy write is structurally invisible to the live hand, and "takes effect
+next hand" is a display fact (the toggle shows 다음 핸드부터 while the seat is still dealt
+in), not a state-machine deferral. The same argument already implicitly justified
+`setSeatAutoTopUp`; this ADR makes it available without re-derivation: a between-hands
+table preference may write `TableState` directly iff the live hand neither reads that
+field nor is guarded on it by `applyHandResult`. Persistence follows the established
+per-seat pattern — a narrow repository write of the one changed column
+(`updateSessionSeatOccupancy`), synchronous store write first, unawaited save after,
+sequence-guarded, with a non-reverting failure banner. `updateSessionTable` (which would
+rewrite stacks — Phase 8's write boundary) is deliberately not used.
+
+**Consequences.** 6→5→4→5 dealt-in transitions work with no reconciliation machinery.
+Any future between-hands preference must re-check the two conditions (hand does not read
+the field; `applyHandResult` does not guard on it) before reusing the direct-write
+pattern — a field that fails either condition needs the pending-map design instead.
+
+---
+
+## ADR-0058 — Occupancy is not rotation state: sitting out never clears the button, and an ineligible button is advanced at deal time
+
+**Date:** 2026-09-01 · **Phase:** Strategy A+B (R1 fixes) · **Status:** accepted, supersedes the clearing behaviour shipped with ADR-0057's work package
+
+**Context.** `setSeatOccupancy` originally nulled `buttonSeat` when the button seat sat
+out. Independent review (R1 BLOCKER-2 / MAJOR-2, corroborated by the second review's
+MAJOR-1) showed two real failures: sitting the button seat out before the first deal left
+a table with no button and no UI able to restore one — every Start Hand failed
+`NO_BUTTON_SEAT`; and a nulled button sent `advanceButton` down its "no button yet" path,
+restarting rotation at the lowest-numbered seat, so a net-zero sit-out/sit-in on the
+button seat silently moved the button backwards and changed everyone's position.
+
+**Decision.** The button is rotation state, not occupancy state. (a) `setSeatOccupancy`
+mutates exactly one field — the seat's occupancy — and never touches `buttonSeat`.
+(b) Eligibility belongs to `advanceButton` alone, which advances clockwise from the
+current button to the next eligible seat and does so correctly even when the current
+button seat is itself SITTING_OUT. (c) Preserving the button is necessary but not
+sufficient: `buildStartEvents` refuses to deal off a button that is not dealt in
+(`BUTTON_SEAT_NOT_DEALT_IN`), so the web store's `startHand` advances a non-null but
+ineligible button via `advanceButton` at deal time — visible on screen as the BTN badge
+moving, and also covering a reloaded session whose persisted button sits on a persisted
+sitting-out seat. (d) A null button is NOT silently repaired: `NO_BUTTON_SEAT` surfaces
+as `lastError`, pinned by test. The invariant moves from "the button is always on an
+ACTIVE seat" to "the button is always on a seat that still holds a player, and must be on
+a dealt-in seat only at the moment a hand is dealt."
+
+**Consequences.** Sit-out/sit-in round trips are rotation-neutral. The occupancy-only
+persistence of ADR-0057 is complete again (one field changed, one column written); the
+remaining client/DB button divergence is exactly the pre-existing, documented Phase-8
+"in-memory table state is not persisted" item, not a new defect. Poker-core stays free of
+web policy: the deal-time advance lives in the store because poker-core's `startHand`
+refusing an undealt button is correct engine behaviour — choosing to advance instead of
+failing is a UI-flow decision.

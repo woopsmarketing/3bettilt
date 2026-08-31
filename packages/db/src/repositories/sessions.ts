@@ -299,6 +299,44 @@ export function updateSessionSeatAutoTopUp(
 }
 
 /**
+ * Set ONE seat's occupancy: `ACTIVE` <-> `SITTING_OUT`. The table-side `S` toggle.
+ *
+ * Writes exactly one column of exactly one row: the player and the stack are the table's
+ * business and are never touched here, matching `updateSessionSeatAutoTopUp` immediately
+ * above. Moving a seat to `EMPTY` is `updateSessionTable`'s business (vacating a seat is a
+ * bigger operation than this toggle), not this function — only `ACTIVE` and `SITTING_OUT`
+ * are accepted.
+ *
+ * A session or seat that does not exist is `NOT_FOUND`, not a silent no-op: all six seat
+ * rows always exist for a session that does, so zero affected rows can only mean the caller
+ * named something that is not there.
+ */
+export function updateSessionSeatOccupancy(
+  db: GtoDatabase,
+  sessionId: SessionId,
+  seat: SeatIndex,
+  occupancy: 'ACTIVE' | 'SITTING_OUT',
+): DbResult<null> {
+  const written = attempt({ table: 'session_seats', id: sessionId }, () =>
+    db
+      .update(sessionSeats)
+      .set({ occupancy })
+      .where(and(eq(sessionSeats.sessionId, sessionId), eq(sessionSeats.seat, seat)))
+      .run(),
+  );
+  if (!written.ok) return written;
+  if (written.value.changes === 0) {
+    return dbErr('NOT_FOUND', `session ${sessionId} has no seat ${seat}`, {
+      table: 'session_seats',
+      id: sessionId,
+      field: 'seat',
+      actual: String(seat),
+    });
+  }
+  return ok(null);
+}
+
+/**
  * Mark a sitting as ended. Idempotent writes are the caller's business, not a silent no-op.
  *
  * `closedAt` also becomes `updated_at`, so it must not precede the stored `updated_at`: a

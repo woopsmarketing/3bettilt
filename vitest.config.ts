@@ -8,6 +8,7 @@ const WORKSPACE_PACKAGES = [
   'poker-core',
   'gto-core',
   'player-core',
+  'strategy-core',
   'db',
   'coinpoker-parser',
 ] as const;
@@ -45,6 +46,7 @@ export default defineConfig({
       nodeProject('poker-core'),
       nodeProject('gto-core'),
       nodeProject('player-core'),
+      nodeProject('strategy-core'),
       nodeProject('db'),
       nodeProject('coinpoker-parser'),
       {

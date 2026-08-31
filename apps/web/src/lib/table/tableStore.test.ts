@@ -394,3 +394,280 @@ describe('seedSeatAutoTopUp', () => {
     expect(seedSeatAutoTopUp(table, at(100), stored)).toBe(stored);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Seat occupancy — the `S` hotkey / table-side toggle (Work Package A1)
+// ---------------------------------------------------------------------------
+
+describe('tableStore — seat occupancy', () => {
+  function sixHandedStore(): TableStore {
+    return createTableStore({
+      sessionId: 'session-1',
+      table: makeTestTable({ seats: [0, 1, 2, 3, 4, 5], heroSeat: 0, buttonSeat: 0 }),
+      autoTopUp: null,
+      ids: sequentialIdFactory('test'),
+    });
+  }
+
+  /**
+   * Folds every dealt-in seat but one, exactly as `playOneHand` does for three seats. The
+   * count comes off the hand's OWN `dealtInSeats`, so this stays correct no matter how many
+   * seats the hand was actually dealt.
+   */
+  function foldHandOut(s: TableStore): void {
+    const toFold = s.getState().hand!.state.dealtInSeats.length - 1;
+    for (let i = 0; i < toFold; i += 1) s.getState().apply({ kind: 'FOLD' });
+    expect(s.getState().view!.phase.kind).toBe('COMPLETE');
+  }
+
+  it('runs a full 6 -> 5 -> 4 -> 5 dealt-in sequence across startHand calls', () => {
+    const s = sixHandedStore();
+
+    // Hand 1: nobody has sat out yet.
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 3, 4, 5]);
+
+    // Sat out MID-HAND. The current hand's dealt-in lineup is provably unaffected.
+    s.getState().setSeatOccupancy(3, 'SITTING_OUT');
+    expect(s.getState().table.seats[3].occupancy).toBe('SITTING_OUT');
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 3, 4, 5]);
+    foldHandOut(s);
+    // The COMPLETED hand still settled 6-handed.
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 3, 4, 5]);
+
+    // Hand 2: 5-handed. Seat 3 is excluded and received no cards or blinds.
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 4, 5]);
+    expect(s.getState().view!.seats[3].status).toBe('NOT_DEALT_IN');
+    s.getState().setSeatOccupancy(4, 'SITTING_OUT');
+    foldHandOut(s);
+
+    // Hand 3: 4-handed.
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 5]);
+    expect(s.getState().view!.seats[3].status).toBe('NOT_DEALT_IN');
+    expect(s.getState().view!.seats[4].status).toBe('NOT_DEALT_IN');
+    // Seat 3 returns while hand 3 is still live — it does not rejoin THIS hand.
+    s.getState().setSeatOccupancy(3, 'ACTIVE');
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 5]);
+    foldHandOut(s);
+
+    // Hand 4: 5-handed again. Seat 3 is back; seat 4 is still out.
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 3, 5]);
+    expect(s.getState().view!.seats[3].status).not.toBe('NOT_DEALT_IN');
+    expect(s.getState().view!.seats[4].status).toBe('NOT_DEALT_IN');
+  });
+
+  it('a toggle mid-hand changes ONLY table, never hand or view', () => {
+    const s = sixHandedStore();
+    s.getState().startHand();
+    const { hand, view, table } = s.getState();
+
+    s.getState().setSeatOccupancy(2, 'SITTING_OUT');
+
+    expect(s.getState().hand).toBe(hand);
+    expect(s.getState().view).toBe(view);
+    expect(s.getState().table).not.toBe(table);
+    expect(s.getState().table.seats[2].occupancy).toBe('SITTING_OUT');
+    expect(s.getState().lastError).toBeNull();
+  });
+
+  it('keeps the button where it is when the button seat sits out, and the next deal moves it on', () => {
+    const s = createTableStore({
+      sessionId: 'session-1',
+      table: makeTestTable({ seats: [0, 1, 2], heroSeat: 0, buttonSeat: 0 }),
+      autoTopUp: null,
+      ids: sequentialIdFactory('test'),
+    });
+    s.getState().startHand();
+    foldHandOut(s);
+    expect(s.getState().table.buttonSeat).toBe(0);
+
+    s.getState().setSeatOccupancy(0, 'SITTING_OUT');
+    // Occupancy is not rotation state: the button stays on the seat rotation counts FROM.
+    expect(s.getState().table.buttonSeat).toBe(0);
+
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    // `advanceButton` searches clockwise from seat 0, which is now sitting out: seat 1.
+    expect(s.getState().table.buttonSeat).toBe(1);
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([1, 2]);
+  });
+
+  /**
+   * R1/B2. The button seat sits out BEFORE the page session has dealt anything, so
+   * `startHand` has no completed hand to run the between-hands sequence off. The deal must
+   * still happen, with the button on the next eligible seat clockwise.
+   */
+  it('deals after the button seat sits out before the FIRST hand of the session', () => {
+    const s = createTableStore({
+      sessionId: 'session-1',
+      table: makeTestTable({ seats: [0, 1, 2, 3, 4, 5], heroSeat: 0, buttonSeat: 3 }),
+      autoTopUp: null,
+      ids: sequentialIdFactory('test'),
+    });
+
+    s.getState().setSeatOccupancy(3, 'SITTING_OUT');
+    expect(s.getState().table.buttonSeat).toBe(3);
+
+    s.getState().startHand();
+
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().hand).not.toBeNull();
+    expect(s.getState().table.buttonSeat).toBe(4);
+    expect(s.getState().hand!.state.buttonSeat).toBe(4);
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 4, 5]);
+  });
+
+  it('deals after the button seat sits out before the first hand — wrapping past seat 5', () => {
+    const s = createTableStore({
+      sessionId: 'session-1',
+      table: makeTestTable({ seats: [0, 1, 2, 3, 4, 5], heroSeat: 0, buttonSeat: 5 }),
+      autoTopUp: null,
+      ids: sequentialIdFactory('test'),
+    });
+
+    s.getState().setSeatOccupancy(5, 'SITTING_OUT');
+    s.getState().startHand();
+
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().table.buttonSeat).toBe(0);
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('a net-zero sit-out/sit-in before the first hand leaves the chosen button untouched', () => {
+    const s = createTableStore({
+      sessionId: 'session-1',
+      table: makeTestTable({ seats: [0, 1, 2, 3, 4, 5], heroSeat: 0, buttonSeat: 3 }),
+      autoTopUp: null,
+      ids: sequentialIdFactory('test'),
+    });
+
+    s.getState().setSeatOccupancy(3, 'SITTING_OUT');
+    s.getState().setSeatOccupancy(3, 'ACTIVE');
+    s.getState().startHand();
+
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().table.buttonSeat).toBe(3);
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  /**
+   * R1/M2. `S` then `S` on the button seat is a net-zero user action, so the next hand's
+   * button must land exactly where plain rotation would have put it.
+   */
+  it('a net-zero sit-out/sit-in on the button seat does not move the next button', () => {
+    function nextButtonAfterOneHand(roundTrip: boolean): SeatIndex | null {
+      const s = createTableStore({
+        sessionId: 'session-1',
+        table: makeTestTable({ seats: [0, 1, 2, 3, 4, 5], heroSeat: 0, buttonSeat: 3 }),
+        autoTopUp: null,
+        ids: sequentialIdFactory('test'),
+      });
+      s.getState().startHand();
+      foldHandOut(s);
+      if (roundTrip) {
+        s.getState().setSeatOccupancy(3, 'SITTING_OUT');
+        s.getState().setSeatOccupancy(3, 'ACTIVE');
+        expect(s.getState().table.buttonSeat).toBe(3);
+      }
+      s.getState().startHand();
+      expect(s.getState().lastError).toBeNull();
+      expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 3, 4, 5]);
+      return s.getState().table.buttonSeat;
+    }
+
+    expect(nextButtonAfterOneHand(false)).toBe(4);
+    expect(nextButtonAfterOneHand(true)).toBe(4);
+  });
+
+  /** R1/B2 + M2 together: the 6 -> 5 -> 4 -> 5 sequence with the BUTTON among the sit-outs. */
+  it('runs a 6 -> 5 -> 4 -> 5 sequence with the button seat among the sit-outs', () => {
+    const s = createTableStore({
+      sessionId: 'session-1',
+      table: makeTestTable({ seats: [0, 1, 2, 3, 4, 5], heroSeat: 0, buttonSeat: 2 }),
+      autoTopUp: null,
+      ids: sequentialIdFactory('test'),
+    });
+
+    // Hand 1: 6-handed on the chosen button, sat out BEFORE any deal and put back.
+    s.getState().setSeatOccupancy(2, 'SITTING_OUT');
+    s.getState().setSeatOccupancy(2, 'ACTIVE');
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().table.buttonSeat).toBe(2);
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 3, 4, 5]);
+
+    // The BUTTON seat sits out between hands.
+    s.getState().setSeatOccupancy(2, 'SITTING_OUT');
+    expect(s.getState().table.buttonSeat).toBe(2);
+    foldHandOut(s);
+
+    // Hand 2: 5-handed, button clockwise from 2 -> 3.
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().table.buttonSeat).toBe(3);
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 3, 4, 5]);
+
+    // The new button seat sits out too.
+    s.getState().setSeatOccupancy(3, 'SITTING_OUT');
+    foldHandOut(s);
+
+    // Hand 3: 4-handed, button clockwise from 3 -> 4.
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().table.buttonSeat).toBe(4);
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 4, 5]);
+
+    // Seat 2 comes back.
+    s.getState().setSeatOccupancy(2, 'ACTIVE');
+    foldHandOut(s);
+
+    // Hand 4: 5-handed, button clockwise from 4 -> 5.
+    s.getState().startHand();
+    expect(s.getState().lastError).toBeNull();
+    expect(s.getState().table.buttonSeat).toBe(5);
+    expect(s.getState().hand!.state.dealtInSeats).toEqual([0, 1, 2, 4, 5]);
+  });
+
+  /**
+   * A table that genuinely has NO button (a legacy or hand-built state) must fail loudly.
+   * `startHand` never invents one: the engine's own `NO_BUTTON_SEAT` reaches `lastError`.
+   */
+  it('surfaces NO_BUTTON_SEAT rather than picking a button for a table that has none', () => {
+    const table = makeTestTable({ seats: [0, 1, 2], heroSeat: 0, buttonSeat: 0 });
+    const s = createTableStore({
+      sessionId: 'session-1',
+      table: { ...table, buttonSeat: null },
+      autoTopUp: null,
+      ids: sequentialIdFactory('test'),
+    });
+
+    s.getState().startHand();
+
+    expect(s.getState().lastError?.code).toBe('NO_BUTTON_SEAT');
+    expect(s.getState().hand).toBeNull();
+    expect(s.getState().table.buttonSeat).toBeNull();
+  });
+
+  it('refuses to toggle an EMPTY seat and surfaces SEAT_EMPTY without touching the table', () => {
+    const s = createTableStore({
+      sessionId: 'session-1',
+      table: makeTestTable({ seats: [0, 1, 2], heroSeat: 0, buttonSeat: 0 }),
+      autoTopUp: null,
+      ids: sequentialIdFactory('test'),
+    });
+    expect(s.getState().table.seats[5].occupancy).toBe('EMPTY');
+    const before = s.getState().table;
+
+    s.getState().setSeatOccupancy(5, 'SITTING_OUT');
+
+    expect(s.getState().lastError?.code).toBe('SEAT_EMPTY');
+    expect(s.getState().table).toBe(before);
+  });
+});

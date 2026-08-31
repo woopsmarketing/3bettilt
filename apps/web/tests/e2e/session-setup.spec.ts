@@ -99,9 +99,10 @@ test('starts a hand on the table and shows what the engine says', async ({ page 
 
 /**
  * The right column's priority, and the honesty requirement that goes with it: when hero is
- * the one who has to decide, the panel says plainly that there is no recommendation.
+ * the one who has to decide the panel leads, and until hero's cards are entered it REFUSES
+ * with the engine's own code rather than showing a frequency for a hand nobody named.
  */
-test('leads with the strategy panel on hero’s decision, and promises no number', async ({
+test('leads with the strategy panel on hero’s decision, and refuses before the cards exist', async ({
   page,
 }) => {
   // Heads-up with hero on the button: hero is first to act preflop.
@@ -111,12 +112,15 @@ test('leads with the strategy panel on hero’s decision, and promises no number
   await expect(page.getByTestId('seat-0')).toHaveAttribute('data-actor', 'true');
   await expect(page.getByTestId('right-panel')).toHaveAttribute('data-panel', 'STRATEGY');
 
-  const strategy = page.getByTestId('strategy-placeholder');
-  await expect(strategy).toContainText('전략 데이터는 아직 준비되지 않았습니다.');
-  await expect(strategy).toContainText('Phase 9');
-  await expect(strategy).toContainText('Phase 10');
-  // `CLAUDE.md` rule 2: no invented frequency, ever — not even as placeholder content.
-  await expect(strategy).not.toContainText('%');
+  const strategy = page.getByTestId('strategy-panel');
+  await expect(strategy).toContainText('기본전략 · REFERENCE');
+  await expect(strategy).toHaveAttribute('data-state', 'REFUSED');
+  await expect(page.getByTestId('strategy-refusal')).toHaveAttribute(
+    'data-code',
+    'INVALID_HERO_CARDS',
+  );
+  // `CLAUDE.md` rule 2: the reserved solved-output label appears nowhere on the page.
+  await expect(page.locator('body')).not.toContainText('GTO');
 });
 
 test('a session id that does not exist is a 404', async ({ page }) => {

@@ -26,7 +26,9 @@ import {
   applyCommand,
   applyHandResult,
   applySeatAutoTopUps,
+  dealtInSeats,
   engineError,
+  setSeatOccupancy as engineSetSeatOccupancy,
   startHand as engineStartHand,
   toView,
   undo as engineUndo,
@@ -88,7 +90,7 @@ export interface TableStoreState {
   readonly view: HandView | null;
   /** The last rejected transition. Shown, never swallowed. */
   readonly lastError: EngineError | null;
-  /** Drives the right-hand panel. `null` means "show the strategy placeholder". */
+  /** Drives the right-hand panel. `null` means "no explicit selection" (`rightPanel.ts`). */
   readonly selectedSeat: SeatIndex | null;
 
   /** Deal a hand. Settles and advances the table first when one just completed. */
@@ -107,6 +109,31 @@ export interface TableStoreState {
    * click to a rendered change never contains a network request (ADR-0043).
    */
   setSeatAutoTopUp(seat: SeatIndex, policy: AutoTopUpPolicy | null): void;
+  /**
+   * ACTIVE <-> SITTING_OUT for one OCCUPIED seat — the `S` hotkey / table-side toggle
+   * (`docs/UX.md`). Applied directly to `table`, synchronously, exactly like every other
+   * transition here (ADR-0043): there is no pending map to reconcile later.
+   *
+   * This is provably safe to call while a hand is LIVE. `startHand` folds the table's
+   * lineup into the hand's own event log at `HAND_STARTED`
+   * (`packages/poker-core/src/hand.ts`), and nothing afterward — not `applyCommand`, not
+   * `applyHandResult` — re-reads `table` for who is dealt in; `applyHandResult` only
+   * compares `playerId`, never `occupancy` (`packages/poker-core/src/table.ts`). So
+   * flipping a seat mid-hand can never retroactively remove it from the hand in progress,
+   * and the current hand's `view` is untouched by this call. The change takes effect at
+   * the NEXT `startHand()`, where `dealtInSeats` excludes SITTING_OUT structurally.
+   *
+   * Sitting the BUTTON seat out is not special here: `poker-core` leaves `buttonSeat`
+   * exactly where it is (occupancy is not rotation state), and `startHand` moves it
+   * clockwise to the next dealt-in seat when it comes to deal. So `S` then `S` on the
+   * button seat is net-zero — it is the same table it was — and the seat wearing the BTN
+   * badge while sitting out is simply the seat the next rotation counts from.
+   *
+   * Errors SEAT_EMPTY (the engine's own code, surfaced via `lastError` like any other
+   * rejected transition) — the UI only ever offers this toggle for an occupied seat, so
+   * this fires only if a caller misuses it directly.
+   */
+  setSeatOccupancy(seat: SeatIndex, occupancy: 'ACTIVE' | 'SITTING_OUT'): void;
 }
 
 export type TableStore = StoreApi<TableStoreState>;
@@ -208,6 +235,24 @@ export function createTableStore(init: TableStoreInit): TableStore {
           table = advanced.value;
         }
 
+        // The button must sit on a seat that is actually dealt in — `buildStartEvents`
+        // refuses BUTTON_SEAT_NOT_DEALT_IN otherwise, and the blinds are counted off it.
+        // The branch above guarantees that (`advanceButton` only ever returns an eligible
+        // seat), but two paths reach here WITHOUT it: the first deal of a page session, and
+        // a session reloaded with a stored button on a seat that has since sat out. In
+        // both, the seat holding the button went SITTING_OUT and rotation never ran, so run
+        // exactly the rotation rule the engine owns — clockwise to the next dealt-in seat —
+        // rather than dealing into a refusal the UI offers no way out of.
+        //
+        // This is deliberately NOT a repair of a null button: a table with no button at all
+        // is a different (degenerate) fact, and `engineStartHand` reports NO_BUTTON_SEAT for
+        // it through `lastError` rather than having one silently invented here.
+        if (table.buttonSeat !== null && !dealtInSeats(table).includes(table.buttonSeat)) {
+          const moved = advanceButton(table);
+          if (!moved.ok) return fail(moved.error);
+          table = moved.value;
+        }
+
         const started = engineStartHand(table, { handId: asId<'Hand'>(ids.next()) }, ids);
         if (!started.ok) {
           // The table advance is discarded with the failed deal: a rejected Start Hand
@@ -255,6 +300,14 @@ export function createTableStore(init: TableStoreInit): TableStore {
         if (policy === null) delete next[seat];
         else next[seat] = policy;
         set({ seatAutoTopUp: next });
+      },
+
+      setSeatOccupancy(seat: SeatIndex, occupancy: 'ACTIVE' | 'SITTING_OUT') {
+        const result = engineSetSeatOccupancy(get().table, seat, occupancy);
+        if (!result.ok) return fail(result.error);
+        // `hand` and `view` are deliberately NOT touched: this is a table preference, not
+        // a poker transition, exactly like `setSeatAutoTopUp` above.
+        set({ table: result.value, lastError: null });
       },
     };
   });

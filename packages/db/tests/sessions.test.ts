@@ -601,4 +601,73 @@ describe('presets and sessions', () => {
       }
     });
   });
+
+  describe('seat occupancy (updateSessionSeatOccupancy)', () => {
+    function insert() {
+      return sessionRepository.insertSession(handle.db, {
+        id: SESSION,
+        label: null,
+        presetId: null,
+        table: buildSessionTable(),
+        createdAt: T0,
+        updatedAt: T0,
+        closedAt: null,
+        autoTopUp: null,
+        seatAutoTopUp: {},
+      });
+    }
+
+    it('updates ONE seat and touches no other column, seat, or timestamp', () => {
+      unwrap(insert());
+      // `buildSessionTable` seats 0 ACTIVE, 1 ACTIVE, 2 SITTING_OUT.
+      unwrap(sessionRepository.updateSessionSeatOccupancy(handle.db, SESSION, 0, 'SITTING_OUT'));
+
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.table.seats[0].occupancy).toBe('SITTING_OUT');
+      // The player and the stack did not move.
+      expect(loaded?.table.seats[0].playerId).toBe(asId<'Player'>('seat-0'));
+      expect(loaded?.table.seats[0].stack).toBe(ODD_STACK);
+      // The untouched neighbour, and the session's own timestamp, are exactly as inserted.
+      expect(loaded?.table.seats[1].occupancy).toBe('ACTIVE');
+      expect(loaded?.table.seats[2].occupancy).toBe('SITTING_OUT');
+      expect(loaded?.updatedAt).toBe(T0);
+    });
+
+    it('brings a seat back ACTIVE', () => {
+      unwrap(insert());
+      unwrap(sessionRepository.updateSessionSeatOccupancy(handle.db, SESSION, 2, 'ACTIVE'));
+
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.table.seats[2].occupancy).toBe('ACTIVE');
+    });
+
+    it('reports NOT_FOUND for a session that does not exist, rather than affecting 0 rows', () => {
+      const missing = sessionRepository.updateSessionSeatOccupancy(
+        handle.db,
+        asId<'Session'>('ghost') as SessionId,
+        0,
+        'SITTING_OUT',
+      );
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) expect(missing.error.code).toBe('NOT_FOUND');
+    });
+
+    it('reports NOT_FOUND for a seat row that is not there', () => {
+      unwrap(insert());
+      // All six rows always exist, so this can only happen to a database corrupted by
+      // other means — and it must still be an error rather than a silent no-op.
+      handle.sqlite.prepare(`delete from session_seats where seat = 5`).run();
+      const missing = sessionRepository.updateSessionSeatOccupancy(
+        handle.db,
+        SESSION,
+        5,
+        'ACTIVE',
+      );
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) {
+        expect(missing.error.code).toBe('NOT_FOUND');
+        expect(missing.error.context.actual).toBe('5');
+      }
+    });
+  });
 });

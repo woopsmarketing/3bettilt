@@ -87,9 +87,17 @@ describe('seat mutation', () => {
     expect(errCode(setButtonSeat(seated, 1))).toBe('SEAT_EMPTY');
   });
 
-  it('sitting the button out clears the button', () => {
+  it('sitting the button seat out LEAVES the button where it is', () => {
     const out = unwrap(setSeatOccupancy(seated, 0, 'SITTING_OUT'));
-    expect(out.buttonSeat).toBeNull();
+    expect(out.buttonSeat).toBe(0);
+    expect(dealtInSeats(out)).toEqual([2, 4]);
+  });
+
+  it('sitting the button seat out and back in is net-zero for the button', () => {
+    const out = unwrap(setSeatOccupancy(seated, 0, 'SITTING_OUT'));
+    const back = unwrap(setSeatOccupancy(out, 0, 'ACTIVE'));
+    expect(back.buttonSeat).toBe(seated.buttonSeat);
+    expect(unwrap(advanceButton(back)).buttonSeat).toBe(unwrap(advanceButton(seated)).buttonSeat);
   });
 });
 
@@ -107,6 +115,53 @@ describe('button movement', () => {
     const sittingOut = unwrap(setSeatOccupancy(table, 3, 'SITTING_OUT'));
     const withButton = unwrap(setButtonSeat(sittingOut, 0));
     expect(unwrap(advanceButton(withButton)).buttonSeat).toBe(5);
+  });
+
+  /**
+   * The button seat itself being ineligible is the ordinary case once a seat can sit out
+   * between hands: `advanceButton` must still search CLOCKWISE from where the button is,
+   * never restart at the lowest seat (that is the "no button yet" case, and only that).
+   */
+  it('advances clockwise from a SITTING_OUT button seat — mid-table', () => {
+    const table = buildTable({
+      stacks: { 0: BB(100), 1: BB(100), 2: BB(100), 3: BB(100), 4: BB(100), 5: BB(100) },
+      buttonSeat: 4,
+    });
+    const out = unwrap(setSeatOccupancy(table, 4, 'SITTING_OUT'));
+    expect(out.buttonSeat).toBe(4);
+    expect(unwrap(advanceButton(out)).buttonSeat).toBe(5);
+  });
+
+  it('advances clockwise from a SITTING_OUT button seat — wrapping past seat 5', () => {
+    const table = buildTable({
+      stacks: { 0: BB(100), 1: BB(100), 4: BB(100) },
+      buttonSeat: 4,
+    });
+    const out = unwrap(setSeatOccupancy(table, 4, 'SITTING_OUT'));
+    expect(unwrap(advanceButton(out)).buttonSeat).toBe(0);
+  });
+
+  it('advances clockwise from a SITTING_OUT button seat — three-seat lineup', () => {
+    const table = buildTable({ stacks: { 0: BB(100), 1: BB(100), 2: BB(100) }, buttonSeat: 0 });
+    const out = unwrap(setSeatOccupancy(table, 0, 'SITTING_OUT'));
+    expect(unwrap(advanceButton(out)).buttonSeat).toBe(1);
+
+    const lastOut = unwrap(setSeatOccupancy(unwrap(setButtonSeat(table, 2)), 2, 'SITTING_OUT'));
+    expect(unwrap(advanceButton(lastOut)).buttonSeat).toBe(0);
+  });
+
+  it('a sit-out / sit-in round trip on the button seat does not move the next button', () => {
+    const table = buildTable({
+      stacks: { 0: BB(100), 1: BB(100), 2: BB(100), 3: BB(100), 4: BB(100), 5: BB(100) },
+      buttonSeat: 3,
+    });
+    const baseline = unwrap(advanceButton(table)).buttonSeat;
+    const roundTrip = unwrap(
+      setSeatOccupancy(unwrap(setSeatOccupancy(table, 3, 'SITTING_OUT')), 3, 'ACTIVE'),
+    );
+    expect(roundTrip.buttonSeat).toBe(3);
+    expect(unwrap(advanceButton(roundTrip)).buttonSeat).toBe(baseline);
+    expect(baseline).toBe(4);
   });
 
   it('wraps past seat 5 back to the lowest', () => {

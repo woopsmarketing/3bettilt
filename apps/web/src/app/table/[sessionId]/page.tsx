@@ -7,16 +7,20 @@
  * The load happens ONCE, here, on the server. Everything after it is a synchronous
  * `poker-core` call inside the client component.
  *
- * `loadPlayerProfileAction` and `updateSeatAutoTopUpAction` are passed DOWN as props rather
- * than imported by the client component: a `'use server'` module reaches `@gto-self/db` and
- * a native SQLite binding, which must never be reachable from a client bundle. They are the
- * table's only async calls, and neither is on a hand path — the per-seat top-up preference
- * is applied to the store synchronously and persisted afterwards, unawaited.
+ * `loadPlayerProfileAction`, `updateSeatAutoTopUpAction` and `updateSeatOccupancyAction` are
+ * passed DOWN as props rather than imported by the client component: a `'use server'` module
+ * reaches `@gto-self/db` and a native SQLite binding, which must never be reachable from a
+ * client bundle. They are the table's only async calls, and none is on a hand path — the
+ * per-seat top-up preference and the ACTIVE/SITTING_OUT toggle are both applied to the store
+ * synchronously and persisted afterwards, unawaited.
  */
 import { notFound } from 'next/navigation.js';
 import { TableRoot } from '../../../components/table/TableRoot.js';
 import { loadPlayerProfileAction } from '../../../server/actions/player.js';
-import { updateSeatAutoTopUpAction } from '../../../server/actions/session.js';
+import {
+  updateSeatAutoTopUpAction,
+  updateSeatOccupancyAction,
+} from '../../../server/actions/session.js';
 import { loadSessionView } from '../../../server/sessions.js';
 
 export default async function TablePage({
@@ -39,6 +43,7 @@ export default async function TablePage({
       warnings={view.warnings}
       loadPlayerProfile={loadPlayerProfileAction}
       updateSeatAutoTopUp={updateSeatAutoTopUpAction}
+      updateSeatOccupancy={updateSeatOccupancyAction}
     />
   );
 }

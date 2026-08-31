@@ -29,6 +29,7 @@ import {
   insertSession,
   searchPlayersByNicknamePrefix,
   updateSessionSeatAutoTopUp,
+  updateSessionSeatOccupancy,
   type DbError,
   type GtoDatabase,
 } from '@gto-self/db';
@@ -39,8 +40,13 @@ import type {
   SessionFormValue,
   StartSessionResult,
   UpdateSeatAutoTopUpResult,
+  UpdateSeatOccupancyResult,
 } from '../lib/session-setup/contract.js';
-import { seatAutoTopUpSchema, sessionFormSchema } from '../lib/session-setup/contract.js';
+import {
+  seatAutoTopUpSchema,
+  seatOccupancySchema,
+  sessionFormSchema,
+} from '../lib/session-setup/contract.js';
 import { buildTableState, planSession, type SeatPlan } from '../lib/session-setup/plan.js';
 
 /** How many autocomplete candidates the setup form asks for. */
@@ -339,6 +345,75 @@ export function updateSeatAutoTopUp(db: GtoDatabase, input: unknown): UpdateSeat
   const written = updateSessionSeatAutoTopUp(db, id, seat, policy);
   if (!written.ok) return { ok: false, issues: [fromDbError(written.error, seat, 'autoTopUp')] };
   return { ok: true, seat, policy };
+}
+
+/**
+ * Set ONE seat's occupancy: `ACTIVE` <-> `SITTING_OUT`. The table-side `S` toggle
+ * (`docs/UX.md`).
+ *
+ * `input` is untrusted — this is reached from a public server action — so it is
+ * re-validated from scratch: the shape through `seatOccupancySchema`, the seat through
+ * `isSeatIndex`. Mirrors `updateSeatAutoTopUp` immediately above: the SESSION is checked
+ * before anything is written — a session whose sitting has ENDED (`closed_at` set), or a
+ * seat that holds no player, must both be refused rather than accepted onto a row that
+ * cannot mean anything there.
+ *
+ * Not on a hot path: this is a between-hands toggle, and it is applied to the STORE
+ * synchronously before this is ever called (`tableStore.ts` — `setSeatOccupancy`); no hand
+ * transition awaits it (ADR-0043).
+ */
+export function updateSeatOccupancy(db: GtoDatabase, input: unknown): UpdateSeatOccupancyResult {
+  const shape = seatOccupancySchema.safeParse(input);
+  if (!shape.success) {
+    return {
+      ok: false,
+      issues: shape.error.issues.map((detail) =>
+        issue(
+          null,
+          detail.path.join('.') || 'occupancy',
+          `submitted value is malformed: ${detail.message}`,
+        ),
+      ),
+    };
+  }
+  const { sessionId, occupancy } = shape.data;
+  if (!isSeatIndex(shape.data.seat)) {
+    return { ok: false, issues: [issue(null, 'seat', `seat ${shape.data.seat} is not a seat`)] };
+  }
+  const seat: SeatIndex = shape.data.seat;
+
+  const id = asId<'Session'>(sessionId);
+  const stored = getSession(db, id);
+  if (!stored.ok) return { ok: false, issues: [fromDbError(stored.error, seat, 'occupancy')] };
+  if (stored.value === null) {
+    return {
+      ok: false,
+      issues: [issue(seat, 'sessionId', `session ${sessionId} does not exist`, 'NOT_FOUND')],
+    };
+  }
+  if (stored.value.closedAt !== null) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          seat,
+          'sessionId',
+          `session ${sessionId} has ended and cannot be changed`,
+          'CONFLICT',
+        ),
+      ],
+    };
+  }
+  if (stored.value.table.seats[seat].occupancy === 'EMPTY') {
+    return {
+      ok: false,
+      issues: [issue(seat, 'seat', `seat ${seat} holds no player`, 'SEAT_EMPTY')],
+    };
+  }
+
+  const written = updateSessionSeatOccupancy(db, id, seat, occupancy);
+  if (!written.ok) return { ok: false, issues: [fromDbError(written.error, seat, 'occupancy')] };
+  return { ok: true, seat, occupancy };
 }
 
 /** The setup form's nickname autocomplete. Not on any hot path — see `docs/UX.md`. */

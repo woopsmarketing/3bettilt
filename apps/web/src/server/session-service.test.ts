@@ -24,7 +24,12 @@ import {
 } from '@gto-self/db';
 import type { SeatFormValue, SessionFormValue } from '../lib/session-setup/contract.js';
 import { emptySeatForm } from '../lib/session-setup/plan.js';
-import { searchPlayers, startSession, updateSeatAutoTopUp } from './session-service.js';
+import {
+  searchPlayers,
+  startSession,
+  updateSeatAutoTopUp,
+  updateSeatOccupancy,
+} from './session-service.js';
 
 const NOW = timestamp(1_700_000_000_000);
 
@@ -459,6 +464,121 @@ describe('startSession', () => {
         seat: 1,
         enabled: true,
         targetText: '100',
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.issues[0]?.code).toBe('NOT_FOUND');
+        expect(result.issues[0]?.seat).toBe(1);
+      }
+    });
+  });
+
+  describe('updateSeatOccupancy', () => {
+    function startedSession(): string {
+      const result = startSession(handle.db, form(), deps());
+      if (!result.ok) throw new Error(JSON.stringify(result.issues));
+      return result.sessionId;
+    }
+
+    it('writes one seat without disturbing the others or the stack', () => {
+      const sessionId = startedSession();
+      const updated = updateSeatOccupancy(handle.db, {
+        sessionId,
+        seat: 1,
+        occupancy: 'SITTING_OUT',
+      });
+      expect(updated.ok, JSON.stringify(updated)).toBe(true);
+      if (!updated.ok) return;
+      expect(updated.occupancy).toBe('SITTING_OUT');
+
+      const stored = getSession(handle.db, asId<'Session'>(sessionId));
+      if (!stored.ok || stored.value === null) throw new Error('session missing');
+      expect(stored.value.table.seats[1].occupancy).toBe('SITTING_OUT');
+      expect(stored.value.table.seats[0].occupancy).toBe('ACTIVE');
+      expect(stored.value.table.seats[2].occupancy).toBe('ACTIVE');
+      // The stack — the table's other business — did not move.
+      expect(stored.value.table.seats[1].stack).toBe(Money.mbb(100_000));
+    });
+
+    it('brings a seat back ACTIVE', () => {
+      const sessionId = startedSession();
+      updateSeatOccupancy(handle.db, { sessionId, seat: 1, occupancy: 'SITTING_OUT' });
+
+      const updated = updateSeatOccupancy(handle.db, {
+        sessionId,
+        seat: 1,
+        occupancy: 'ACTIVE',
+      });
+      expect(updated.ok).toBe(true);
+      const stored = getSession(handle.db, asId<'Session'>(sessionId));
+      if (!stored.ok || stored.value === null) throw new Error('session missing');
+      expect(stored.value.table.seats[1].occupancy).toBe('ACTIVE');
+    });
+
+    it('refuses a malformed submission instead of trusting its shape', () => {
+      const sessionId = startedSession();
+      const bad: unknown[] = [
+        null,
+        {},
+        { sessionId, seat: 6, occupancy: 'ACTIVE' },
+        { sessionId, seat: 1.5, occupancy: 'ACTIVE' },
+        { sessionId, seat: 1, occupancy: 'EMPTY' },
+        { sessionId, seat: 1, occupancy: 'sitting-out' },
+        { sessionId: '', seat: 1, occupancy: 'ACTIVE' },
+      ];
+      for (const input of bad) {
+        const result = updateSeatOccupancy(handle.db, input);
+        expect(result.ok, JSON.stringify(input)).toBe(false);
+        if (!result.ok) expect(result.issues.length).toBeGreaterThan(0);
+      }
+    });
+
+    /**
+     * A seat with no player is a row this toggle must not touch — it has no effect today,
+     * but this is a public HTTP endpoint, and writing SITTING_OUT onto an EMPTY seat
+     * becomes live the moment somebody is seated there without anyone having asked for it.
+     */
+    it('refuses to toggle an EMPTY seat', () => {
+      const sessionId = startedSession();
+      // `form()` seats players at 0..2 only.
+      const result = updateSeatOccupancy(handle.db, { sessionId, seat: 4, occupancy: 'ACTIVE' });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.issues[0]?.code).toBe('SEAT_EMPTY');
+        expect(result.issues[0]?.seat).toBe(4);
+      }
+      const stored = getSession(handle.db, asId<'Session'>(sessionId));
+      if (!stored.ok || stored.value === null) throw new Error('session missing');
+      expect(stored.value.table.seats[4].occupancy).toBe('EMPTY');
+    });
+
+    it('refuses to change a session whose sitting has ended', () => {
+      const sessionId = startedSession();
+      const closed = closeSession(handle.db, asId<'Session'>(sessionId), NOW);
+      expect(closed.ok, JSON.stringify(closed)).toBe(true);
+
+      const result = updateSeatOccupancy(handle.db, {
+        sessionId,
+        seat: 1,
+        occupancy: 'SITTING_OUT',
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.issues[0]?.code).toBe('CONFLICT');
+        expect(result.issues[0]?.seat).toBe(1);
+      }
+      const stored = getSession(handle.db, asId<'Session'>(sessionId));
+      if (!stored.ok || stored.value === null) throw new Error('session missing');
+      expect(stored.value.table.seats[1].occupancy).toBe('ACTIVE');
+    });
+
+    it('reports the repository NOT_FOUND for a session that does not exist', () => {
+      const result = updateSeatOccupancy(handle.db, {
+        sessionId: 'no-such-session',
+        seat: 1,
+        occupancy: 'SITTING_OUT',
       });
       expect(result.ok).toBe(false);
       if (!result.ok) {

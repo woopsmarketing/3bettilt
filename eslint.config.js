@@ -86,6 +86,11 @@ export default tseslint.config(
           group: ['@gto-self/player-core', '@gto-self/player-core/*'],
           message: 'poker-core must not know about player tendencies (ADR-0021).',
         },
+        {
+          group: ['@gto-self/strategy-core', '@gto-self/strategy-core/*'],
+          message:
+            'poker-core is the engine; strategy-core reads it through its own adapter and never the other way round.',
+        },
       ]),
     },
   },
@@ -102,6 +107,11 @@ export default tseslint.config(
           group: ['@gto-self/player-core', '@gto-self/player-core/*'],
           message:
             'GTO baseline data must never be influenced by individual player statistics (ADR-0021).',
+        },
+        {
+          group: ['@gto-self/strategy-core', '@gto-self/strategy-core/*'],
+          message:
+            'gto-core (solved data) and strategy-core (the local REFERENCE engine) are mutually unaware.',
         },
       ]),
     },
@@ -124,6 +134,63 @@ export default tseslint.config(
           group: ['@gto-self/gto-core', '@gto-self/gto-core/*'],
           message:
             'Composing player data with the GTO baseline belongs in strategy-policy (ADR-0023).',
+        },
+        {
+          group: ['@gto-self/strategy-core', '@gto-self/strategy-core/*'],
+          message:
+            'Composing player data with the REFERENCE baseline belongs above both packages, never inside player-core.',
+        },
+      ]),
+    },
+  },
+  {
+    files: ['packages/strategy-core/**/*.ts'],
+    rules: {
+      // The local REFERENCE engine. Neutral by construction: it consumes a `StrategyQuery`
+      // DTO and knows no poker rules of its own. `poker-core` is banned HERE and allowed
+      // back only in `src/adapter/**` by the block immediately below, which is the single
+      // documented seam (docs/GTO_DESIGN_NOTES.md note F).
+      'no-restricted-imports': restrict([
+        NO_UI,
+        NO_DB,
+        NO_SOLVER_LAB,
+        {
+          group: ['@gto-self/poker-core', '@gto-self/poker-core/*'],
+          message:
+            'Only packages/strategy-core/src/adapter/ may import poker-core. Everything else consumes the neutral StrategyQuery.',
+        },
+        {
+          group: ['@gto-self/player-core', '@gto-self/player-core/*'],
+          message:
+            'Player tendencies must never influence the REFERENCE baseline; compose them above this package.',
+        },
+        {
+          group: ['@gto-self/gto-core', '@gto-self/gto-core/*'],
+          message:
+            'strategy-core (local REFERENCE) and gto-core (solved data) are separate and mutually unaware.',
+        },
+      ]),
+    },
+  },
+  {
+    // THE SEAM. Flat config is last-match-wins and does NOT merge, so this block repeats
+    // the full pattern list above with the poker-core ban removed — that omission is the
+    // entire carve-out, and every other ban stays in force here.
+    files: ['packages/strategy-core/src/adapter/**/*.ts'],
+    rules: {
+      'no-restricted-imports': restrict([
+        NO_UI,
+        NO_DB,
+        NO_SOLVER_LAB,
+        {
+          group: ['@gto-self/player-core', '@gto-self/player-core/*'],
+          message:
+            'Player tendencies must never influence the REFERENCE baseline; compose them above this package.',
+        },
+        {
+          group: ['@gto-self/gto-core', '@gto-self/gto-core/*'],
+          message:
+            'strategy-core (local REFERENCE) and gto-core (solved data) are separate and mutually unaware.',
         },
       ]),
     },
@@ -165,8 +232,11 @@ export default tseslint.config(
             '@gto-self/gto-core/*',
             '@gto-self/player-core',
             '@gto-self/player-core/*',
+            '@gto-self/strategy-core',
+            '@gto-self/strategy-core/*',
           ],
-          message: 'The parser produces poker events; it knows nothing about GTO or players.',
+          message:
+            'The parser produces poker events; it knows nothing about GTO, strategy or players.',
         },
       ]),
     },
@@ -186,6 +256,8 @@ export default tseslint.config(
             '@gto-self/gto-core/*',
             '@gto-self/player-core',
             '@gto-self/player-core/*',
+            '@gto-self/strategy-core',
+            '@gto-self/strategy-core/*',
             '@gto-self/coinpoker-parser',
             '@gto-self/coinpoker-parser/*',
           ],

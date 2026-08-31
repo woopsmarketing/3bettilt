@@ -1,7 +1,7 @@
 /**
  * What the right-hand column leads with. One pure function, deliberately separate from
- * `TableRoot` so Phase 9/10 can replace the strategy placeholder with the real panel
- * without touching a line of layout.
+ * `TableRoot` so the component behind the `STRATEGY` slot can be replaced without touching
+ * a line of layout.
  *
  * The priority the user asked for:
  *

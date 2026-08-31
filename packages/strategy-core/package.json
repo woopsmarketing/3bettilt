@@ -1,0 +1,21 @@
+{
+  "name": "@gto-self/strategy-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Deterministic local REFERENCE strategy machinery: query model, poker adapter seam, spot canonicalization, range model.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --project strategy-core"
+  },
+  "dependencies": {
+    "@gto-self/shared": "workspace:*",
+    "@gto-self/poker-core": "workspace:*"
+  }
+}

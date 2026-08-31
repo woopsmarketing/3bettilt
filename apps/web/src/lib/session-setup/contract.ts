@@ -148,6 +148,51 @@ export const seatAutoTopUpSchema = z.object({
   targetText: z.string().max(64),
 });
 
+// ---------------------------------------------------------------------------
+// Seat occupancy — the `S` hotkey / table-side ACTIVE <-> SITTING_OUT toggle
+// ---------------------------------------------------------------------------
+
+/**
+ * One seat's occupancy toggle. Lives beside the auto top-up wire types for the same reason
+ * they do: this is SESSION state (ADR-0045), the client component takes the action as a
+ * PROP typed here, and it never imports the `'use server'` module that implements it.
+ *
+ * Only `ACTIVE` and `SITTING_OUT` travel here — moving a seat to `EMPTY` is `vacateSeat`,
+ * a different, out-of-scope operation (`packages/poker-core/src/table.ts`), not this toggle.
+ */
+export interface SeatOccupancyValue {
+  readonly sessionId: string;
+  readonly seat: SeatIndex;
+  readonly occupancy: 'ACTIVE' | 'SITTING_OUT';
+}
+
+/** On success the STORED occupancy comes back, so the table renders what was written. */
+export type UpdateSeatOccupancyResult =
+  | { readonly ok: true; readonly seat: SeatIndex; readonly occupancy: 'ACTIVE' | 'SITTING_OUT' }
+  | { readonly ok: false; readonly issues: readonly FormIssue[] };
+
+/** The table-side occupancy toggle's server action, as the client component sees it. */
+export type UpdateSeatOccupancyAction = (
+  input: SeatOccupancyValue,
+) => Promise<UpdateSeatOccupancyResult>;
+
+/**
+ * Shape validation for the occupancy toggle. A server action is a public HTTP endpoint, so
+ * this input is untrusted no matter what the client component sends. SHAPE only: whether
+ * the session is open, the seat exists and holds a player is decided by `session-service.ts`
+ * and `@gto-self/db`.
+ */
+export const seatOccupancySchema = z.object({
+  sessionId: z.string().min(1).max(200),
+  // Range only. `isSeatIndex` on the server is what turns this into a `SeatIndex`.
+  seat: z
+    .number()
+    .int()
+    .min(0)
+    .max(SEAT_INDEXES.length - 1),
+  occupancy: z.enum(['ACTIVE', 'SITTING_OUT']),
+});
+
 /**
  * Shape validation for what actually arrives at the server action. A server action is a
  * public HTTP endpoint: its input is untrusted no matter what the client component sends.

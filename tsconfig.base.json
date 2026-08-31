@@ -35,6 +35,8 @@
       "@gto-self/gto-core/*": ["packages/gto-core/src/*"],
       "@gto-self/player-core": ["packages/player-core/src/index.ts"],
       "@gto-self/player-core/*": ["packages/player-core/src/*"],
+      "@gto-self/strategy-core": ["packages/strategy-core/src/index.ts"],
+      "@gto-self/strategy-core/*": ["packages/strategy-core/src/*"],
       "@gto-self/db": ["packages/db/src/index.ts"],
       "@gto-self/db/*": ["packages/db/src/*"],
       "@gto-self/coinpoker-parser": ["packages/coinpoker-parser/src/index.ts"],

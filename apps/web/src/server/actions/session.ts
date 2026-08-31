@@ -14,8 +14,10 @@ import { cryptoIdFactory } from '@gto-self/shared';
 import type {
   SearchPlayersResult,
   SeatAutoTopUpValue,
+  SeatOccupancyValue,
   StartSessionResult,
   UpdateSeatAutoTopUpResult,
+  UpdateSeatOccupancyResult,
 } from '../../lib/session-setup/contract.js';
 import { database } from '../db.js';
 import {
@@ -23,6 +25,7 @@ import {
   searchPlayers as searchPlayersIn,
   startSession as startSessionIn,
   updateSeatAutoTopUp as updateSeatAutoTopUpIn,
+  updateSeatOccupancy as updateSeatOccupancyIn,
 } from '../session-service.js';
 
 /** Validate, resolve players, build the table through the engine, and write it all once. */
@@ -46,4 +49,18 @@ export async function updateSeatAutoTopUpAction(
   input: SeatAutoTopUpValue,
 ): Promise<UpdateSeatAutoTopUpResult> {
   return updateSeatAutoTopUpIn(database(), input);
+}
+
+/**
+ * Set one seat's occupancy (ACTIVE <-> SITTING_OUT) from the table.
+ *
+ * The parameter is typed for the caller's convenience only — the value crossing the network
+ * is untrusted, and `updateSeatOccupancy` re-validates its shape and its seat from scratch.
+ * Not on a hand path: the store applies the toggle synchronously, and this call is the
+ * unawaited persistence that follows it (ADR-0043).
+ */
+export async function updateSeatOccupancyAction(
+  input: SeatOccupancyValue,
+): Promise<UpdateSeatOccupancyResult> {
+  return updateSeatOccupancyIn(database(), input);
 }

@@ -19,6 +19,7 @@ import type { ActionRecord } from '@gto-self/poker-core';
 import {
   ACTION_LABEL,
   POSITION_LABEL,
+  SEAT_OCCUPANCY_LABEL,
   SEAT_STATUS_LABEL,
   seatLabel,
 } from '../../lib/table/copy.js';
@@ -81,9 +82,7 @@ export function SeatCard({
   const statusText = empty
     ? ''
     : status === null
-      ? tableSeat.occupancy === 'SITTING_OUT'
-        ? '자리 비움'
-        : ''
+      ? SEAT_OCCUPANCY_LABEL[tableSeat.occupancy]
       : SEAT_STATUS_LABEL[status];
 
   const border = isActor

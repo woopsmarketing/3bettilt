@@ -364,8 +364,14 @@ export function buildTableState(
     table = seated.value;
   }
 
-  // Occupancy AFTER seating: `seatPlayer` seats a player ACTIVE, and the button must be
-  // placed after any seat has been moved to SITTING_OUT (that move clears the button).
+  // Occupancy AFTER seating: `seatPlayer` seats every player ACTIVE, so a seat the form
+  // marked SITTING_OUT can only be moved there once it holds a player.
+  //
+  // `setSeatOccupancy` no longer touches `buttonSeat` at all, so this no longer has to run
+  // before `setButtonSeat` to protect the button. The order still matters for a different
+  // reason, and the stricter one: `setButtonSeat` REFUSES a seat that is not ACTIVE, so
+  // running the sit-outs first is what makes "the button must sit on an active seat" an
+  // engine rejection here rather than a form-only rule.
   for (const seat of plan.seats) {
     if (seat.occupancy !== 'SITTING_OUT') continue;
     const changed = setSeatOccupancy(table, seat.seat, 'SITTING_OUT');
