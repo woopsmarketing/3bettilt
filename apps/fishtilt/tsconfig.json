@@ -1,0 +1,34 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    /*
+     * `nodenext`, NOT the `bundler` the rest of the workspace uses, for the same reason
+     * `apps/web/tsconfig.json` documents at length: the workspace packages are consumed as
+     * TypeScript SOURCE and their internal imports use the TypeScript `./module.js` form,
+     * which Turbopack only rewrites to `./module.ts` when the project sets `node16`/
+     * `nodenext`. Under `bundler` every `export * from './x.js'` inside `shared` and
+     * `strategy-core` fails to resolve and the app does not compile at all.
+     *
+     * Consequence, shared with `apps/web`: relative imports in this app carry the `.js`
+     * extension.
+     */
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    /*
+     * `next.config.ts` imports `./src/lib/locale.ts` by its real extension: Next loads the
+     * config through its own require hook, which resolves a literal `.ts` path but does not
+     * rewrite the `.js` form the rest of this app uses (verified: `Cannot find module
+     * './src/lib/locale.js'` at build). The base config already sets `noEmit`, which is the
+     * precondition for this flag. App source keeps the `.js` form.
+     */
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "incremental": true,
+    "allowJs": true,
+    "plugins": [{ "name": "next" }]
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", ".next"]
+}

@@ -226,20 +226,35 @@ export function assertClassFrequencies(frequencies: ClassFrequencies): ClassFreq
 }
 
 /**
- * Total (throws only on an all-zero input, which is a programmer error here). Rounds a set of
- * raw weights onto the 5-point grid so they sum to exactly 10000.
+ * Total (throws only on an all-zero input, which is a programmer error here, or a
+ * `stepBps` that does not divide `BPS_TOTAL` evenly, which is a caller error). Rounds a
+ * set of raw weights onto a `stepBps`-point grid so they sum to exactly 10000.
  *
- * Implementation: apportion 20 whole five-point units by largest remainder (the scheme in
- * `../bps.ts`, tie-broken larger-remainder-first then LOWER index) and multiply back by 500.
- * Because the emitted action list is ordered least-committing first, the index tie-break is
- * also the conservative one.
+ * Implementation: apportion `BPS_TOTAL / stepBps` whole units by largest remainder (the
+ * scheme in `../bps.ts`, tie-broken larger-remainder-first then LOWER index) and multiply
+ * back by `stepBps`. Because the emitted action list is ordered least-committing first, the
+ * index tie-break is also the conservative one.
  *
- * Idempotent on input that is already a valid 5-point set.
+ * Idempotent on input that is already a valid `stepBps`-point set.
+ *
+ * `quantizeFrequencies` (below) is this function pinned to `FREQUENCY_STEP_BPS` — REFERENCE's
+ * own 5-point grid — and is the one every REFERENCE call site uses, byte-identical to before
+ * this function grew a parameter. `adaptive-core`'s 1-point ADAPTIVE grid (WP-K) is the other
+ * caller of `quantizeFrequenciesToGrid` directly; REFERENCE's grid is untouched by that.
  */
-export function quantizeFrequencies(values: readonly number[]): readonly Bps[] {
-  const units = apportion(values, FREQUENCY_STEP_COUNT);
+export function quantizeFrequenciesToGrid(values: readonly number[], stepBps: number): readonly Bps[] {
+  invariant(
+    Number.isInteger(stepBps) && stepBps > 0 && BPS_TOTAL % stepBps === 0,
+    `stepBps ${stepBps} must be a positive divisor of ${BPS_TOTAL}`,
+  );
+  const units = apportion(values, BPS_TOTAL / stepBps);
   invariant(units.ok, 'cannot quantize an all-zero frequency set');
-  return units.value.map((unit) => asBps(unit * FREQUENCY_STEP_BPS));
+  return units.value.map((unit) => asBps(unit * stepBps));
+}
+
+/** `quantizeFrequenciesToGrid` pinned to the 5-point grid. See its doc comment above. */
+export function quantizeFrequencies(values: readonly number[]): readonly Bps[] {
+  return quantizeFrequenciesToGrid(values, FREQUENCY_STEP_BPS);
 }
 
 /**

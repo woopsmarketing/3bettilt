@@ -84,11 +84,12 @@ const HUD_LABEL: Readonly<Record<HudStatKey, string>> = {
   WON_AT_SHOWDOWN: 'W$SD',
 };
 
-/** How closely a suggested player matched what was typed. */
+/** How closely a suggested player matched what was typed. `BROWSE` is the unfiltered list. */
 const MATCH_KIND_LABEL: Readonly<Record<PlayerMatch['kind'], string>> = {
   EXACT: '정확히 일치',
   PREFIX: '앞부분 일치',
   SUBSTRING: '부분 일치',
+  BROWSE: '기존 플레이어',
 };
 
 /** The MVP target: CoinPoker-style NL50 6-max with the ante on. */
@@ -140,7 +141,7 @@ export function SessionSetupForm({
   const suggestQuery = suggestSeat === null ? '' : (form.seats[suggestSeat]?.nickname.trim() ?? '');
 
   useEffect(() => {
-    if (suggestSeat === null || suggestQuery === '') {
+    if (suggestSeat === null) {
       setMatches([]);
       setSearchError(null);
       return;
@@ -328,38 +329,65 @@ export function SessionSetupForm({
                     {value.existingPlayerId !== null && (
                       <span className="absolute right-2 top-1.5 text-xs text-good-500">등록됨</span>
                     )}
-                    {suggestSeat === seat && suggestQuery !== '' && (
-                      <div className="absolute z-10 mt-1 w-full rounded border border-surface-600 bg-surface-900 shadow-lg">
-                        {searchError !== null && (
-                          <p className="px-2 py-1 text-xs text-danger-500">{searchError}</p>
-                        )}
-                        {searchError === null && matches.length === 0 && (
-                          <p className="px-2 py-1 text-xs text-ink-700">
-                            일치하는 기존 플레이어가 없습니다 — 새로 만들어집니다
-                          </p>
-                        )}
-                        {matches.map((match) => (
-                          <button
-                            key={match.id}
-                            type="button"
-                            className="block w-full px-2 py-1 text-left text-sm hover:bg-surface-700"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => {
-                              updateSeat(seat, {
-                                nickname: match.nickname,
-                                existingPlayerId: match.id,
-                              });
-                              setSuggestSeat(null);
-                            }}
-                          >
-                            {match.nickname}
-                            <span className="ml-2 text-xs text-ink-700">
-                              {MATCH_KIND_LABEL[match.kind]}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {suggestSeat === seat &&
+                      (() => {
+                        // A player already picked into another seat cannot be picked again
+                        // (spec: no duplicate player across seats in one session).
+                        const takenElsewhere = new Set(
+                          form.seats
+                            .filter((_, index) => index !== seat)
+                            .map((other) => other.existingPlayerId)
+                            .filter((id): id is string => id !== null),
+                        );
+                        const visible = matches.filter((match) => !takenElsewhere.has(match.id));
+                        return (
+                          <div className="absolute z-10 mt-1 max-h-72 w-full overflow-y-auto rounded border border-surface-600 bg-surface-900 shadow-lg">
+                            {searchError !== null && (
+                              <p className="px-2 py-1 text-xs text-danger-500">{searchError}</p>
+                            )}
+                            {searchError === null && suggestQuery === '' && (
+                              <p className="px-2 py-1 text-xs text-ink-700">
+                                기존 플레이어 목록 — 외부 HUD 있는 플레이어가 위에 표시됩니다
+                              </p>
+                            )}
+                            {searchError === null && suggestQuery !== '' && visible.length === 0 && (
+                              <p className="px-2 py-1 text-xs text-ink-700">
+                                일치하는 기존 플레이어가 없습니다 — 새로 만들어집니다
+                              </p>
+                            )}
+                            {visible.map((match) => (
+                              <button
+                                key={match.id}
+                                type="button"
+                                data-testid={`setup-seat-${seat}-player-option-${match.nickname}`}
+                                className="flex w-full items-center justify-between px-2 py-1 text-left text-sm hover:bg-surface-700"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => {
+                                  updateSeat(seat, {
+                                    nickname: match.nickname,
+                                    existingPlayerId: match.id,
+                                  });
+                                  setSuggestSeat(null);
+                                }}
+                              >
+                                <span>{match.nickname}</span>
+                                <span className="ml-2 flex items-center gap-1">
+                                  {match.hasExternalHud && (
+                                    <span className="rounded border border-hero-500 px-1 text-[10px] text-hero-500">
+                                      외부 HUD
+                                    </span>
+                                  )}
+                                  {suggestQuery !== '' && (
+                                    <span className="text-xs text-ink-700">
+                                      {MATCH_KIND_LABEL[match.kind]}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                   </div>
 
                   <div>

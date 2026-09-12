@@ -10,9 +10,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --project web",
     "e2e": "playwright test",
-    "e2e:install": "playwright install chromium"
+    "e2e:install": "playwright install chromium",
+    "strategy:backfill": "tsx scripts/backfill-strategy-traces.ts",
+    "adaptive:backfill": "tsx scripts/backfill-adaptive-traces.ts",
+    "players:import-external": "tsx scripts/import-external-hud.ts"
   },
   "dependencies": {
+    "@gto-self/adaptive-core": "workspace:*",
     "@gto-self/db": "workspace:*",
     "@gto-self/gto-core": "workspace:*",
     "@gto-self/player-core": "workspace:*",

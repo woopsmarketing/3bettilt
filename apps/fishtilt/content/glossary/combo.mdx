@@ -1,0 +1,11 @@
+## 쉽게 설명하면
+
+콤보(Combo)는 무늬까지 구별해서 센 시작 패 하나를 말합니다. 13×13 표의 한 칸은 시작 패 하나가 아니라, 그 칸에 해당하는 콤보 여러 개를 한꺼번에 나타냅니다. 예를 들어 AKs라는 한 칸에도 하트 A-하트 K, 스페이드 A-스페이드 K처럼 서로 다른 실제 카드 조합이 여러 개 들어 있고, 이 각각을 콤보라고 부릅니다. <Term id="term-pocket-pair">포켓 페어(Pocket Pair)</Term>, <Term id="term-suited">같은 무늬(Suited)</Term>, <Term id="term-offsuit">다른 무늬(Offsuit)</Term> 세 종류는 한 칸에 들어 있는 콤보 수가 서로 다릅니다. 13×13 표의 칸 수를 셀 때는 이 콤보 수까지 함께 고려해야 어떤 조합이 실제로 얼마나 자주 나오는지를 정확히 가늠할 수 있습니다.
+
+## 예로 보면
+
+전체 169개 칸은 <Fact name="CLASSES_OF_KIND" arg="PAIR" />가지 포켓 페어, <Fact name="CLASSES_OF_KIND" arg="SUITED" />가지 수티드, <Fact name="CLASSES_OF_KIND" arg="OFFSUIT" />가지 오프수트로 나뉘고, 무늬까지 따진 실제 조합은 모두 합쳐 <Fact name="COMBO_COUNT" />가지입니다. 포켓 페어 한 칸에는 <Fact name="COMBOS_OF_KIND" arg="PAIR" />개, 수티드 한 칸에는 <Fact name="COMBOS_OF_KIND" arg="SUITED" />개, 오프수트 한 칸에는 <Fact name="COMBOS_OF_KIND" arg="OFFSUIT" />개의 콤보가 들어 있습니다.
+
+## 왜 이 숫자가 중요할까요
+
+레인지를 콤보 수로 세면, 표의 칸 수만 셀 때보다 실제로 얼마나 자주 그 패를 받게 되는지를 훨씬 정확히 알 수 있습니다. 예를 들어 칸으로는 한 칸씩인 두 조합이라도, 콤보 수가 다르면 실제로 마주칠 확률도 그만큼 달라집니다.

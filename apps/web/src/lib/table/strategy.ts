@@ -23,12 +23,14 @@
  * output. `label` on both recommendation shapes is the constant `'REFERENCE'` and the
  * user-facing name is 기본전략 · REFERENCE (ADR-0056).
  */
-import type { MilliBB } from '@gto-self/shared';
+import { Money, type MilliBB } from '@gto-self/shared';
 import type { HandState, SeatIndex } from '@gto-self/poker-core';
 import {
   buildStrategyQuery,
   recommendPostflop,
   recommendPreflop,
+  POT_FRACTION_BUCKETS,
+  type AggressionBandId,
   type ConfidenceLevel,
   type EnvironmentCompatibility,
   type EquityMethod,
@@ -46,7 +48,9 @@ import {
   type StrategyPosition,
   type StrategyQuery,
   type StrategyRecommendation,
+  type StrategySeatProfile,
   type StrategyStreet,
+  type StrategyWagerOption,
 } from '@gto-self/strategy-core';
 
 /** Every spot family either policy can report, plus preflop's typed `UNSUPPORTED`. */
@@ -79,6 +83,13 @@ export interface StrategyActionRow {
 }
 
 export interface StrategySizingView {
+  /**
+   * The engine's own action kind for the row this sizing belongs to. `name` is the display
+   * string; this is the field a test — or the ADAPTIVE seam, which has to label a size as a
+   * BET or a RAISE — should read. It follows `StrategyActionRow`'s `kind` / `name` pairing so
+   * the same fact is never spelled two ways.
+   */
+  readonly kind: StrategyActionKind;
   /** The same Latin name the aggressive row carries. */
   readonly name: string;
   readonly toAmountMbb: MilliBB;
@@ -91,6 +102,14 @@ export interface StrategySizingView {
    * preflop, where sizing is a raise-TO rule rather than a pot fraction.
    */
   readonly potFractionPercent: number | null;
+  /**
+   * The engine's legal raise-TO window, carried verbatim off `RecommendedSizing`. Both bounds
+   * are already on the recommendation; they are surfaced here so a consumer that moves a size
+   * — the ADAPTIVE layer moves it one rung — can prove the result is legal without rebuilding
+   * a `PostflopContext` or re-deriving a minimum raise.
+   */
+  readonly minToAmountMbb: MilliBB;
+  readonly maxToAmountMbb: MilliBB;
   readonly allIn: boolean;
 }
 
@@ -118,6 +137,92 @@ export interface StrategyActualView {
   readonly lastAggressorToAmountMbb: MilliBB | null;
 }
 
+/**
+ * ONE non-hero dealt-in seat's ordering facts, as `StrategyQuery` states them.
+ *
+ * These are the "caller-supplied ordering facts" `adaptive-core/src/multiway.ts` refuses to
+ * compute: that package cannot import `poker-core` and holds no notion of button, blinds or
+ * action order, so who is live and who acts after hero has to arrive as data. Everything here
+ * is a field read off `StrategySeatProfile` and `StrategyQuery.aggressionHistory`.
+ *
+ * THERE IS NO PLAYER ID. `StrategyQuery` is deliberately anonymous — the reference engine is
+ * never told who is in a seat — so the seat index is all this model can carry. The seat ->
+ * player mapping is applied one layer up, in `adaptive.ts`, by the caller that owns the lineup.
+ */
+export interface StrategyOpponentOrdering {
+  /** poker-core's physical seat index 0..5. */
+  readonly seatIndex: number;
+  /** Still in the hand AND still able to act: `status === 'IN_HAND'`. All-in is not live. */
+  readonly isLive: boolean;
+  /**
+   * This seat's action-order index on the CURRENT street is greater than hero's.
+   *
+   * The index is the engine's own published first-orbit order (`preflopOrder` preflop,
+   * `postflopOrder` otherwise). After a re-raise the betting reopens and the true order wraps,
+   * which this comparison does not model — a seat that already acted and is live still counts
+   * as "after hero" only if it sits later in the orbit. That is the conservative direction for
+   * everything downstream: the §9 guard rail can only ever REFUSE an adjustment, and the
+   * PRIMARY villain choice falls back to "nobody", which reports `INSUFFICIENT_DATA`.
+   */
+  readonly actsAfterHero: boolean;
+  /** This seat made the last aggressive action on the current street. At most one seat does. */
+  readonly isLastAggressorThisStreet: boolean;
+  /** `preflopOrder` preflop, `postflopOrder` on every other street. 0 = first to act. */
+  readonly actionOrderIndex: number;
+}
+
+/**
+ * The facts the ADAPTIVE composition layer needs and the REFERENCE read model above does not
+ * already carry.
+ *
+ * ---------------------------------------------------------------------------------------
+ * WHY THIS LIVES HERE AND NOT IN `adaptive-core`
+ *
+ * `@gto-self/adaptive-core` composes an already-computed baseline. It may not import
+ * `poker-core`, so it cannot see a `HandState`, and it holds no board analysis, no ranges and
+ * no scoring model, so it cannot compute an aggression band. Every field below is therefore
+ * SUPPLIED to it, and every one of them is a field read off `StrategyQuery` or off the
+ * recommendation the reference policy returned — the same rule 2 that governs the rest of this
+ * file. Nothing here is a second opinion about a poker fact.
+ *
+ * WHAT IS DELIBERATELY ABSENT. `street`, `heroPosition`, `actions`, `primaryKind`, `sizing`,
+ * `potBeforeDecisionMbb` and `callAmountMbb` are all already on `StrategyPanelReady` /
+ * `StrategyMetricsView`, so they are read from there rather than duplicated into a second
+ * money field that could disagree with the first.
+ * ---------------------------------------------------------------------------------------
+ */
+export interface StrategyAdaptiveFacts {
+  /** Hero has a live bet to call: `callAmountMbb` is positive. Never `!canCheck`. */
+  readonly heroFacingBet: boolean;
+  /** Contenders other than hero who have not folded, from the query's own count. */
+  readonly activeOpponentCount: number;
+  /**
+   * POSTFLOP ONLY: the REFERENCE engine's OWN `scoring.aggressionBand.id`, copied verbatim.
+   * `null` preflop, where the engine authors no band. It is READ, never re-derived — a second
+   * notion of "how strong is hero here" is exactly the duplicate system the working agreement
+   * forbids, and `adaptive-core/src/baseline.ts` says the same thing from the other side.
+   */
+  readonly aggressionBand: AggressionBandId | null;
+  /**
+   * Hero's decision is a preflop RAISE FIRST IN, taken from the engine's own
+   * `PreflopSpotFamily`. See `PREFLOP_OPENER_FAMILIES` for the list and why it is that list.
+   * Always `false` postflop.
+   */
+  readonly heroIsPreflopOpener: boolean;
+  /** Hero's contribution to the CURRENT street so far, off hero's own `StrategySeatProfile`. */
+  readonly heroStreetContributionMbb: MilliBB;
+  /**
+   * The rung of `POT_FRACTION_BUCKETS` the postflop model chose; `-1` when it chose ALL_IN;
+   * `null` when there is no pot-fraction rung to name at all — no sizing, or preflop, where
+   * sizing is a raise-TO rule rather than a pot fraction (mirroring `potFractionPercent`).
+   */
+  readonly bucketIndex: number | null;
+  /** The engine's legal bet/raise window, verbatim from `query.legalActions.wager`. */
+  readonly wager: StrategyWagerOption | null;
+  /** One entry per non-hero dealt-in seat, in the query's own seat order (`preflopOrder`). */
+  readonly opponentOrderings: readonly StrategyOpponentOrdering[];
+}
+
 export interface StrategyPanelReady {
   readonly kind: 'READY';
   readonly street: StrategyStreet;
@@ -139,6 +244,12 @@ export interface StrategyPanelReady {
   readonly ruleIds: readonly string[];
   readonly environment: EnvironmentCompatibility;
   readonly actual: StrategyActualView;
+  /**
+   * The extra facts 상대 적응 · ADAPTIVE composes over. Present on every READY model, whether or
+   * not anything ever asks for an adaptive answer: they are byte-for-byte a function of the
+   * `HandState` alone, so carrying them cannot make this model depend on player data.
+   */
+  readonly adaptiveFacts: StrategyAdaptiveFacts;
 }
 
 export type StrategyPanelModel =
@@ -213,19 +324,137 @@ function actionName(kind: StrategyActionKind, family: StrategySpotFamily): strin
 }
 
 /**
+ * The `SIZING_BUCKET` token the postflop model emitted (`POT_33`, `POT_100`, `ALL_IN`), or
+ * `null` when the recommendation carried no such feature. Both sizing readers below go through
+ * this one function, so the percent shown and the rung index handed to ADAPTIVE can never come
+ * from two different places and disagree.
+ */
+function sizingBucketTokenOf(recommendation: PostflopRecommendation): string | null {
+  const found = recommendation.explanation.features.find(
+    (feature) => feature.id === 'SIZING_BUCKET',
+  );
+  return found?.token ?? null;
+}
+
+/**
  * The pot-fraction rung the postflop model selected, read out of the recommendation's own
  * `SIZING_BUCKET` explanation feature (`POT_33`, `POT_100`, `ALL_IN`). Parsing the token
  * the engine emitted is a field read; re-deriving the bucket from the money would be a
  * second, drifting copy of the sizing ladder.
  */
 function potFractionOf(recommendation: PostflopRecommendation): number | null {
-  const found = recommendation.explanation.features.find(
-    (feature) => feature.id === 'SIZING_BUCKET',
-  );
-  const token = found?.token ?? null;
+  const token = sizingBucketTokenOf(recommendation);
   if (token === null || !token.startsWith('POT_')) return null;
   const percent = Number(token.slice('POT_'.length));
   return Number.isInteger(percent) ? percent : null;
+}
+
+/**
+ * The same choice as an INDEX into `POT_FRACTION_BUCKETS` — the form the ADAPTIVE sizing pass
+ * moves along — with `-1` for the engine's ALL_IN rung and `null` when there is no rung at all.
+ *
+ * The percent is matched against the ladder rather than recomputed from the money: the engine
+ * already told us which rung it chose, and `POT_FRACTION_BUCKETS` is the engine's own array, so
+ * the round trip `POT_FRACTION_BUCKETS[bucketIndex].percent === potFractionPercent` holds by
+ * construction. A percent that is somehow not on the ladder comes back as `null` rather than as
+ * `Array.findIndex`'s own `-1`, which here means something else entirely.
+ */
+function bucketIndexOf(recommendation: PostflopRecommendation): number | null {
+  const token = sizingBucketTokenOf(recommendation);
+  if (token === null) return null;
+  if (token === 'ALL_IN') return -1;
+  const percent = potFractionOf(recommendation);
+  if (percent === null) return null;
+  const index = POT_FRACTION_BUCKETS.findIndex((bucket) => bucket.percent === percent);
+  return index === -1 ? null : index;
+}
+
+/**
+ * The preflop families in which hero's aggressive option is a RAISE FIRST IN.
+ *
+ * The list is exactly `RFI`, and the omissions carry the meaning:
+ *
+ *  - `VS_LIMP` also has `raiseCount === 0`, but somebody has already voluntarily entered the
+ *    pot, so hero would be ISOLATING, not opening. It is also the family a BIG BLIND gets when
+ *    it can simply check behind limpers — precisely the spot the naive
+ *    `street === 'PREFLOP' && !heroFacingBet` derivation misreads as an open, which is why
+ *    `adaptive-core/src/baseline.ts` requires this fact to be supplied rather than inferred.
+ *  - `BLIND_VS_BLIND`, `VS_OPEN`, `SQUEEZE`, `OPEN_PLUS_CALLER`, `OPENER_VS_3BET`, `COLD_4BET`,
+ *    `VS_4BET` and `VS_ALLIN` are all reached only at `raiseCount >= 1` (`preflop/spot.ts`
+ *    rules 1, 2, 4, 5, 6): a raise is already standing, so hero cannot be the one opening.
+ *    Note in particular that a folded-to SB is `RFI` and NOT `BLIND_VS_BLIND` — rule 3 fires
+ *    first — so the small blind's open is inside the list, not outside it.
+ *  - `UNSUPPORTED`, and every postflop family, are not preflop opens at all.
+ *
+ * The narrowness is also what keeps the steal rule honest: `analysis-core` scopes the `STEAL`
+ * stat to "RFI from CO/BTN/SB", so `PREFLOP_HERO_STEALING` fires over exactly the line that
+ * stat was observed on.
+ */
+const PREFLOP_OPENER_FAMILIES: readonly StrategySpotFamily[] = ['RFI'];
+
+/**
+ * Hero's own seat profile. `buildStrategyQuery` refuses to produce a query without a dealt-in
+ * hero, so this cannot miss; `null` is returned rather than asserted so that a future adapter
+ * change degrades to "no facts" instead of throwing inside a React render.
+ */
+function heroSeatOf(query: StrategyQuery): StrategySeatProfile | null {
+  return query.seats.find((seat) => seat.isHero) ?? null;
+}
+
+/** The action-order index the CURRENT street is played in. 0 = first to act. */
+function actionOrderIndexOf(seat: StrategySeatProfile, street: StrategyStreet): number {
+  return street === 'PREFLOP' ? seat.preflopOrder : seat.postflopOrder;
+}
+
+/**
+ * One ordering row per non-hero dealt-in seat, in `query.seats` order (which the adapter
+ * documents as `preflopOrder` order). Every field is read; nothing about action order is
+ * recomputed, and the seat that made the last aggression this street is found by matching the
+ * engine's own `aggressionHistory` position rather than by comparing money.
+ */
+function opponentOrderingsOf(query: StrategyQuery): readonly StrategyOpponentOrdering[] {
+  const streetAggression = query.aggressionHistory.filter((entry) => entry.street === query.street);
+  const lastAggressor = streetAggression[streetAggression.length - 1] ?? null;
+  const hero = heroSeatOf(query);
+  const heroOrder = hero === null ? null : actionOrderIndexOf(hero, query.street);
+
+  return query.seats
+    .filter((seat) => !seat.isHero)
+    .map((seat) => {
+      const actionOrderIndex = actionOrderIndexOf(seat, query.street);
+      return {
+        seatIndex: seat.seatIndex,
+        isLive: seat.status === 'IN_HAND',
+        actsAfterHero: heroOrder !== null && actionOrderIndex > heroOrder,
+        isLastAggressorThisStreet:
+          lastAggressor !== null && lastAggressor.position === seat.position,
+        actionOrderIndex,
+      };
+    });
+}
+
+/** What the ADAPTIVE layer needs and the REFERENCE read model does not already carry. */
+function adaptiveFactsOf(
+  query: StrategyQuery,
+  supplied: {
+    readonly aggressionBand: AggressionBandId | null;
+    readonly bucketIndex: number | null;
+    readonly heroIsPreflopOpener: boolean;
+  },
+): StrategyAdaptiveFacts {
+  const hero = heroSeatOf(query);
+  return {
+    // The engine's own test for "hero owes chips to continue" — `preflop/spot.ts` uses the
+    // same predicate for `facingAllIn`. `!canCheck` would be a different question.
+    heroFacingBet: Money.isPositive(query.callAmountMbb),
+    activeOpponentCount: query.activeOpponentCount,
+    aggressionBand: supplied.aggressionBand,
+    heroIsPreflopOpener: supplied.heroIsPreflopOpener,
+    heroStreetContributionMbb: hero === null ? Money.mbb(0) : hero.streetContributionMbb,
+    bucketIndex: supplied.bucketIndex,
+    wager: query.legalActions.wager,
+    opponentOrderings: opponentOrderingsOf(query),
+  };
 }
 
 function actualOf(query: StrategyQuery): StrategyActualView {
@@ -280,11 +509,14 @@ function sizingOf(
   const action = recommendation.actions.find((entry) => entry.sizing !== null);
   if (action === undefined || action.sizing === null) return null;
   return {
+    kind: action.kind,
     name: actionName(action.kind, family),
     toAmountMbb: action.sizing.toAmountMbb,
     requestedToAmountMbb: action.sizing.requestedToAmountMbb,
     clamp: action.sizing.clamp,
     potFractionPercent,
+    minToAmountMbb: action.sizing.minToAmountMbb,
+    maxToAmountMbb: action.sizing.maxToAmountMbb,
     allIn: action.isAllIn,
   };
 }
@@ -322,6 +554,16 @@ function fromPreflop(
     ruleIds: recommendation.provenance.ruleIds,
     environment: recommendation.provenance.environmentCompatibility,
     actual: actualOf(query),
+    adaptiveFacts: adaptiveFactsOf(query, {
+      // Preflop carries no aggression band: the seven-band scale is the postflop scoring
+      // model's, and preflop provenance has no gradation at all (`confidence` is null here
+      // for the same reason).
+      aggressionBand: null,
+      // Preflop sizing is a raise-TO rule, not a rung of the pot-fraction ladder, so there is
+      // no index to name — the same `null` `sizingOf` gets for `potFractionPercent`.
+      bucketIndex: null,
+      heroIsPreflopOpener: PREFLOP_OPENER_FAMILIES.includes(family),
+    }),
   };
 }
 
@@ -359,6 +601,14 @@ function fromPostflop(
     ruleIds: recommendation.provenance.ruleIds,
     environment: recommendation.provenance.environmentCompatibility,
     actual: actualOf(query),
+    adaptiveFacts: adaptiveFactsOf(query, {
+      // READ, never re-derived. This is the engine's own band for this exact spot.
+      aggressionBand: recommendation.scoring.aggressionBand.id,
+      bucketIndex: bucketIndexOf(recommendation),
+      // "Hero opens" is a preflop-only fact; every rule scoped to it also demands
+      // `street === 'PREFLOP'`, so postflop it is simply absent rather than unknown.
+      heroIsPreflopOpener: false,
+    }),
   };
 }
 

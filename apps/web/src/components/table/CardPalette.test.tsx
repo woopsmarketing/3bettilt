@@ -223,9 +223,15 @@ describe('CardPalette — hero hole cards', () => {
     start(store);
 
     clickCard('As');
-    expect(screen.getByTestId('palette-As')).toBeDisabled();
-    fireEvent.click(screen.getByTestId('palette-As'));
     expect(paletteEl()).toHaveAttribute('data-needed', '1');
+    // Pressing the SAME card again can never produce `As As`. It is no longer a dead click
+    // either: the second press means "take that one back" (WP-8, rule 6), so the selection
+    // goes back to empty rather than staying at one-of-two with a duplicate refused.
+    fireEvent.click(screen.getByTestId('palette-As'));
+    expect(paletteEl()).toHaveAttribute('data-needed', '2');
+    expect(screen.queryByTestId('pick-As')).not.toBeInTheDocument();
+    // Nothing was dispatched by either press: an unsubmitted selection never reaches the
+    // engine, so the hand still has no hole cards at all.
     expect(handState(store).seats[0].holeCards).toHaveLength(0);
   });
 
@@ -255,6 +261,113 @@ describe('CardPalette — hero hole cards', () => {
     expect(store.getState().lastError).toBeNull();
     expect(screen.queryByTestId('card-palette')).not.toBeInTheDocument();
     expect(screen.getByTestId('card-palette-open')).toBeInTheDocument();
+  });
+});
+
+describe('CardPalette — WP-8 enlarged hit areas and title', () => {
+  it('gives every card button the WP-8 minimum 44x52 hit area, growing only where it fits', () => {
+    const store = renderHarness(fourHanded());
+    start(store);
+
+    const ace = screen.getByTestId('palette-As');
+    // Tailwind's default 4px scale: h-13=52px, w-11=44px — the WP-8 floor, and the size the
+    // button has UNCONDITIONALLY, at every viewport.
+    expect(ace.className).toMatch(/\bh-13\b/);
+    expect(ace.className).toMatch(/\bw-11\b/);
+    // h-16=64px, w-14=56px, inside the WP-8 48-56px desktop band — but gated on a viewport
+    // that can actually hold the row it makes. The gate used to be `sm:` (640px), and a 56px
+    // row is 808px wide inside a box the tray sizes at `viewport - 309`, so from 640px to
+    // 1116px of viewport the row silently overflowed and the deuces were unreachable by
+    // mouse. Both halves of the measured condition are asserted, because dropping either one
+    // reintroduces a defect: the width gate alone puts a 274px grid into a tray that has less
+    // than that on a short screen.
+    expect(ace.className).toMatch(/\[@media\(min-width:1152px\)_and_\(min-height:680px\)\]:h-16/);
+    expect(ace.className).toMatch(/\[@media\(min-width:1152px\)_and_\(min-height:680px\)\]:w-14/);
+    // ...and nothing is left behind on the old, too-low breakpoint.
+    expect(ace.className).not.toMatch(/\bsm:h-16\b/);
+    expect(ace.className).not.toMatch(/\bsm:w-14\b/);
+  });
+
+  it('shows a Korean title derived from the request kind, and it changes with the request', () => {
+    const store = renderHarness(fourHanded());
+    start(store);
+
+    // HERO: the engine is waiting on hero hole cards.
+    expect(screen.getByTestId('card-palette-title')).toHaveTextContent('내 카드 선택');
+
+    clickCard('As');
+    clickCard('Kd');
+    proceedUntilBettingEnds(store);
+
+    // BOARD/FLOP: the request kind changed, and so did the title — derived from the SAME
+    // request object the palette already reads (`cardEntryHeading`), never invented here.
+    expect(viewOf(store).phase).toMatchObject({ kind: 'AWAITING_BOARD', street: 'FLOP' });
+    expect(screen.getByTestId('card-palette-title')).toHaveTextContent('플랍 보드 선택');
+  });
+
+  it('marks a card the user just picked as `data-picked`, distinct from an engine-dead card', () => {
+    const store = renderHarness(fourHanded());
+    start(store);
+    applyCmd(store, {
+      kind: 'SET_HOLE_CARDS',
+      seat: 2,
+      cards: [card('Qh'), card('Qs')],
+      revealed: true,
+    });
+
+    clickCard('As');
+
+    // The two states are distinct in every way that matters, INCLUDING to a click: a card
+    // the user picked is still live and takes itself back (rule 6), while a card the ENGINE
+    // calls dead cannot be pressed at all.
+    const justPicked = screen.getByTestId('palette-As');
+    expect(justPicked).toBeEnabled();
+    expect(justPicked).toHaveAttribute('data-picked', 'true');
+    expect(justPicked).toHaveAttribute('data-dead', 'false');
+
+    const engineDead = screen.getByTestId('palette-Qh');
+    expect(engineDead).toBeDisabled();
+    expect(engineDead).toHaveAttribute('data-dead', 'true');
+    expect(engineDead).toHaveAttribute('data-picked', 'false');
+  });
+
+  it('shows an unfilled slot per remaining card, with the very next one marked `data-next`', () => {
+    const store = renderHarness(fourHanded());
+    start(store);
+    proceedUntilBettingEnds(store);
+    expect(paletteEl()).toHaveAttribute('data-needed', '3');
+
+    // Flop: three empty numbered slots, the first marked as next.
+    expect(screen.getByTestId('card-palette-slot-0')).toHaveAttribute('data-next', 'true');
+    expect(screen.getByTestId('card-palette-slot-0')).toHaveTextContent('[1]');
+    expect(screen.getByTestId('card-palette-slot-1')).toHaveAttribute('data-next', 'false');
+    expect(screen.getByTestId('card-palette-slot-1')).toHaveTextContent('[2]');
+    expect(screen.getByTestId('card-palette-slot-2')).toHaveTextContent('[3]');
+
+    clickCard('2c');
+    // The filled slot keeps its pre-existing `pick-2c` testid. The two still-empty slots
+    // keep their ORIGINAL positions — "[2]" and "[3]" — rather than renumbering, so the
+    // slot label always names which flop position it is; slot-1 is now next.
+    expect(screen.getByTestId('pick-2c')).toBeInTheDocument();
+    expect(screen.getByTestId('card-palette-slot-1')).toHaveAttribute('data-next', 'true');
+    expect(screen.getByTestId('card-palette-slot-1')).toHaveTextContent('[2]');
+    expect(screen.getByTestId('card-palette-slot-2')).toHaveAttribute('data-next', 'false');
+    expect(screen.getByTestId('card-palette-slot-2')).toHaveTextContent('[3]');
+  });
+
+  it('rank-then-suit keyboard entry via the physical-key path still resolves after the resize', () => {
+    // Pins that the WP-8 markup/class rewrite did not disturb the keyboard path: same
+    // `resolveTypedKey` -> `entry.handleKey` route, IME-safe via `code`.
+    const store = renderHarness(fourHanded());
+    start(store);
+    focusPalette();
+
+    typeAtPalettePhysical('ㅁ', 'KeyA'); // physical A, IME-rewritten
+    expect(screen.getByTestId('card-palette-pending')).toHaveTextContent('A?');
+    typeAtPalettePhysical('Process', 'KeyC'); // physical C while composing
+
+    expect(screen.getByTestId('pick-Ac')).toBeInTheDocument();
+    expect(paletteEl()).toHaveAttribute('data-needed', '1');
   });
 });
 
@@ -657,5 +770,133 @@ describe('TableRoot wiring', () => {
 
     // Seat 3 is UTG and on the clock. It must NOT be all in.
     expect(screen.getByTestId('seat-3')).toHaveAttribute('data-status', 'IN_HAND');
+  });
+});
+
+/**
+ * WP-8's last unmet requirement: "잘못 고른 카드는 쉽게 해제/교체".
+ *
+ * Before this, the only mouse gesture that touched a selection was `Esc — 지우기`, which throws
+ * the WHOLE selection away and closes the palette — so fixing the second of three flop cards
+ * meant picking all three again. These pin the two one-card mouse paths, and pin that the
+ * keyboard path they sit beside is untouched.
+ */
+describe('CardPalette — taking back ONE card', () => {
+  /** Runs the preflop round out so the engine asks for a three-card flop. */
+  const toFlopRequest = (store: TableStore): void => {
+    start(store);
+    applyCmd(store, {
+      kind: 'SET_HOLE_CARDS',
+      seat: 0,
+      cards: [card('Ah'), card('Kh')],
+      revealed: false,
+    });
+    proceedUntilBettingEnds(store);
+  };
+
+  it('removes exactly the card whose slot chip was clicked, keeping the rest', () => {
+    const store = renderHarness(fourHanded());
+    toFlopRequest(store);
+    expect(paletteEl()).toHaveAttribute('data-needed', '3');
+
+    clickCard('2c');
+    clickCard('7d');
+    expect(paletteEl()).toHaveAttribute('data-needed', '1');
+
+    // The middle card is wrong. One click on ITS chip, and only it goes.
+    fireEvent.click(screen.getByTestId('pick-2c'));
+
+    expect(paletteEl()).toHaveAttribute('data-needed', '2');
+    expect(screen.queryByTestId('pick-2c')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pick-7d')).toBeInTheDocument();
+    // Nothing was dispatched: an unsubmitted selection never reached the engine.
+    expect(viewOf(store).phase).toMatchObject({ kind: 'AWAITING_BOARD', street: 'FLOP' });
+    expect(viewOf(store).board).toHaveLength(0);
+
+    // The freed card is selectable again, and re-picking it completes the street normally.
+    clickCard('2c');
+    clickCard('9h');
+    expect(viewOf(store).board.map(String)).toHaveLength(3);
+  });
+
+  it('removes a card by clicking it AGAIN in the grid', () => {
+    const store = renderHarness(fourHanded());
+    toFlopRequest(store);
+
+    clickCard('2c');
+    clickCard('7d');
+    expect(screen.getByTestId('palette-7d')).toHaveAttribute('data-picked', 'true');
+
+    clickCard('7d');
+
+    expect(paletteEl()).toHaveAttribute('data-needed', '2');
+    expect(screen.getByTestId('palette-7d')).toHaveAttribute('data-picked', 'false');
+    expect(screen.getByTestId('palette-2c')).toHaveAttribute('data-picked', 'true');
+    expect(viewOf(store).board).toHaveLength(0);
+  });
+
+  it('never lets a mouse take back a card the ENGINE calls dead', () => {
+    const store = renderHarness(fourHanded());
+    start(store);
+    applyCmd(store, {
+      kind: 'SET_HOLE_CARDS',
+      seat: 2,
+      cards: [card('As'), card('Kd')],
+      revealed: true,
+    });
+
+    const dead = screen.getByTestId('palette-As');
+    expect(dead).toBeDisabled();
+    fireEvent.click(dead);
+    // Not picked, not unpicked, not dispatched — a dead card is not part of any selection.
+    expect(paletteEl()).toHaveAttribute('data-needed', '2');
+    expect(screen.queryByTestId('pick-As')).not.toBeInTheDocument();
+    expect(handState(store).seats[0].holeCards).toHaveLength(0);
+  });
+
+  it('leaves Backspace and the full-clear Esc doing exactly what they did', () => {
+    const store = renderHarness(fourHanded());
+    toFlopRequest(store);
+
+    clickCard('2c');
+    clickCard('7d');
+
+    // Backspace is still the ONE-card keyboard path, and it still takes the LAST one.
+    focusPalette();
+    typeAtPalette('Backspace');
+    expect(paletteEl()).toHaveAttribute('data-needed', '2');
+    expect(screen.getByTestId('pick-2c')).toBeInTheDocument();
+    expect(screen.queryByTestId('pick-7d')).not.toBeInTheDocument();
+
+    // Esc is still the WHOLE-selection path, and still closes the palette.
+    typeAtPalette('Escape');
+    expect(screen.queryByTestId('card-palette')).not.toBeInTheDocument();
+    expect(screen.getByTestId('card-palette-closed')).toBeInTheDocument();
+    expect(viewOf(store).board).toHaveLength(0);
+  });
+
+  it('keeps the IME-proof rank-then-suit path working across a mouse correction', () => {
+    const store = renderHarness(fourHanded());
+    toFlopRequest(store);
+
+    focusPalette();
+    // A Korean IME rewrites `key` to a jamo and never touches `code` (`lib/table/keys.ts`).
+    typeAtPalettePhysical('ㅂ', 'Digit2');
+    typeAtPalettePhysical('ㅊ', 'KeyC');
+    expect(screen.getByTestId('pick-2c')).toBeInTheDocument();
+
+    // A mouse correction drops the pick AND any half-typed rank, so the next suit key cannot
+    // complete a rank the user has stopped thinking about.
+    typeAtPalettePhysical('ㅅ', 'Digit7');
+    expect(screen.getByTestId('card-palette-pending')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('pick-2c'));
+    expect(screen.queryByTestId('card-palette-pending')).not.toBeInTheDocument();
+
+    // ...and typing still works afterwards, from a clean start.
+    typeAtPalettePhysical('ㅅ', 'Digit7');
+    typeAtPalettePhysical('ㅇ', 'KeyD');
+    expect(screen.getByTestId('pick-7d')).toBeInTheDocument();
+    expect(paletteEl()).toHaveAttribute('data-needed', '2');
+    expect(viewOf(store).board).toHaveLength(0);
   });
 });

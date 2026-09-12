@@ -118,7 +118,9 @@ describe('SessionSetupForm', () => {
     const searchPlayers = vi.fn((): Promise<SearchPlayersResult> =>
       Promise.resolve({
         ok: true,
-        matches: [{ id: 'p-known', nickname: 'Nemesis', kind: 'PREFIX' }],
+        matches: [
+          { id: 'p-known', nickname: 'Nemesis', kind: 'PREFIX', hasExternalHud: false },
+        ],
       }),
     );
     const startSession = vi.fn((_input: SessionFormValue): Promise<StartSessionResult> =>

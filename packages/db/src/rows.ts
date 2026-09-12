@@ -37,6 +37,7 @@ import {
 import {
   BET_SIZE_BUCKETS,
   BET_SIZE_KINDS,
+  createExternalHudSnapshot,
   createHudSnapshot,
   createNote,
   createObservation,
@@ -66,6 +67,7 @@ import {
   type ObservedPosition,
   type ObservedStreet,
   type Player,
+  type PlayerExternalHudSnapshot,
   type PlayerHudSnapshot,
   type PlayerModelSnapshot,
   type PlayerNote,
@@ -78,23 +80,45 @@ import {
 } from '@gto-self/player-core';
 import { dbErr, fromEngineError, fromPlayerError, type DbResult } from './errors.js';
 import {
+  ADAPTIVE_TRACE_SOURCES,
+  ADAPTIVE_TRACE_STATUSES,
   ANALYSIS_PLAYER_OUTCOMES,
   ANALYSIS_RUN_STATUSES,
   HAND_SOURCES,
   SHOW_OUTCOMES,
+  STRATEGY_TRACE_ACTIONS,
+  STRATEGY_TRACE_MODES,
+  STRATEGY_TRACE_PROVENANCE_QUALITIES,
+  STRATEGY_TRACE_SOURCES,
+  STRATEGY_TRACE_STREETS,
+  type AdaptiveStrategyTraceId,
+  type AdaptiveTraceSource,
+  type AdaptiveTraceStatus,
   type AnalysisPlayerOutcome,
   type AnalysisRunId,
   type AnalysisRunStatus,
   type HandSource,
   type ModelSnapshotId,
+  SKIPPED_HAND_REASONS,
+  type SkippedHandId,
+  type SkippedHandReason,
+  type StrategyDecisionTraceId,
+  type StrategyTraceAction,
+  type StrategyTraceMode,
+  type StrategyTraceProvenanceQuality,
+  type StrategyTraceSource,
+  type StrategyTraceStreet,
 } from './schema.js';
 import type {
+  adaptiveStrategyTraces,
   analysisRunPlayers,
   analysisRuns,
   gamePresets,
   handEvents,
   handPlayers,
   hands,
+  playerExternalHudSnapshotStats,
+  playerExternalHudSnapshots,
   playerHudSnapshotStats,
   playerHudSnapshots,
   playerModelBetSizes,
@@ -107,11 +131,15 @@ import type {
   playerSpotStats,
   sessionSeats,
   sessions,
+  skippedHands,
+  strategyDecisionTraces,
 } from './schema.js';
 
 export type PlayerRow = typeof players.$inferSelect;
 export type HudSnapshotRow = typeof playerHudSnapshots.$inferSelect;
 export type HudStatRow = typeof playerHudSnapshotStats.$inferSelect;
+export type ExternalHudSnapshotRow = typeof playerExternalHudSnapshots.$inferSelect;
+export type ExternalHudStatRow = typeof playerExternalHudSnapshotStats.$inferSelect;
 export type NoteRow = typeof playerNotes.$inferSelect;
 export type ObservationRow = typeof playerObservations.$inferSelect;
 export type PresetRow = typeof gamePresets.$inferSelect;
@@ -127,6 +155,9 @@ export type ModelStatRow = typeof playerModelStats.$inferSelect;
 export type SpotStatRow = typeof playerSpotStats.$inferSelect;
 export type ModelBetSizeRow = typeof playerModelBetSizes.$inferSelect;
 export type ModelShowEvidenceRow = typeof playerModelShowEvidence.$inferSelect;
+export type StrategyDecisionTraceRow = typeof strategyDecisionTraces.$inferSelect;
+export type AdaptiveStrategyTraceRow = typeof adaptiveStrategyTraces.$inferSelect;
+export type SkippedHandRow = typeof skippedHands.$inferSelect;
 
 // ---------------------------------------------------------------------------
 // primitives
@@ -379,6 +410,66 @@ export function decodeHudSnapshotRow(
   return ok(snapshot.value);
 }
 
+/**
+ * Same re-parse-and-compare discipline as `decodeHudSnapshotRow`, for the external HUD
+ * sibling table. `sample_n` passes through as-is (it is expected to be `null` for every
+ * row `WP-K` writes, but the decoder does not assert that — a future source populating a
+ * real value is not corruption).
+ */
+export function decodeExternalHudSnapshotRow(
+  row: ExternalHudSnapshotRow,
+  statRows: readonly ExternalHudStatRow[],
+): DbResult<PlayerExternalHudSnapshot> {
+  const recordedAt = decodeTimestamp(
+    row.recordedAt,
+    'recorded_at',
+    'player_external_hud_snapshots',
+  );
+  if (!recordedAt.ok) return recordedAt;
+  if (row.source !== 'EXTERNAL_HUD') {
+    return dbErr('CORRUPT_ROW', `unknown external HUD snapshot source "${row.source}"`, {
+      table: 'player_external_hud_snapshots',
+      id: row.id,
+      field: 'source',
+      expected: 'EXTERNAL_HUD',
+      actual: row.source,
+    });
+  }
+  const ordered = [...statRows].sort((a, b) => a.ordinal - b.ordinal);
+  const snapshot = createExternalHudSnapshot({
+    id: asId<'Snapshot'>(row.id),
+    playerId: asId<'Player'>(row.playerId),
+    recordedAt: recordedAt.value,
+    importBatchId: row.importBatchId,
+    stats: ordered.map((stat) => ({
+      // `createExternalHudSnapshot` rejects an unknown key, so the cast is validated
+      // immediately.
+      key: stat.statKey as PlayerExternalHudSnapshot['stats'][number]['key'],
+      enteredText: stat.enteredText,
+    })),
+  });
+  if (!snapshot.ok) {
+    return fromPlayerError(snapshot.error, { table: 'player_external_hud_snapshots', id: row.id });
+  }
+  for (const [index, reading] of snapshot.value.stats.entries()) {
+    const stored = ordered[index];
+    if (stored === undefined || reading.value !== stored.valueCentipercent) {
+      return dbErr(
+        'CORRUPT_ROW',
+        `player_external_hud_snapshot_stats.${stored?.statKey ?? '(missing)'}: stored value ${stored?.valueCentipercent ?? '(missing)'} is not what re-parsing "${reading.enteredText}" produces (${reading.value})`,
+        {
+          table: 'player_external_hud_snapshot_stats',
+          id: row.id,
+          field: 'value_centipercent',
+          expected: String(reading.value),
+          actual: String(stored?.valueCentipercent ?? ''),
+        },
+      );
+    }
+  }
+  return ok({ ...snapshot.value, sampleN: row.sampleN });
+}
+
 // ---------------------------------------------------------------------------
 // Notes
 // ---------------------------------------------------------------------------
@@ -532,6 +623,20 @@ export interface SessionRecord {
    * targetStack` rule as the session row.
    */
   readonly seatAutoTopUp: Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>>;
+  /**
+   * The seats whose stored `stack` is UNVERIFIED — a pre-hand figure nobody has confirmed
+   * since the hand that disturbed it (ADR-0078b). A seat with no entry is verified.
+   *
+   * A SIBLING of `table`, in the shape of `seatAutoTopUp` above and for the same reason:
+   * `TableState` is the engine's own type and knows nothing about whether a number has been
+   * confirmed by a human. The only value is the literal `true`, so "unverified" has exactly
+   * one representation and `{}` is unambiguously "every seat is confirmed".
+   *
+   * Stored as `session_seats.stack_unverified` (migration `0010`). `insertSession` writes it,
+   * `updateSessionSeats` writes it, and `updateSessionSeatAutoTopUp` /
+   * `updateSessionSeatOccupancy` deliberately never touch it.
+   */
+  readonly seatStackUnverified: Readonly<Partial<Record<SeatIndex, true>>>;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   /** Set when the sitting ended. `null` while it is live. */
@@ -544,6 +649,8 @@ const OCCUPANCIES: readonly SeatOccupancy[] = ['ACTIVE', 'SITTING_OUT', 'EMPTY']
 interface DecodedSessionSeat {
   readonly seat: TableSeat;
   readonly autoTopUp: AutoTopUpPolicy | null;
+  /** `session_seats.stack_unverified` as a boolean. See `SessionRecord.seatStackUnverified`. */
+  readonly stackUnverified: boolean;
 }
 
 function decodeSessionSeatRow(row: SessionSeatRow): DbResult<DecodedSessionSeat> {
@@ -580,6 +687,20 @@ function decodeSessionSeatRow(row: SessionSeatRow): DbResult<DecodedSessionSeat>
     `session_seats ${row.sessionId} seat ${row.seat}`,
   );
   if (!autoTopUp.ok) return autoTopUp;
+  // NOT NULL with a `0` default since `0010`, and CHECKed to 0/1 — so anything else is a row
+  // written around the schema, which is a corrupt row rather than a value to coerce.
+  if (row.stackUnverified !== 0 && row.stackUnverified !== 1) {
+    return dbErr(
+      'CORRUPT_ROW',
+      `session_seats.stack_unverified must be 0 or 1, got ${row.stackUnverified}`,
+      {
+        table: 'session_seats',
+        id: row.sessionId,
+        field: 'stack_unverified',
+        actual: String(row.stackUnverified),
+      },
+    );
+  }
   return ok({
     seat: {
       seat: seat.value,
@@ -588,6 +709,7 @@ function decodeSessionSeatRow(row: SessionSeatRow): DbResult<DecodedSessionSeat>
       stack: stack.value,
     },
     autoTopUp: autoTopUp.value,
+    stackUnverified: row.stackUnverified === 1,
   });
 }
 
@@ -676,6 +798,7 @@ export function decodeSessionRow(
   }
   const bySeat = new Map<SeatIndex, TableSeat>();
   const seatAutoTopUp: Partial<Record<SeatIndex, AutoTopUpPolicy>> = {};
+  const seatStackUnverified: Partial<Record<SeatIndex, true>> = {};
   for (const seatRow of seatRows) {
     const decoded = decodeSessionSeatRow(seatRow);
     if (!decoded.ok) return decoded;
@@ -688,6 +811,7 @@ export function decodeSessionRow(
     }
     bySeat.set(seat, decoded.value.seat);
     if (decoded.value.autoTopUp !== null) seatAutoTopUp[seat] = decoded.value.autoTopUp;
+    if (decoded.value.stackUnverified) seatStackUnverified[seat] = true;
   }
   const missing = ([0, 1, 2, 3, 4, 5] as const).find((seat) => !bySeat.has(seat));
   if (missing !== undefined) {
@@ -727,6 +851,7 @@ export function decodeSessionRow(
     presetId: row.presetId,
     autoTopUp: autoTopUp.value,
     seatAutoTopUp,
+    seatStackUnverified,
     table: {
       config: config.value,
       seats: makeBySeat((seat) => {
@@ -1382,5 +1507,865 @@ export function decodeModelSnapshot(
     },
     modelVersion: header.value.modelVersion,
     createdAt: header.value.createdAt,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// strategy_decision_traces
+// ---------------------------------------------------------------------------
+
+/** One `{action, frequencyBps, toAmountMbb}` entry decoded out of `actions_json`. */
+export interface StrategyTraceActionRow {
+  readonly action: StrategyTraceAction;
+  readonly frequencyBps: number;
+  readonly toAmountMbb: MilliBB | null;
+}
+
+/** A decoded `strategy_decision_traces` row: the domain-facing shape a repository returns. */
+export interface StrategyDecisionTrace {
+  readonly id: StrategyDecisionTraceId;
+  readonly handId: HandId;
+  readonly commandSeq: number;
+  readonly street: StrategyTraceStreet;
+  readonly heroSeat: SeatIndex;
+  readonly strategyMode: StrategyTraceMode;
+  readonly strategyVersion: string;
+  readonly family: string;
+  readonly actions: readonly StrategyTraceActionRow[];
+  readonly primaryAction: StrategyTraceAction;
+  readonly recommendedToAmountMbb: MilliBB | null;
+  readonly heroEquityBps: number | null;
+  readonly potOddsBps: number | null;
+  readonly spr: number | null;
+  readonly provenanceQuality: StrategyTraceProvenanceQuality;
+  readonly environmentStatus: string;
+  readonly actualHeroAction: StrategyTraceAction;
+  readonly computedAt: Timestamp;
+  readonly source: StrategyTraceSource;
+}
+
+/** Internal. `0 <= value <= 10000`, an integer basis-points fraction. */
+function decodeBps(value: number, field: string, table: string): DbResult<number> {
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    return dbErr('CORRUPT_ROW', `${field} must be an integer 0..10000, got ${value}`, {
+      table,
+      field,
+      actual: String(value),
+    });
+  }
+  return ok(value);
+}
+
+/**
+ * `actions_json` decoded into a typed array. Every element's `action` must be a member of
+ * `STRATEGY_TRACE_ACTIONS`, `frequencyBps` an integer 0..10000, and `toAmountMbb` either
+ * `null` or a money-ranged integer milliBB — a malformed or out-of-range element is a
+ * `CORRUPT_ROW`, never silently dropped or coerced.
+ */
+function decodeStrategyTraceActions(
+  row: StrategyDecisionTraceRow,
+): DbResult<readonly StrategyTraceActionRow[]> {
+  const parsed = parseJson(row.actionsJson, 'actions_json', 'strategy_decision_traces', row.id);
+  if (!parsed.ok) return parsed;
+  if (!Array.isArray(parsed.value)) {
+    return dbErr('CORRUPT_ROW', 'strategy_decision_traces.actions_json is not an array', {
+      table: 'strategy_decision_traces',
+      field: 'actions_json',
+      id: row.id,
+    });
+  }
+  const decoded: StrategyTraceActionRow[] = [];
+  for (const [index, raw] of parsed.value.entries()) {
+    const field = `actions_json[${index}]`;
+    if (typeof raw !== 'object' || raw === null) {
+      return dbErr('CORRUPT_ROW', `${field} is not an object`, {
+        table: 'strategy_decision_traces',
+        field,
+        id: row.id,
+      });
+    }
+    const entry = raw as Record<string, unknown>;
+    const { action, frequencyBps, toAmountMbb } = entry;
+    if (typeof action !== 'string' || !memberOf(STRATEGY_TRACE_ACTIONS, action)) {
+      return badMember(
+        'strategy_decision_traces',
+        field,
+        typeof action === 'string' ? action : String(action),
+        STRATEGY_TRACE_ACTIONS,
+        row.id,
+      );
+    }
+    if (typeof frequencyBps !== 'number') {
+      return dbErr('CORRUPT_ROW', `${field}.frequencyBps must be a number`, {
+        table: 'strategy_decision_traces',
+        field,
+        id: row.id,
+      });
+    }
+    const bps = decodeBps(frequencyBps, `${field}.frequencyBps`, 'strategy_decision_traces');
+    if (!bps.ok) return bps;
+    let decodedToAmount: MilliBB | null = null;
+    if (toAmountMbb !== null && toAmountMbb !== undefined) {
+      if (typeof toAmountMbb !== 'number') {
+        return dbErr('CORRUPT_ROW', `${field}.toAmountMbb must be a number or null`, {
+          table: 'strategy_decision_traces',
+          field,
+          id: row.id,
+        });
+      }
+      const money = decodeMoney(toAmountMbb, `${field}.toAmountMbb`, 'strategy_decision_traces');
+      if (!money.ok) return money;
+      decodedToAmount = money.value;
+    }
+    decoded.push({ action, frequencyBps: bps.value, toAmountMbb: decodedToAmount });
+  }
+  return ok(decoded);
+}
+
+/**
+ * One stored REFERENCE strategy decision trace, decoded through the same vocabulary the
+ * schema's CHECK constraints enforce. `actions_json` is decoded via
+ * `decodeStrategyTraceActions`; nothing here re-derives `primaryAction` or the frequencies
+ * from it — that reconciliation, if any is wanted, is a repository/consumer concern.
+ */
+export function decodeStrategyDecisionTraceRow(
+  row: StrategyDecisionTraceRow,
+): DbResult<StrategyDecisionTrace> {
+  if (!memberOf(STRATEGY_TRACE_STREETS, row.street)) {
+    return badMember(
+      'strategy_decision_traces',
+      'street',
+      row.street,
+      STRATEGY_TRACE_STREETS,
+      row.id,
+    );
+  }
+  const heroSeat = decodeSeat(row.heroSeat, 'hero_seat', 'strategy_decision_traces');
+  if (!heroSeat.ok) return heroSeat;
+  if (!memberOf(STRATEGY_TRACE_MODES, row.strategyMode)) {
+    return badMember(
+      'strategy_decision_traces',
+      'strategy_mode',
+      row.strategyMode,
+      STRATEGY_TRACE_MODES,
+      row.id,
+    );
+  }
+  const actions = decodeStrategyTraceActions(row);
+  if (!actions.ok) return actions;
+  if (!memberOf(STRATEGY_TRACE_ACTIONS, row.primaryAction)) {
+    return badMember(
+      'strategy_decision_traces',
+      'primary_action',
+      row.primaryAction,
+      STRATEGY_TRACE_ACTIONS,
+      row.id,
+    );
+  }
+  let recommendedToAmountMbb: MilliBB | null = null;
+  if (row.recommendedToAmountMbb !== null) {
+    const money = decodeMoney(
+      row.recommendedToAmountMbb,
+      'recommended_to_amount_mbb',
+      'strategy_decision_traces',
+    );
+    if (!money.ok) return money;
+    recommendedToAmountMbb = money.value;
+  }
+  let heroEquityBps: number | null = null;
+  if (row.heroEquityBps !== null) {
+    const bps = decodeBps(row.heroEquityBps, 'hero_equity_bps', 'strategy_decision_traces');
+    if (!bps.ok) return bps;
+    heroEquityBps = bps.value;
+  }
+  let potOddsBps: number | null = null;
+  if (row.potOddsBps !== null) {
+    const bps = decodeBps(row.potOddsBps, 'pot_odds_bps', 'strategy_decision_traces');
+    if (!bps.ok) return bps;
+    potOddsBps = bps.value;
+  }
+  if (row.spr !== null && (!Number.isInteger(row.spr) || row.spr < 0)) {
+    return dbErr('CORRUPT_ROW', 'strategy_decision_traces.spr must be a non-negative integer', {
+      table: 'strategy_decision_traces',
+      field: 'spr',
+      id: row.id,
+      actual: String(row.spr),
+    });
+  }
+  if (!memberOf(STRATEGY_TRACE_PROVENANCE_QUALITIES, row.provenanceQuality)) {
+    return badMember(
+      'strategy_decision_traces',
+      'provenance_quality',
+      row.provenanceQuality,
+      STRATEGY_TRACE_PROVENANCE_QUALITIES,
+      row.id,
+    );
+  }
+  if (!memberOf(STRATEGY_TRACE_ACTIONS, row.actualHeroAction)) {
+    return badMember(
+      'strategy_decision_traces',
+      'actual_hero_action',
+      row.actualHeroAction,
+      STRATEGY_TRACE_ACTIONS,
+      row.id,
+    );
+  }
+  const computedAt = decodeTimestamp(row.computedAt, 'computed_at', 'strategy_decision_traces');
+  if (!computedAt.ok) return computedAt;
+  if (!memberOf(STRATEGY_TRACE_SOURCES, row.source)) {
+    return badMember(
+      'strategy_decision_traces',
+      'source',
+      row.source,
+      STRATEGY_TRACE_SOURCES,
+      row.id,
+    );
+  }
+  return ok({
+    id: asId<'StrategyDecisionTrace'>(row.id),
+    handId: asId<'Hand'>(row.handId),
+    commandSeq: row.commandSeq,
+    street: row.street,
+    heroSeat: heroSeat.value,
+    strategyMode: row.strategyMode,
+    strategyVersion: row.strategyVersion,
+    family: row.family,
+    actions: actions.value,
+    primaryAction: row.primaryAction,
+    recommendedToAmountMbb,
+    heroEquityBps,
+    potOddsBps,
+    spr: row.spr,
+    provenanceQuality: row.provenanceQuality,
+    environmentStatus: row.environmentStatus,
+    actualHeroAction: row.actualHeroAction,
+    computedAt: computedAt.value,
+    source: row.source,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// adaptive_strategy_traces
+// ---------------------------------------------------------------------------
+
+/** One `{action, frequencyBps, toAmountMbb}` entry of a baseline or adapted mix. */
+export interface AdaptiveTraceAction {
+  readonly action: StrategyTraceAction;
+  readonly frequencyBps: number;
+  readonly toAmountMbb: MilliBB | null;
+}
+
+/** One action kind's SIGNED movement, adapted minus baseline, in basis points. */
+export interface AdaptiveTraceFrequencyDelta {
+  readonly action: StrategyTraceAction;
+  readonly deltaBps: number;
+}
+
+/**
+ * One rule that fired, with the whole evidence chain that let it fire (design §3.4).
+ *
+ * `ruleId`, `stat`, `target` and `reasonKey` are stored as plain strings ON PURPOSE: those
+ * vocabularies belong to the composition layer, and `@gto-self/db` must not import it (the
+ * layering rule). They are validated as non-empty strings here; the composition layer's own
+ * exhaustive maps are what give them meaning.
+ */
+/**
+ * ONE source's own contribution to a pooled stat, kept separate from the other's.
+ *
+ * The pooled `estimateBps` on the adjustment is a blend. Storing only the source TAGS would
+ * say two sources agreed to produce it while hiding that one of them was a 12-hand manual
+ * reading and the other a 900-observation model — and the split cannot be recovered later,
+ * because the learned model advances and the trace row can never be rewritten (ADR-0066).
+ * `note` carries the caveat the composition layer attached to this reading, verbatim
+ * (CLAUDE.md rule 3), or `null` when it attached none.
+ */
+export interface AdaptiveTraceSourceRef {
+  readonly source: string;
+  readonly valueBps: number;
+  readonly sampleN: number;
+  readonly note: string | null;
+}
+
+export interface AdaptiveTraceAdjustment {
+  readonly ruleId: string;
+  readonly stat: string;
+  readonly opponentPlayerId: string;
+  readonly priorBps: number;
+  readonly observedBps: number;
+  readonly estimateBps: number;
+  readonly sampleN: number;
+  readonly confidenceBps: number;
+  /** Every contributing source with its OWN reading and denominator. Never pooled away. */
+  readonly sources: readonly AdaptiveTraceSourceRef[];
+  readonly target: string;
+  /** SIGNED: a de-escalating rule contributes negatively. */
+  readonly contributionBps: number;
+  /**
+   * SIGNED distance of the estimate from the zero-adjustment anchor. Persisted because
+   * `contributionBps` alone cannot distinguish "this player is unremarkable on this stat"
+   * (deviation ~0) from "this player is extreme and something held the rule back"
+   * (deviation large, contribution 0).
+   */
+  readonly deviationBps: number;
+  /**
+   * Which ceiling zeroed or shrank this rule, or `null` when nothing did.
+   *
+   * Without it an INSERT-ONLY trace can never say WHY a recorded rule moved nothing — and
+   * `AGGRESSIVE_PLAYER_BEHIND`, the multiway guard rail, is exactly the case a reader most
+   * needs explained. A trace that cannot be repaired later must carry it at write time.
+   */
+  readonly cappedBy: string | null;
+  readonly reasonKey: string;
+}
+
+/** Which stored snapshot one opponent's numbers came from. `null` — none was available. */
+export interface AdaptiveTraceSnapshotRef {
+  readonly playerId: string;
+  readonly snapshotId: string | null;
+}
+
+/** A decoded `adaptive_strategy_traces` row: the domain-facing shape a repository returns. */
+export interface AdaptiveStrategyTrace {
+  readonly id: AdaptiveStrategyTraceId;
+  readonly handId: HandId;
+  readonly commandSeq: number;
+  readonly referenceTraceId: StrategyDecisionTraceId | null;
+  readonly street: StrategyTraceStreet;
+  readonly heroSeat: SeatIndex;
+  readonly status: AdaptiveTraceStatus;
+  readonly adaptivePolicyVersion: string;
+  readonly primaryVillainPlayerId: PlayerId | null;
+  readonly opponentCount: number;
+  readonly baselineActions: readonly AdaptiveTraceAction[];
+  readonly adaptiveActions: readonly AdaptiveTraceAction[];
+  readonly frequencyDeltas: readonly AdaptiveTraceFrequencyDelta[];
+  readonly baselinePrimaryAction: StrategyTraceAction;
+  readonly adaptivePrimaryAction: StrategyTraceAction;
+  readonly baselineToAmountMbb: MilliBB | null;
+  readonly adaptiveToAmountMbb: MilliBB | null;
+  readonly baselineSizingBucket: number | null;
+  readonly adaptiveSizingBucket: number | null;
+  readonly totalShiftBps: number;
+  readonly capApplied: boolean;
+  readonly adjustments: readonly AdaptiveTraceAdjustment[];
+  readonly manualHudSnapshotIds: readonly AdaptiveTraceSnapshotRef[];
+  readonly playerModelSnapshotIds: readonly AdaptiveTraceSnapshotRef[];
+  readonly playerModelVersion: number | null;
+  readonly computedAt: Timestamp;
+  readonly source: AdaptiveTraceSource;
+}
+
+const ADAPTIVE_TRACES = 'adaptive_strategy_traces';
+
+/** Internal. A `CORRUPT_ROW` naming the exact JSON path that failed. */
+function adaptiveCorrupt<T>(field: string, message: string, id: string): DbResult<T> {
+  return dbErr('CORRUPT_ROW', `${ADAPTIVE_TRACES}.${field} ${message}`, {
+    table: ADAPTIVE_TRACES,
+    field,
+    id,
+  });
+}
+
+/** Internal. A SIGNED integer basis-points value, `-10000 <= value <= 10000`. */
+function decodeSignedBps(value: number, field: string, id: string): DbResult<number> {
+  if (!Number.isInteger(value) || value < -10_000 || value > 10_000) {
+    return adaptiveCorrupt(field, `must be an integer -10000..10000, got ${value}`, id);
+  }
+  return ok(value);
+}
+
+/** Internal. A JSON column that must hold an array. */
+function adaptiveJsonArray(text: string, field: string, id: string): DbResult<readonly unknown[]> {
+  const parsed = parseJson(text, field, ADAPTIVE_TRACES, id);
+  if (!parsed.ok) return parsed;
+  if (!Array.isArray(parsed.value)) return adaptiveCorrupt(field, 'is not an array', id);
+  return ok(parsed.value as readonly unknown[]);
+}
+
+/** Internal. One array element that must be a plain object. */
+function adaptiveEntry(raw: unknown, field: string, id: string): DbResult<Record<string, unknown>> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return adaptiveCorrupt(field, 'is not an object', id);
+  }
+  return ok(raw as Record<string, unknown>);
+}
+
+/** Internal. A required non-empty string property. */
+function adaptiveString(
+  entry: Record<string, unknown>,
+  key: string,
+  field: string,
+  id: string,
+): DbResult<string> {
+  const value = entry[key];
+  if (typeof value !== 'string' || value.length === 0) {
+    return adaptiveCorrupt(`${field}.${key}`, 'must be a non-empty string', id);
+  }
+  return ok(value);
+}
+
+/** Internal. A required numeric property; the range check is the caller's. */
+function adaptiveNumber(
+  entry: Record<string, unknown>,
+  key: string,
+  field: string,
+  id: string,
+): DbResult<number> {
+  const value = entry[key];
+  if (typeof value !== 'number') {
+    return adaptiveCorrupt(`${field}.${key}`, 'must be a number', id);
+  }
+  return ok(value);
+}
+
+/** Internal. A required property holding an unsigned integer basis-points value. */
+function adaptiveUnsignedBps(
+  entry: Record<string, unknown>,
+  key: string,
+  field: string,
+  id: string,
+): DbResult<number> {
+  const value = adaptiveNumber(entry, key, field, id);
+  if (!value.ok) return value;
+  return decodeBps(value.value, `${field}.${key}`, ADAPTIVE_TRACES);
+}
+
+/** Internal. A required property naming one of `STRATEGY_TRACE_ACTIONS`. */
+function adaptiveAction(
+  entry: Record<string, unknown>,
+  field: string,
+  id: string,
+): DbResult<StrategyTraceAction> {
+  const value = entry.action;
+  if (typeof value !== 'string' || !memberOf(STRATEGY_TRACE_ACTIONS, value)) {
+    return badMember(
+      ADAPTIVE_TRACES,
+      `${field}.action`,
+      typeof value === 'string' ? value : String(value),
+      STRATEGY_TRACE_ACTIONS,
+      id,
+    );
+  }
+  return ok(value);
+}
+
+/**
+ * `baseline_actions_json` / `adaptive_actions_json` decoded item by item. Every element's
+ * `action` must be a member of `STRATEGY_TRACE_ACTIONS` — the SAME vocabulary the two
+ * `*_primary_action` CHECKs enforce — `frequencyBps` an integer 0..10000, and `toAmountMbb`
+ * either `null` or a money-ranged integer milliBB. A malformed element is a `CORRUPT_ROW`
+ * naming its index, never silently dropped or coerced.
+ */
+function decodeAdaptiveActions(
+  text: string,
+  column: string,
+  id: string,
+): DbResult<readonly AdaptiveTraceAction[]> {
+  const items = adaptiveJsonArray(text, column, id);
+  if (!items.ok) return items;
+  const decoded: AdaptiveTraceAction[] = [];
+  for (const [index, raw] of items.value.entries()) {
+    const field = `${column}[${index}]`;
+    const entry = adaptiveEntry(raw, field, id);
+    if (!entry.ok) return entry;
+    const action = adaptiveAction(entry.value, field, id);
+    if (!action.ok) return action;
+    const frequency = adaptiveNumber(entry.value, 'frequencyBps', field, id);
+    if (!frequency.ok) return frequency;
+    const bps = decodeBps(frequency.value, `${field}.frequencyBps`, ADAPTIVE_TRACES);
+    if (!bps.ok) return bps;
+    let toAmountMbb: MilliBB | null = null;
+    const rawAmount = entry.value.toAmountMbb;
+    if (rawAmount !== null && rawAmount !== undefined) {
+      if (typeof rawAmount !== 'number') {
+        return adaptiveCorrupt(`${field}.toAmountMbb`, 'must be a number or null', id);
+      }
+      const money = decodeMoney(rawAmount, `${field}.toAmountMbb`, ADAPTIVE_TRACES);
+      if (!money.ok) return money;
+      toAmountMbb = money.value;
+    }
+    decoded.push({ action: action.value, frequencyBps: bps.value, toAmountMbb });
+  }
+  return ok(decoded);
+}
+
+/** `frequency_delta_json` decoded item by item. `deltaBps` is SIGNED: -10000..10000. */
+function decodeAdaptiveDeltas(
+  text: string,
+  column: string,
+  id: string,
+): DbResult<readonly AdaptiveTraceFrequencyDelta[]> {
+  const items = adaptiveJsonArray(text, column, id);
+  if (!items.ok) return items;
+  const decoded: AdaptiveTraceFrequencyDelta[] = [];
+  for (const [index, raw] of items.value.entries()) {
+    const field = `${column}[${index}]`;
+    const entry = adaptiveEntry(raw, field, id);
+    if (!entry.ok) return entry;
+    const action = adaptiveAction(entry.value, field, id);
+    if (!action.ok) return action;
+    const delta = adaptiveNumber(entry.value, 'deltaBps', field, id);
+    if (!delta.ok) return delta;
+    const bps = decodeSignedBps(delta.value, `${field}.deltaBps`, id);
+    if (!bps.ok) return bps;
+    decoded.push({ action: action.value, deltaBps: bps.value });
+  }
+  return ok(decoded);
+}
+
+/**
+ * `adjustments_json` decoded item by item — the audit trail that makes an adaptive number
+ * defensible rather than asserted (`CLAUDE.md` rule 3).
+ *
+ * `priorBps`, `observedBps`, `estimateBps` and `confidenceBps` are unsigned 0..10000;
+ * `contributionBps` is SIGNED, because a de-escalating rule moves mass the other way;
+ * `deviationBps` is SIGNED for the same reason; `sampleN` is a non-negative count; `cappedBy`
+ * is `null` or a non-empty token; `sources` is an array of `{source, valueBps, sampleN, note}`
+ * objects, one per contributing source, never pooled into a bare name. Anything else is a
+ * `CORRUPT_ROW` naming the element and the property — including a MISSING property, since
+ * `undefined` silently reading back as "no cap" or "no caveat" would be a different claim
+ * about the hand than the one that was stored.
+ */
+function decodeAdaptiveAdjustments(
+  text: string,
+  column: string,
+  id: string,
+): DbResult<readonly AdaptiveTraceAdjustment[]> {
+  const items = adaptiveJsonArray(text, column, id);
+  if (!items.ok) return items;
+  const decoded: AdaptiveTraceAdjustment[] = [];
+  for (const [index, raw] of items.value.entries()) {
+    const field = `${column}[${index}]`;
+    const entry = adaptiveEntry(raw, field, id);
+    if (!entry.ok) return entry;
+
+    const ruleId = adaptiveString(entry.value, 'ruleId', field, id);
+    if (!ruleId.ok) return ruleId;
+    const stat = adaptiveString(entry.value, 'stat', field, id);
+    if (!stat.ok) return stat;
+    const opponentPlayerId = adaptiveString(entry.value, 'opponentPlayerId', field, id);
+    if (!opponentPlayerId.ok) return opponentPlayerId;
+    const target = adaptiveString(entry.value, 'target', field, id);
+    if (!target.ok) return target;
+    const reasonKey = adaptiveString(entry.value, 'reasonKey', field, id);
+    if (!reasonKey.ok) return reasonKey;
+
+    const priorBps = adaptiveUnsignedBps(entry.value, 'priorBps', field, id);
+    if (!priorBps.ok) return priorBps;
+    const observedBps = adaptiveUnsignedBps(entry.value, 'observedBps', field, id);
+    if (!observedBps.ok) return observedBps;
+    const estimateBps = adaptiveUnsignedBps(entry.value, 'estimateBps', field, id);
+    if (!estimateBps.ok) return estimateBps;
+    const confidenceBps = adaptiveUnsignedBps(entry.value, 'confidenceBps', field, id);
+    if (!confidenceBps.ok) return confidenceBps;
+
+    const sampleRaw = adaptiveNumber(entry.value, 'sampleN', field, id);
+    if (!sampleRaw.ok) return sampleRaw;
+    const sampleN = decodeCount(sampleRaw.value, `${field}.sampleN`, ADAPTIVE_TRACES);
+    if (!sampleN.ok) return sampleN;
+
+    const contributionRaw = adaptiveNumber(entry.value, 'contributionBps', field, id);
+    if (!contributionRaw.ok) return contributionRaw;
+    const contributionBps = decodeSignedBps(contributionRaw.value, `${field}.contributionBps`, id);
+    if (!contributionBps.ok) return contributionBps;
+
+    const deviationRaw = adaptiveNumber(entry.value, 'deviationBps', field, id);
+    if (!deviationRaw.ok) return deviationRaw;
+    const deviationBps = decodeSignedBps(deviationRaw.value, `${field}.deviationBps`, id);
+    if (!deviationBps.ok) return deviationBps;
+
+    // `null` is the ordinary case (nothing capped the rule); any other value must be a real
+    // non-empty token, never `undefined` smuggled in by a missing property.
+    const rawCappedBy = entry.value.cappedBy;
+    if (rawCappedBy !== null && (typeof rawCappedBy !== 'string' || rawCappedBy.length === 0)) {
+      return adaptiveCorrupt(`${field}.cappedBy`, 'must be null or a non-empty string', id);
+    }
+
+    const rawSources = entry.value.sources;
+    if (!Array.isArray(rawSources)) {
+      return adaptiveCorrupt(`${field}.sources`, 'must be an array', id);
+    }
+    const sources: AdaptiveTraceSourceRef[] = [];
+    for (const [sourceIndex, rawSource] of (rawSources as readonly unknown[]).entries()) {
+      const sourceField = `${field}.sources[${sourceIndex}]`;
+      const sourceEntry = adaptiveEntry(rawSource, sourceField, id);
+      if (!sourceEntry.ok) return sourceEntry;
+
+      const source = adaptiveString(sourceEntry.value, 'source', sourceField, id);
+      if (!source.ok) return source;
+      const valueBps = adaptiveUnsignedBps(sourceEntry.value, 'valueBps', sourceField, id);
+      if (!valueBps.ok) return valueBps;
+      const sourceSampleRaw = adaptiveNumber(sourceEntry.value, 'sampleN', sourceField, id);
+      if (!sourceSampleRaw.ok) return sourceSampleRaw;
+      const sourceSampleN = decodeCount(
+        sourceSampleRaw.value,
+        `${sourceField}.sampleN`,
+        ADAPTIVE_TRACES,
+      );
+      if (!sourceSampleN.ok) return sourceSampleN;
+
+      // A missing `note` is a DIFFERENT claim from "no caveat", so `undefined` is refused.
+      const note = sourceEntry.value.note;
+      if (note !== null && (typeof note !== 'string' || note.length === 0)) {
+        return adaptiveCorrupt(`${sourceField}.note`, 'must be null or a non-empty string', id);
+      }
+
+      sources.push({
+        source: source.value,
+        valueBps: valueBps.value,
+        sampleN: sourceSampleN.value,
+        note,
+      });
+    }
+
+    decoded.push({
+      ruleId: ruleId.value,
+      stat: stat.value,
+      opponentPlayerId: opponentPlayerId.value,
+      priorBps: priorBps.value,
+      observedBps: observedBps.value,
+      estimateBps: estimateBps.value,
+      sampleN: sampleN.value,
+      confidenceBps: confidenceBps.value,
+      sources,
+      target: target.value,
+      contributionBps: contributionBps.value,
+      deviationBps: deviationBps.value,
+      cappedBy: rawCappedBy,
+      reasonKey: reasonKey.value,
+    });
+  }
+  return ok(decoded);
+}
+
+/**
+ * `manual_hud_snapshot_ids_json` / `player_model_snapshot_ids_json` decoded item by item.
+ * `snapshotId` is explicitly nullable — "this opponent had no snapshot" is a fact worth
+ * storing, and is NOT the same as the opponent being absent from the list.
+ */
+function decodeAdaptiveSnapshotRefs(
+  text: string,
+  column: string,
+  id: string,
+): DbResult<readonly AdaptiveTraceSnapshotRef[]> {
+  const items = adaptiveJsonArray(text, column, id);
+  if (!items.ok) return items;
+  const decoded: AdaptiveTraceSnapshotRef[] = [];
+  for (const [index, raw] of items.value.entries()) {
+    const field = `${column}[${index}]`;
+    const entry = adaptiveEntry(raw, field, id);
+    if (!entry.ok) return entry;
+    const playerId = adaptiveString(entry.value, 'playerId', field, id);
+    if (!playerId.ok) return playerId;
+    const rawSnapshot = entry.value.snapshotId;
+    let snapshotId: string | null = null;
+    if (rawSnapshot !== null && rawSnapshot !== undefined) {
+      if (typeof rawSnapshot !== 'string' || rawSnapshot.length === 0) {
+        return adaptiveCorrupt(`${field}.snapshotId`, 'must be a non-empty string or null', id);
+      }
+      snapshotId = rawSnapshot;
+    }
+    decoded.push({ playerId: playerId.value, snapshotId });
+  }
+  return ok(decoded);
+}
+
+/**
+ * One stored ADAPTIVE trace, decoded through the same vocabularies the schema's CHECK
+ * constraints enforce and with every JSON document decoded element by element. Nothing here
+ * re-derives a frequency, a delta or a primary action from the others — this is storage
+ * read-back, not a re-computation of the composition (`CLAUDE.md` rule 5).
+ */
+export function decodeAdaptiveStrategyTraceRow(
+  row: AdaptiveStrategyTraceRow,
+): DbResult<AdaptiveStrategyTrace> {
+  if (!Number.isInteger(row.commandSeq) || row.commandSeq < 0) {
+    return adaptiveCorrupt('command_seq', 'must be a non-negative integer', row.id);
+  }
+  if (!memberOf(STRATEGY_TRACE_STREETS, row.street)) {
+    return badMember(ADAPTIVE_TRACES, 'street', row.street, STRATEGY_TRACE_STREETS, row.id);
+  }
+  const heroSeat = decodeSeat(row.heroSeat, 'hero_seat', ADAPTIVE_TRACES);
+  if (!heroSeat.ok) return heroSeat;
+  if (!memberOf(ADAPTIVE_TRACE_STATUSES, row.status)) {
+    return badMember(ADAPTIVE_TRACES, 'status', row.status, ADAPTIVE_TRACE_STATUSES, row.id);
+  }
+  if (row.adaptivePolicyVersion.length === 0) {
+    return adaptiveCorrupt('adaptive_policy_version', 'must not be empty', row.id);
+  }
+  const opponentCount = decodeCount(row.opponentCount, 'opponent_count', ADAPTIVE_TRACES);
+  if (!opponentCount.ok) return opponentCount;
+
+  const baselineActions = decodeAdaptiveActions(
+    row.baselineActionsJson,
+    'baseline_actions_json',
+    row.id,
+  );
+  if (!baselineActions.ok) return baselineActions;
+  const adaptiveActions = decodeAdaptiveActions(
+    row.adaptiveActionsJson,
+    'adaptive_actions_json',
+    row.id,
+  );
+  if (!adaptiveActions.ok) return adaptiveActions;
+  const frequencyDeltas = decodeAdaptiveDeltas(
+    row.frequencyDeltaJson,
+    'frequency_delta_json',
+    row.id,
+  );
+  if (!frequencyDeltas.ok) return frequencyDeltas;
+  const adjustments = decodeAdaptiveAdjustments(row.adjustmentsJson, 'adjustments_json', row.id);
+  if (!adjustments.ok) return adjustments;
+  const manualHudSnapshotIds = decodeAdaptiveSnapshotRefs(
+    row.manualHudSnapshotIdsJson,
+    'manual_hud_snapshot_ids_json',
+    row.id,
+  );
+  if (!manualHudSnapshotIds.ok) return manualHudSnapshotIds;
+  const playerModelSnapshotIds = decodeAdaptiveSnapshotRefs(
+    row.playerModelSnapshotIdsJson,
+    'player_model_snapshot_ids_json',
+    row.id,
+  );
+  if (!playerModelSnapshotIds.ok) return playerModelSnapshotIds;
+
+  if (!memberOf(STRATEGY_TRACE_ACTIONS, row.baselinePrimaryAction)) {
+    return badMember(
+      ADAPTIVE_TRACES,
+      'baseline_primary_action',
+      row.baselinePrimaryAction,
+      STRATEGY_TRACE_ACTIONS,
+      row.id,
+    );
+  }
+  if (!memberOf(STRATEGY_TRACE_ACTIONS, row.adaptivePrimaryAction)) {
+    return badMember(
+      ADAPTIVE_TRACES,
+      'adaptive_primary_action',
+      row.adaptivePrimaryAction,
+      STRATEGY_TRACE_ACTIONS,
+      row.id,
+    );
+  }
+
+  let baselineToAmountMbb: MilliBB | null = null;
+  if (row.baselineToAmountMbb !== null) {
+    const money = decodeMoney(row.baselineToAmountMbb, 'baseline_to_amount_mbb', ADAPTIVE_TRACES);
+    if (!money.ok) return money;
+    baselineToAmountMbb = money.value;
+  }
+  let adaptiveToAmountMbb: MilliBB | null = null;
+  if (row.adaptiveToAmountMbb !== null) {
+    const money = decodeMoney(row.adaptiveToAmountMbb, 'adaptive_to_amount_mbb', ADAPTIVE_TRACES);
+    if (!money.ok) return money;
+    adaptiveToAmountMbb = money.value;
+  }
+
+  for (const [column, bucket] of [
+    ['baseline_sizing_bucket', row.baselineSizingBucket],
+    ['adaptive_sizing_bucket', row.adaptiveSizingBucket],
+  ] as const) {
+    if (bucket !== null && (!Number.isInteger(bucket) || bucket < -1 || bucket > 7)) {
+      return adaptiveCorrupt(column, `must be an integer -1..7 or null, got ${bucket}`, row.id);
+    }
+  }
+
+  const totalShiftBps = decodeBps(row.totalShiftBps, 'total_shift_bps', ADAPTIVE_TRACES);
+  if (!totalShiftBps.ok) return totalShiftBps;
+  if (row.capApplied !== 0 && row.capApplied !== 1) {
+    return adaptiveCorrupt('cap_applied', `must be 0 or 1, got ${row.capApplied}`, row.id);
+  }
+  if (
+    row.playerModelVersion !== null &&
+    (!Number.isInteger(row.playerModelVersion) || row.playerModelVersion < 1)
+  ) {
+    return adaptiveCorrupt('player_model_version', 'must be a positive integer or null', row.id);
+  }
+  const computedAt = decodeTimestamp(row.computedAt, 'computed_at', ADAPTIVE_TRACES);
+  if (!computedAt.ok) return computedAt;
+  if (!memberOf(ADAPTIVE_TRACE_SOURCES, row.source)) {
+    return badMember(ADAPTIVE_TRACES, 'source', row.source, ADAPTIVE_TRACE_SOURCES, row.id);
+  }
+
+  return ok({
+    id: asId<'AdaptiveStrategyTrace'>(row.id),
+    handId: asId<'Hand'>(row.handId),
+    commandSeq: row.commandSeq,
+    referenceTraceId:
+      row.referenceTraceId === null ? null : asId<'StrategyDecisionTrace'>(row.referenceTraceId),
+    street: row.street,
+    heroSeat: heroSeat.value,
+    status: row.status,
+    adaptivePolicyVersion: row.adaptivePolicyVersion,
+    primaryVillainPlayerId:
+      row.primaryVillainPlayerId === null ? null : asId<'Player'>(row.primaryVillainPlayerId),
+    opponentCount: opponentCount.value,
+    baselineActions: baselineActions.value,
+    adaptiveActions: adaptiveActions.value,
+    frequencyDeltas: frequencyDeltas.value,
+    baselinePrimaryAction: row.baselinePrimaryAction,
+    adaptivePrimaryAction: row.adaptivePrimaryAction,
+    baselineToAmountMbb,
+    adaptiveToAmountMbb,
+    baselineSizingBucket: row.baselineSizingBucket,
+    adaptiveSizingBucket: row.adaptiveSizingBucket,
+    totalShiftBps: totalShiftBps.value,
+    capApplied: row.capApplied === 1,
+    adjustments: adjustments.value,
+    manualHudSnapshotIds: manualHudSnapshotIds.value,
+    playerModelSnapshotIds: playerModelSnapshotIds.value,
+    playerModelVersion: row.playerModelVersion,
+    computedAt: computedAt.value,
+    source: row.source,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// skipped_hands
+// ---------------------------------------------------------------------------
+
+/** A decoded `skipped_hands` row. */
+export interface SkippedHand {
+  readonly id: SkippedHandId;
+  readonly sessionId: SessionId;
+  readonly handNumber: number;
+  readonly skippedAt: Timestamp;
+  /**
+   * Why the hand was skipped. `null` ONLY on a row written before `0009` added the column —
+   * "the reason was never recorded". It is not a default and not a third reason, so nothing
+   * downstream may read it as one.
+   */
+  readonly reason: SkippedHandReason | null;
+}
+
+export function decodeSkippedHandRow(row: SkippedHandRow): DbResult<SkippedHand> {
+  if (!Number.isInteger(row.handNumber) || row.handNumber < 0) {
+    return dbErr('CORRUPT_ROW', 'skipped_hands.hand_number must be a non-negative integer', {
+      table: 'skipped_hands',
+      id: row.id,
+      field: 'hand_number',
+      actual: String(row.handNumber),
+    });
+  }
+  const skippedAt = decodeTimestamp(row.skippedAt, 'skipped_at', 'skipped_hands');
+  if (!skippedAt.ok) return skippedAt;
+  // NULL is the one legal absence (a pre-`0009` row). Any OTHER unrecognised string is a
+  // corrupt row and is REFUSED, never passed through as an opaque reason: the CHECK admits
+  // exactly these two members, so a third value can only mean the file was written around it.
+  if (row.reason !== null && !(SKIPPED_HAND_REASONS as readonly string[]).includes(row.reason)) {
+    return dbErr('CORRUPT_ROW', `unknown skipped-hand reason "${row.reason}"`, {
+      table: 'skipped_hands',
+      id: row.id,
+      field: 'reason',
+      expected: SKIPPED_HAND_REASONS.join(' | '),
+      actual: row.reason,
+    });
+  }
+  return ok({
+    id: asId<'SkippedHand'>(row.id),
+    sessionId: asId<'Session'>(row.sessionId),
+    handNumber: row.handNumber,
+    skippedAt: skippedAt.value,
+    reason: row.reason as SkippedHandReason | null,
   });
 }

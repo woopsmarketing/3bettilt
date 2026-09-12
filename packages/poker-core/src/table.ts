@@ -111,6 +111,44 @@ export function seatPlayer(
 }
 
 /**
+ * Result. Swaps WHO sits in an ALREADY-OCCUPIED seat and changes nothing else: the seat
+ * keeps its `occupancy` and its `stack`, and `buttonSeat`/`heroSeat` are not touched.
+ *
+ * Deliberately NOT `vacateSeat` + `seatPlayer`. Vacating clears the button and hero pointers
+ * when they point at this seat (there the player and their chips genuinely leave), so that
+ * pair would silently destroy rotation state that a mere change of occupant must preserve —
+ * the seat is still at the table, still holding chips, still where rotation counts from.
+ *
+ * The stack is left ALONE rather than reset, zeroed or invented: this function cannot know
+ * what the new occupant brought to the table, and a number made up here would be a fake
+ * value inside the engine (`CLAUDE.md` rule 5). The caller owns telling the user that this
+ * seat's stack now needs confirming.
+ *
+ * `playerId` is the same opaque identifier `TableSeat` already carries. Nothing about the
+ * player — statistics, tendencies, history — exists at this layer or is consulted here.
+ *
+ * Re-seating the player who is ALREADY in the seat is a successful no-op that returns
+ * `table` itself, unchanged BY REFERENCE (the same posture `applyAutoTopUp` takes for an
+ * inert policy), so a caller can tell "nothing was corrected" apart from a real change by
+ * identity rather than by re-comparing seats.
+ *
+ * Errors SEAT_EMPTY when the seat holds nobody: seating into an empty seat needs a starting
+ * stack and is `seatPlayer`'s job, not this one.
+ */
+export function replaceSeatPlayer(
+  table: TableState,
+  seat: SeatIndex,
+  playerId: PlayerId,
+): EngineResult<TableState> {
+  const current = table.seats[seat];
+  if (current.occupancy === 'EMPTY' || current.playerId === null) {
+    return engineErr('SEAT_EMPTY', `Seat ${seat} holds no player to replace`, { seat });
+  }
+  if (current.playerId === playerId) return ok(table);
+  return ok({ ...table, seats: setBySeat(table.seats, seat, { ...current, playerId }) });
+}
+
+/**
  * Total. Clears the seat to EMPTY with no player and a zero stack; clears hero and
  * button if they pointed here (the button becomes null).
  */

@@ -138,8 +138,15 @@ test('keeps the action dock inside the viewport while the palette is open', asyn
 
   const trayAfter = await page.getByTestId('entry-tray').boundingBox();
   const dockAfter = await page.getByTestId('action-dock').boundingBox();
-  expect(trayAfter!.y).toBe(trayBefore);
+  // The dock is the last `shrink-0` child of a `h-screen` column, so it is pinned to the
+  // bottom of the viewport whatever the tray does.
   expect(dockAfter!.y).toBe(dockBefore);
+  // ...and the tray's floor is supposed to absorb the palette entirely, so the boundary
+  // between the felt and the tray does not move either. `TableRoot`'s own layout note states
+  // this as the reason the floor exists: "the card palette and the keyboard legend both fit
+  // inside that floor, so the two states the user moves between constantly — palette open,
+  // palette gone — change nothing below them".
+  expect(trayAfter!.y).toBe(trayBefore);
 });
 
 /**

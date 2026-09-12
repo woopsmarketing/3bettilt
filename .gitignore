@@ -43,3 +43,9 @@ references/
 prompt2
 prompt3
 .data/
+
+# Generated QA / screenshots
+artifacts/
+
+# Claude temporary lock
+.claude/scheduled_tasks.lock

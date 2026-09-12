@@ -28,6 +28,7 @@ export * from './time.js';
 export * from './percent.js';
 export * from './player.js';
 export * from './hud.js';
+export * from './externalHud.js';
 export * from './observation.js';
 export * from './notes.js';
 export * from './confidence.js';

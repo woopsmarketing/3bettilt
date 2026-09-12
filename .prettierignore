@@ -5,3 +5,7 @@ coverage
 pnpm-lock.yaml
 fixtures/**/*.txt
 packages/db/drizzle/**
+
+# Prettier reflows inline JSX (<Fact/>, <Term>) in MDX onto their own lines, splitting one sentence into
+# separate paragraphs (found in Stage 3 WP-S3-07). Content MDX is formatted by hand.
+apps/fishtilt/content/**/*.mdx

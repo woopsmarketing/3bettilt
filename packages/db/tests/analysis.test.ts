@@ -154,6 +154,7 @@ describe('analysis runs and player model snapshots', () => {
           closedAt: null,
           autoTopUp: null,
           seatAutoTopUp: {},
+          seatStackUnverified: {},
         }),
       );
     }

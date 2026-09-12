@@ -1,0 +1,144 @@
+<QuickAnswer>
+  AKs와 AKo는 카드 숫자는 같고, 두 장의 무늬가 같은지만 다릅니다. 그 한 글자가 바꾸는 것은 세 가지입니다. 조합 수는 AKs가 <Fact name="HAND_COMBOS" arg="AKs" />가지, AKo가 <Fact name="HAND_COMBOS" arg="AKo" />가지. 무작위 상대와 끝까지 갔을 때 팟에서 기대하는 몫은 AKs <Fact name="HAND_EQUITY_VS_RANDOM" arg="AKs" />, AKo <Fact name="HAND_EQUITY_VS_RANDOM" arg="AKo" />. <Fact name="HAND_CLASS_COUNT" />가지 시작 패 순위에서는 AKs <Fact name="HAND_RANK" arg="AKs" />위, AKo <Fact name="HAND_RANK" arg="AKo" />위입니다. 승률로는 작은 차이인데, 등수로는 네 자리가 벌어집니다.
+</QuickAnswer>
+
+같은 A와 K인데 뒤에 s가 붙느냐 o가 붙느냐로 사람들은 꽤 다르게 반응합니다. "수티드니까 훨씬 좋다"는 쪽과 "어차피 AK인데 무슨 차이냐"는 쪽이 모두 있습니다. 이 글은 그 차이를 감이 아니라 숫자로 재 봅니다. 얼마나 다른지, 왜 다른지, 그리고 어디까지는 같은지까지입니다.
+
+## s와 o, 한 글자를 읽는 법
+
+<PokerCards hand="AKs" />
+
+<PokerCards hand="AKo" />
+
+두 장의 무늬가 같으면 <Term id="term-suited">수티드</Term>(s), 다르면 <Term id="term-offsuit">오프수트</Term>(o)입니다. 표기법 자체는 [시작 패 레슨](/learn/starting-hands)과 용어집이 다루고 있으니, 여기서는 이 한 글자가 실제로 무엇을 바꾸는지만 봅니다. 참고로 포켓페어에는 s도 o도 붙지 않습니다. 같은 숫자 두 장은 무늬가 같을 수 없기 때문입니다.
+
+## 조합 수: 4가지와 12가지
+
+첫 번째 차이는 "이 패를 몇 가지 방법으로 받을 수 있는가"입니다. 무늬까지 따진 한 가지 경우를 <Term id="term-combo">콤보</Term>라고 부르는데, A와 K가 같은 무늬인 경우는 ♠♠, ♥♥, ♦♦, ♣♣ 네 가지뿐입니다. 반면 A의 무늬 네 가지마다 K는 나머지 세 무늬 중 하나를 고를 수 있어서, 다른 무늬인 경우는 그 세 배가 됩니다.
+
+그래서 AKs는 <Fact name="HAND_COMBOS" arg="AKs" />가지 조합으로 전체 <Fact name="COMBO_COUNT" />가지 중 <Fact name="HAND_SHARE" arg="AKs" />를 차지하고, 약 <Fact name="HAND_ONE_IN_N" arg="AKs" />판에 한 번 옵니다. AKo는 <Fact name="HAND_COMBOS" arg="AKo" />가지 조합, <Fact name="HAND_SHARE" arg="AKo" />, 약 <Fact name="HAND_ONE_IN_N" arg="AKo" />판에 한 번입니다. AK를 받았다면 그중 세 번 중 두 번 이상은 오프수트라는 뜻이기도 합니다.
+
+## 승률과 순위: 차이는 얼마나 큰가
+
+<ComparisonTable
+  caption="AKs와 AKo — 이 사이트가 계산해 둔 숫자만 나란히 놓은 표"
+  criterionLabel="항목"
+  options={[
+    { key: 'aks', label: 'AKs' },
+    { key: 'ako', label: 'AKo' },
+  ]}
+  rows={[
+    {
+      criterion: '169가지 중 순위',
+      cells: {
+        aks: <><Fact name="HAND_RANK" arg="AKs" />위</>,
+        ako: <><Fact name="HAND_RANK" arg="AKo" />위</>,
+      },
+    },
+    {
+      criterion: '무작위 상대에게 기대하는 팟의 몫',
+      cells: {
+        aks: <Fact name="HAND_EQUITY_VS_RANDOM" arg="AKs" />,
+        ako: <Fact name="HAND_EQUITY_VS_RANDOM" arg="AKo" />,
+      },
+    },
+    {
+      criterion: '조합 수',
+      cells: {
+        aks: <><Fact name="HAND_COMBOS" arg="AKs" />가지</>,
+        ako: <><Fact name="HAND_COMBOS" arg="AKo" />가지</>,
+      },
+    },
+    {
+      criterion: '전체 조합 중 비중',
+      cells: {
+        aks: <Fact name="HAND_SHARE" arg="AKs" />,
+        ako: <Fact name="HAND_SHARE" arg="AKo" />,
+      },
+    },
+    {
+      criterion: '조합 기준 상위',
+      cells: {
+        aks: <Fact name="HAND_TOP_SHARE" arg="AKs" />,
+        ako: <Fact name="HAND_TOP_SHARE" arg="AKo" />,
+      },
+    },
+    {
+      criterion: '첫 레이즈로 쓰이는 자리 (학습용 기본 레인지)',
+      cells: {
+        aks: <Fact name="RFI_POSITIONS_WITH" arg="AKs" />,
+        ako: <Fact name="RFI_POSITIONS_WITH" arg="AKo" />,
+      },
+    },
+  ]}
+/>
+
+승률부터 보면, 무작위 상대와 마지막 카드까지 갔을 때 팟에서 기대하는 몫은 AKs가 <Fact name="HAND_EQUITY_VS_RANDOM" arg="AKs" />, AKo가 <Fact name="HAND_EQUITY_VS_RANDOM" arg="AKo" />입니다. 두 숫자의 거리는 2%p가 되지 않습니다. 그런데 이 작은 차이가 순위표에서는 <Fact name="HAND_RANK" arg="AKs" />위와 <Fact name="HAND_RANK" arg="AKo" />위로 나타납니다. 두 패 사이에 <Fact name="HAND_AT_RANK" arg="9" />, <Fact name="HAND_AT_RANK" arg="10" />, <Fact name="HAND_AT_RANK" arg="11" />가 끼어 있기 때문입니다. 순위표 앞쪽은 승률이 촘촘하게 붙어 있어서, 승률로는 작은 차이가 등수로는 여러 자리로 보입니다.
+
+차이가 생기는 이유는 하나입니다. 무늬가 같으면 공용 카드에 같은 무늬가 세 장만 더 깔려도 <Term id="term-flush">플러시</Term>가 됩니다. AKo도 보드에 한 무늬가 넉 장 깔리면 플러시를 만들 수는 있지만 훨씬 드문 일이라, 그 가능성의 차이가 그대로 승률 차이가 됩니다. 페어를 만들거나 스트레이트를 만드는 경로는 두 패가 완전히 똑같습니다. 같은 이유로 숫자가 다른 어떤 두 장이든 수티드 쪽이 오프수트 쪽보다 순위가 앞서는데, 그 일반적인 이야기는 [수티드가 좋은 이유](/blog/why-suited-matters)에서 다룹니다.
+
+## 13×13 표에서 두 패의 위치
+
+시작 패 169가지를 한눈에 보는 <Term id="term-hand-matrix">13×13 표</Term>에서 두 패는 대각선을 사이에 두고 마주 봅니다. 대각선 위쪽이 수티드, 아래쪽이 오프수트라서 AKs는 A행의 K칸에, AKo는 K행의 A칸에 있습니다. 아래 표에서 자리를 바꿔 가며 두 칸이 어떻게 칠해지는지 보면, 다음 절의 내용을 미리 확인할 수 있습니다.
+
+<RangeMatrixMini
+  positions={['UTG', 'CO', 'BTN']}
+  initial="UTG"
+  caption="학습용 기본 레인지에서 AKs(대각선 위)와 AKo(대각선 아래)가 칠해진 자리를 눌러 보세요"
+/>
+
+## 첫 레이즈로 쓰이는 자리는 똑같습니다
+
+승률이 다르니 실제로 쓰이는 자리도 다를 거라고 생각하기 쉽습니다. 이 사이트가 다루는 학습용 기본 레인지(6인 · 100BB · 아무도 참여하지 않았을 때)에서 첫 레이즈로 쓰는 자리를 세어 보면, AKs는 <Fact name="RFI_POSITIONS_WITH" arg="AKs" />, AKo도 <Fact name="RFI_POSITIONS_WITH" arg="AKo" />로 똑같습니다. 승률 차이가 있다고 해서 항상 다른 자리에서 쓰인다는 뜻은 아닙니다. 적어도 "이 자리에서 첫 레이즈에 들어가는가"라는 질문에 대해서는, 무늬 한 글자가 답을 바꾸지 않습니다.
+
+이 승률 자체도 시작 패의 기본 강도를 무작위 상대 기준으로 비교한 숫자일 뿐, 실전에서 어떻게 다뤄야 하는지를 정해 주는 규칙은 아닙니다. 상대가 레이즈한 뒤의 레인지는 이 사이트가 지원하지 않습니다.
+
+## AKs 한 조합이 AKo 한 조합과 맞붙으면
+
+"수티드가 오프수트를 이긴다"는 말이 실제로 무슨 뜻인지 보는 가장 직접적인 방법은 둘을 맞붙여 보는 것입니다. A♠K♠와 A♥K♦를 프리플랍에서 마지막 카드까지 맞붙이면, 같은 숫자끼리라 대부분의 보드에서는 팟을 나눕니다. 갈리는 경우는 거의 플러시가 나올 때뿐입니다.
+
+<StatsRow
+  aria-label="A♠K♠와 A♥K♦를 마지막 카드까지 맞붙였을 때 각자 기대하는 팟의 몫"
+  items={[
+    {
+      label: 'A♠ K♠ 쪽',
+      value: <Fact name="EXACT_EQUITY" arg="AsKs|AhKd" />,
+      note: '프리플랍 · 공용 카드 없음',
+    },
+    {
+      label: 'A♥ K♦ 쪽',
+      value: <Fact name="EXACT_EQUITY" arg="AhKd|AsKs" />,
+      note: '같은 상황을 상대 쪽에서 본 몫',
+    },
+  ]}
+/>
+
+두 숫자가 50%에서 크게 떨어지지 않는 것은 그만큼 무승부가 많아서입니다. 수티드 쪽이 조금 앞서는 몫은 바로 위에서 말한 플러시 가능성의 차이이고, 그 이상은 아닙니다. "AKs는 AKo를 이긴다"보다 "AKs는 AKo와 대개 비기고, 가끔 플러시로 앞선다"가 이 숫자에 더 가까운 문장입니다.
+
+## 사람들이 자주 헷갈리는 부분
+
+### AKs가 AKo보다 항상 이기나요?
+
+아닙니다. 위 두 조합의 대결에서 보듯 대부분의 보드에서는 팟을 나누고, 순위와 승률의 차이도 무작위 상대를 기준으로 재어 본 평균일 뿐입니다. 어느 한 판에서는 AKo가 이기고 AKs가 지는 일이 얼마든지 일어납니다. 수티드가 더 좋다는 말은 "수천 판을 평균 내면 조금 더 많은 몫을 가져간다"는 뜻이지, 판마다 이긴다는 뜻이 아닙니다.
+
+### 차이가 몇 %면 큰 건가요?
+
+기준은 같은 순위표 안의 다른 패들과 비교하는 것 하나뿐입니다. AKs와 AKo 사이에 세 패가 끼어 있다는 사실이 이 차이가 등수로 몇 자리어치인지 알려 주고, 두 승률의 거리가 2%p가 안 된다는 사실이 절대적인 폭을 알려 줍니다. 어느 쪽이 "큰" 차이인지는 무엇을 하려는지에 따라 달라지고, 이 사이트가 대신 판단해 주지는 않습니다.
+
+### 오프수트라도 AK는 좋은 패인가요?
+
+이 글이 답할 수 있는 것은 AKo가 169가지 중 몇 위이고 어느 자리에서 첫 레이즈로 쓰이는지까지입니다. AK라는 패 전체가 얼마나 좋은지, 포켓페어를 만나면 어떻게 되는지는 [AK는 좋은 패인가?](/blog/is-ak-good)에서 따로 정리했습니다.
+
+### 둘 중 어느 쪽을 더 자주 받나요?
+
+AKo입니다. 조합이 세 배 많으니 받는 빈도도 세 배입니다. AK를 들었을 때 "수티드였으면 좋았을 텐데"라는 생각이 자주 드는 이유이기도 합니다. 자주 받는 쪽이 조금 약한 쪽이라는 점은 AK만의 이야기가 아니라, 숫자가 다른 모든 두 장 조합에 똑같이 해당합니다.
+
+<ToolCTA
+  tool="toolEquity"
+  title="AKs와 AKo 한 조합씩을 골라 직접 맞붙여 보세요"
+  action="승률 계산기 열기"
+>
+  위에서 본 A♠K♠ 대 A♥K♦뿐 아니라, 보드를 세 장 깔아 놓고 플러시가 가능해졌을 때 두 숫자가 어떻게 벌어지는지도 확인할 수 있습니다.
+</ToolCTA>
+
+AKs와 AKo 각각의 페이지에서는 한 패씩 더 자세히 볼 수 있고, 169가지 전체 순위에서 두 패가 어디쯤인지는 시작 핸드 탐색기에서 등수와 상위 X% 두 가지 방식으로 확인할 수 있습니다.

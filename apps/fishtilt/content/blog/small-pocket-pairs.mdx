@@ -1,0 +1,122 @@
+<QuickAnswer>
+
+작은 포켓페어(22~66)는 169가지 시작 패 중 중간보다 조금 위쪽에 있습니다. 예를 들어 22는 <Fact name="HAND_RANK" arg="22" />등, 66은 <Fact name="HAND_RANK" arg="66" />등으로, 숫자가 하나 올라갈 때마다 순위도 함께 앞으로 당겨집니다. 다만 같은 숫자 두 장이 만들어지는 방법은 <Fact name="COMBOS_OF_KIND" arg="PAIR" />가지여서, 오프수트 한 종류(<Fact name="COMBOS_OF_KIND" arg="OFFSUIT" />가지)보다는 드물게, 수티드 한 종류(<Fact name="COMBOS_OF_KIND" arg="SUITED" />가지)보다는 잦게 옵니다.
+
+</QuickAnswer>
+
+## 22부터 66까지, 순위와 승률을 나란히 보면
+
+<DataTable
+  caption="22~66 다섯 포켓페어의 순위와 무작위 상대 대비 승률, 이 사이트가 다루는 학습용 기본 레인지에서 첫 레이즈로 쓰이는 자리"
+  rowHeader="hand"
+  columns={[
+    { key: 'hand', label: '패' },
+    { key: 'rank', label: '순위(169가지 중)', numeric: true },
+    { key: 'equity', label: '무작위 상대 대비 승률', numeric: true },
+    { key: 'rfi', label: '첫 레이즈로 쓰이는 자리' },
+  ]}
+  rows={[
+    {
+      key: '22',
+      cells: {
+        hand: '22',
+        rank: <Fact name="HAND_RANK" arg="22" />,
+        equity: <Fact name="HAND_EQUITY_VS_RANDOM" arg="22" />,
+        rfi: <Fact name="RFI_POSITIONS_WITH" arg="22" />,
+      },
+    },
+    {
+      key: '33',
+      cells: {
+        hand: '33',
+        rank: <Fact name="HAND_RANK" arg="33" />,
+        equity: <Fact name="HAND_EQUITY_VS_RANDOM" arg="33" />,
+        rfi: <Fact name="RFI_POSITIONS_WITH" arg="33" />,
+      },
+    },
+    {
+      key: '44',
+      cells: {
+        hand: '44',
+        rank: <Fact name="HAND_RANK" arg="44" />,
+        equity: <Fact name="HAND_EQUITY_VS_RANDOM" arg="44" />,
+        rfi: <Fact name="RFI_POSITIONS_WITH" arg="44" />,
+      },
+    },
+    {
+      key: '55',
+      cells: {
+        hand: '55',
+        rank: <Fact name="HAND_RANK" arg="55" />,
+        equity: <Fact name="HAND_EQUITY_VS_RANDOM" arg="55" />,
+        rfi: <Fact name="RFI_POSITIONS_WITH" arg="55" />,
+      },
+    },
+    {
+      key: '66',
+      cells: {
+        hand: '66',
+        rank: <Fact name="HAND_RANK" arg="66" />,
+        equity: <Fact name="HAND_EQUITY_VS_RANDOM" arg="66" />,
+        rfi: <Fact name="RFI_POSITIONS_WITH" arg="66" />,
+      },
+    },
+  ]}
+/>
+
+<PokerCards hand="22" />
+
+22 한 장만 떼어 보면 조합 기준으로 상위 <Fact name="HAND_TOP_SHARE" arg="22" />에 들어갑니다.
+숫자가 하나씩 올라갈 때마다 순위표에서도, 승률에서도 조금씩 앞으로 나아간다는 방향은 표 전체에서
+그대로 이어집니다.
+
+## 왜 승률은 절반쯤인데 순위는 중간쯤일까요
+
+<Term id="term-pocket-pair">포켓페어</Term>는 두 장을 받는 순간 이미 페어를 쥔 채 시작합니다. 하지만 여기서 재는 승률은 "무작위 상대 한 명과 끝까지 갔을 때"를 기준으로 하기 때문에, 22처럼 작은 페어는 이길 때와 질 때가 거의 반반에 가깝게 나옵니다. 승률과 순위는 서로 다른 숫자입니다. 승률은 이 패 하나를 무작위 상대와 겨뤄 본 값이고, 순위는 169가지 패를 모두 그 값으로 한 줄로 세웠을 때 이 패가 몇 번째에 놓이는지를 뜻합니다.
+
+## 조합 수로 보면 얼마나 자주 올까요
+
+같은 숫자 두 장을 짝지을 수 있는 방법은 <Fact name="COMBOS_OF_KIND" arg="PAIR" />가지입니다. 같은 무늬로 맞춘 수티드 한 종류는 <Fact name="COMBOS_OF_KIND" arg="SUITED" />가지, 무늬가 다른 오프수트 한 종류는 <Fact name="COMBOS_OF_KIND" arg="OFFSUIT" />가지입니다. 그래서 22가 손에 들어오는 빈도는 <Fact name="HAND_ONE_IN_N" arg="22" />판에 한 번 꼴로, 65s 같은 수티드 한 종류가 오는 <Fact name="HAND_ONE_IN_N" arg="65s" />판에 한 번보다 오히려 잦습니다. 드문 쪽은 특정 숫자의 페어 하나가 아니라 페어라는 묶음 전체입니다. 13가지 숫자를 다 합쳐도 포켓페어는 전체 조합의 일부일 뿐이라, 페어를 손에 쥐는 판 자체가 자주 오지는 않습니다.
+
+## 플랍에서 셋이 되면 어떨까요
+
+포켓페어를 들고 플랍을 보면, 운이 좋으면 같은 숫자 석 장을 모으는 <Term id="term-three-of-a-kind">셋</Term>
+이 완성되기도 합니다. 다만 이 글이 다루는 승률과 순위는 어디까지나 시작할 때 받은 두 장 자체를
+비교한 숫자이고, 플랍 이후 실제로 얼마나 자주 셋이 만들어지는지는 다른 계산이 필요한 별개의
+질문입니다. 여기서는 그 가능성이 존재한다는 것만 짚고 넘어갑니다.
+
+<Callout title="순위와 실전 사용은 다른 질문입니다">
+
+이 순위는 상대가 무작위일 때, 끝까지 갔을 때의 승률만 잰 것입니다. 위 표의 등수 중 어느 쪽이든,
+그 숫자 하나만으로 이 패를 어느 자리에서 어떻게 써야 하는지가 정해지지는 않습니다.
+
+</Callout>
+
+## 직접 확인해볼까요?
+
+<ToolCTA
+  tool="toolStartingHand"
+  title="169가지 순위 전체에서 포켓페어들이 어디에 몰려 있는지 직접 확인해보세요"
+  action="시작 핸드 탐색기 열기"
+>
+  순위 보기와 상위 X% 보기, 두 가지 방식으로 22부터 AA까지 모든 포켓페어를 나란히 비교할 수
+  있습니다.
+</ToolCTA>
+
+## 사람들이 자주 헷갈리는 부분
+
+### 22는 항상 폴드해야 하는 패인가요?
+
+아닙니다. 이 글이 보여준 순위와 승률은 무작위 상대를 상정한 숫자일 뿐이고, 실제로 어느 자리에서
+이 패를 열거나 접는 것이 맞는지를 정하는 규칙은 아닙니다. 이 사이트가 다루는 학습용 기본
+레인지에서 22가 첫 레이즈로 쓰이는 자리가 있는지 없는지는 위 표에서 직접 확인할 수 있습니다.
+
+### 66과 77 사이에는 무슨 차이가 있나요?
+
+숫자가 한 칸 올라갈 뿐이지만 순위표에서는 그 한 칸이 꽤 크게 움직입니다. 위 표에서 22부터 66까지
+숫자가 올라갈 때마다 순위와 승률이 함께 앞으로 나아가는 폭을 직접 비교해 보면, 77도 같은 방향으로
+한 칸 더 나아간 자리에 있다는 것을 짐작할 수 있습니다. 정확한 등수는 시작 핸드 탐색기에서
+직접 확인하는 것이 가장 정확합니다.
+
+포켓페어라는 표기법 자체가 궁금하다면, 그리고 이 순위가 정확히 무엇을 잰 것인지 더 자세히 보고
+싶다면 아래 다음 단계에서 이어집니다.

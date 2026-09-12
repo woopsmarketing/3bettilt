@@ -42,6 +42,20 @@ export interface SessionView {
    */
   readonly seatAutoTopUp: Readonly<Partial<Record<SeatIndex, AutoTopUpPolicy>>>;
   /**
+   * The seats whose stored stack is UNVERIFIED — a pre-hand figure nobody has confirmed since
+   * the hand that disturbed it (ADR-0078b). A seat with no entry is confirmed, so `{}` means
+   * every seat's number has been stated by the user or settled from a completed hand.
+   *
+   * It is on the view because the RELOAD is the whole point: a quick skip leaves the still-live
+   * seats holding pre-hand stacks, and those numbers were already persisted while the 확인 필요
+   * mark lived only in memory — so a reload rendered unconfirmed money as confirmed money. The
+   * table restores the mark from this.
+   *
+   * The same value as `record.seatStackUnverified`, surfaced here for the same reason
+   * `seatAutoTopUp` is: the table takes it as its own prop.
+   */
+  readonly seatStackUnverified: Readonly<Partial<Record<SeatIndex, true>>>;
+  /**
    * How many COMPLETED hands of this session are durably stored, at page-load time
    * (ADR-0059). `null` means the count itself could not be read — which is a different fact
    * from "none stored" and is rendered as such.
@@ -103,7 +117,9 @@ export function loadSessionView(sessionId: string): SessionView | null {
     warnings.push(`핸드 번호 이어쓰기 기준을 읽지 못했습니다: ${storedMark.error.message}`);
   }
   const markFromHands =
-    storedMark.ok && storedMark.value !== null ? storedMark.value + 1 : found.value.table.handNumber;
+    storedMark.ok && storedMark.value !== null
+      ? storedMark.value + 1
+      : found.value.table.handNumber;
   const highWater = Math.max(found.value.table.handNumber, markFromHands);
   const record: SessionRecord =
     highWater === found.value.table.handNumber
@@ -114,6 +130,7 @@ export function loadSessionView(sessionId: string): SessionView | null {
     record,
     nicknames,
     seatAutoTopUp: found.value.seatAutoTopUp,
+    seatStackUnverified: found.value.seatStackUnverified,
     storedHandCount: storedHands.ok ? storedHands.value.length : null,
     warnings,
   };

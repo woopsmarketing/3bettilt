@@ -170,6 +170,23 @@ export interface PostflopSizingRequest {
 }
 
 /**
+ * The three money facts a pot-fraction bucket needs to become an amount, and nothing else.
+ *
+ * A `PostflopContext` carries board analysis, ranges and equity; none of that is an input to
+ * this arithmetic. Naming the three fields it does read is what lets a caller that has a
+ * baseline sizing but no context — `@gto-self/adaptive-core`, which never sees a `HandState`
+ * — reuse the ENGINE's own formula instead of growing a second, drifting copy of it.
+ */
+export interface PotFractionAmountInput {
+  /** The pot before hero acts, EXCLUDING the bet hero is facing. */
+  readonly potBeforeDecisionMbb: MilliBB;
+  /** What hero must put in to call. Zero when hero is not facing a bet. */
+  readonly callAmountMbb: MilliBB;
+  /** What hero has already put in on this street. Raise-TO semantics start from here. */
+  readonly heroStreetContributionMbb: MilliBB;
+}
+
+/**
  * Total. The pot-fraction bucket as a raise-TO / bet-TO amount in integer milliBB.
  *
  * BET (nothing to call): `heroStreetContribution + round(potBeforeDecision * f)`.
@@ -178,6 +195,30 @@ export interface PostflopSizingRequest {
  * The raise formula applies the fraction to the pot AS IT WOULD BE after hero calls, which is
  * the standard reading of "raise to X% of the pot" and the only reading under which a
  * 100%-pot raise leaves villain facing a pot-sized bet. Exactly one rounding, in `mulRatio`.
+ *
+ * The result is a REQUEST, not a recommendation: it is not yet clamped into the engine's legal
+ * window. `clampPostflopSizing` does that, and retains this number beside the clamped one.
+ */
+export function potFractionToAmount(
+  input: PotFractionAmountInput,
+  bucket: PotFractionBucket,
+): MilliBB {
+  const pot = input.potBeforeDecisionMbb;
+  const call = input.callAmountMbb;
+  return Money.isPositive(call)
+    ? Money.add(
+        Money.add(input.heroStreetContributionMbb, call),
+        Money.mulRatio(Money.add(pot, call), bucket.numerator, bucket.denominator, 'round'),
+      )
+    : Money.add(
+        input.heroStreetContributionMbb,
+        Money.mulRatio(pot, bucket.numerator, bucket.denominator, 'round'),
+      );
+}
+
+/**
+ * Total. The engine's own sizing request for this spot: an all-in at the engine maximum, or the
+ * selected bucket resolved through `potFractionToAmount` against the live context.
  */
 export function sizingRequestFor(
   context: PostflopContext,
@@ -195,17 +236,14 @@ export function sizingRequestFor(
   const bucket = selection.bucket;
   if (bucket === null) throw new Error('a non-all-in selection must carry a bucket');
 
-  const pot = context.potBeforeDecisionMbb;
-  const call = context.callAmountMbb;
-  const toAmountMbb: MilliBB = Money.isPositive(call)
-    ? Money.add(
-        Money.add(heroStreetContributionMbb, call),
-        Money.mulRatio(Money.add(pot, call), bucket.numerator, bucket.denominator, 'round'),
-      )
-    : Money.add(
-        heroStreetContributionMbb,
-        Money.mulRatio(pot, bucket.numerator, bucket.denominator, 'round'),
-      );
+  const toAmountMbb: MilliBB = potFractionToAmount(
+    {
+      potBeforeDecisionMbb: context.potBeforeDecisionMbb,
+      callAmountMbb: context.callAmountMbb,
+      heroStreetContributionMbb,
+    },
+    bucket,
+  );
 
   return { ruleId: 'SIZING_POT_FRACTION_TO_AMOUNT', toAmountMbb, selection };
 }

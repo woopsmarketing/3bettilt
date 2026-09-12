@@ -21,6 +21,8 @@ export type PlayerErrorCode =
   | 'DUPLICATE_STAT'
   | 'EMPTY_SNAPSHOT'
   | 'INVALID_SAMPLE_SIZE'
+  // external HUD snapshots
+  | 'INVALID_IMPORT_BATCH'
   // our own observations
   | 'UNKNOWN_METRIC'
   | 'INVALID_COUNT'

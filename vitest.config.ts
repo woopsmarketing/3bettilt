@@ -10,6 +10,8 @@ const WORKSPACE_PACKAGES = [
   'player-core',
   'strategy-core',
   'analysis-core',
+  'adaptive-core',
+  'learn-core',
   'db',
   'coinpoker-parser',
 ] as const;
@@ -49,8 +51,24 @@ export default defineConfig({
       nodeProject('player-core'),
       nodeProject('strategy-core'),
       nodeProject('analysis-core'),
+      nodeProject('adaptive-core'),
+      nodeProject('learn-core'),
       nodeProject('db'),
       nodeProject('coinpoker-parser'),
+      {
+        resolve: { alias: workspaceAlias },
+        // Same JSX story as the `web` project below: the app's tsconfig sets
+        // `jsx: 'preserve'` for Next, so Vitest has to be told the transform itself.
+        oxc: { jsx: { runtime: 'automatic', importSource: 'react' } },
+        test: {
+          name: 'fishtilt',
+          root: `${root}apps/fishtilt`,
+          environment: 'happy-dom',
+          globals: true,
+          setupFiles: ['./vitest.setup.ts'],
+          include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts'],
+        },
+      },
       {
         resolve: { alias: workspaceAlias },
         // `apps/web/tsconfig.json` sets `jsx: 'preserve'` so Next owns the JSX transform.

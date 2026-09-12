@@ -43,6 +43,41 @@
       "when": 1788213555193,
       "tag": "0005_analysis_and_model_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788282991777,
+      "tag": "0006_strategy_decision_traces",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788334001878,
+      "tag": "0007_adaptive_strategy_traces",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788370437997,
+      "tag": "0008_player_external_hud_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788387755056,
+      "tag": "0009_skipped_hand_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788392088126,
+      "tag": "0010_stack_unverified",
+      "breakpoints": true
     }
   ]
 }

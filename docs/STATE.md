@@ -3,8 +3,9 @@
 Single source of truth for where the project is. The orchestrator updates this after
 every phase; phase agents report, they do not edit it.
 
-**Last updated:** 2026-09-01, after the Strategy C0+C1 milestone (history capture +
-post-session player learning). Strategy A+B and Phases 1-7 stay accepted.
+**Last updated:** 2026-09-03, after the **Hands-on Table UX V2** milestone (WP-1..WP-11 of
+`prompt`) on top of the WP-K follow-up. WP-K, Strategy C2 (WP-J), C0+C1, A+B and Phases 1-7
+stay accepted.
 
 ## Completed
 
@@ -270,18 +271,289 @@ post-session player learning). Strategy A+B and Phases 1-7 stay accepted.
   unsequenced per-seat saves that could raise a false "not saved" banner, and a cross-hand
   guard that was live but untested.
 
+- **Strategy C2 milestone (WP-J — player-specific ADAPTIVE strategy) DONE, 2026-09-02.**
+  A second, clearly separated recommendation built from REFERENCE plus what is known about the
+  opponents, which never alters REFERENCE. Decisions: **ADR-0063** (`packages/adaptive-core` as
+  a composition layer above `strategy-core` and `player-core`; `strategy-core` still must not
+  import `player-core`), **ADR-0064** (the prior is a ZERO-ADJUSTMENT ANCHOR, not a claimed
+  population value, so zero confidence gives zero adjustment by construction and no number is
+  ever a GTO claim), **ADR-0065** (bounded adaptation on REFERENCE's own quantizer — caps of
+  2000 bps heads-up / 1000 multiway, clause (e) is the §9 guard rail), **ADR-0066** (ADAPTIVE
+  traces are a SEPARATE derived table; a live HUD edit recomputes ADAPTIVE only and never
+  rewrites hand events or a stored trace).
+  - 17 neutral stats with per-stat `K`, shrinkage `estimate = prior + (observed - prior) * c`,
+    12 frequency rules and 4 sizing rules, all `HEURISTIC` with mandatory authored notes.
+    Manual HUD and learned model stay SEPARATE in the database and are pooled only in a
+    provenance-carrying view at composition time.
+  - The two sources' evidence, the deviation, the confidence, the contributing rules and the
+    ceiling that clipped each one are persisted per decision point in the insert-only
+    `adaptive_strategy_traces` (migration `0007`), so a hand can be re-argued months later
+    from the evidence that was actually available at the time.
+  - **Independent review** (fresh context, no desired conclusion): no BLOCKER, 4 MAJOR /
+    6 MINOR / 5 NIT. All four MAJORs fixed, each proven by a test confirmed to fail against
+    the reintroduced defect. The §9 guard rail never fired heads-up — the single most common
+    spot at this table; `trimToCap`, the only thing holding the shift cap after quantization,
+    could be replaced by `return false` with the whole suite green; a HUD *hand* count was
+    used as an *opportunity* count, turning "500 hands" into 92.6% confidence; and editing one
+    HUD field silently dropped the other seven from the effective profile.
+  - Two further defects were found while fixing those and are also fixed: the "no adjustment"
+    line explained a held MIX with a remark about SIZING, and the panel showed the capped
+    sample without the entered one (a `CLAUDE.md` rule 3 violation).
+  - Reports: `docs/reports/HARDENING_WP_J_ADAPTIVE_PLAYER_STRATEGY.md` (consolidated),
+    `HARDENING_WP_J_DESIGN.md` (the design contract), `HARDENING_WP_J_REVIEW_R1.md` (review),
+    `HARDENING_WP_J_REVIEW_R1_RESOLUTION.md` (dispositions), and the per-WP A/B/C/D1/D2/E1/E2/F
+    reports.
+
+- **WP-K — external HUD player profiles + 1% ADAPTIVE calibration, DONE, 2026-09-03.**
+  Bulk-imports 13 real players' lifetime stats from an external HUD (screenshots) and has
+  ADAPTIVE use them with real, fixed confidence; sharpens ADAPTIVE's display grid from
+  REFERENCE's 5% to 1%; adds a fifth sizing rule reading `WSD`; adds a visible Korean
+  narrative reason line and a glossary. **ADR-0067** (new `EXTERNAL_HUD` source, fixed
+  9000-bps confidence, per-stat precedence over `MANUAL_HUD`/`LEARNED_MODEL`, and the
+  generic street-blind `CBET`/`FOLD_TO_CBET`/`CHECK_RAISE` readings additionally feeding
+  the per-street policy keys so they actually reach a rule), **ADR-0068** (1% grid via a
+  parameterized `quantizeFrequenciesToGrid`, REFERENCE's own 500-bps call sites byte-
+  identical; log-odds/softmax explicitly considered and NOT adopted), **ADR-0069**
+  (external profile stays a separate DB table and UI section from the manual HUD, never
+  merged).
+  - New tables `player_external_hud_snapshots` / `_stats` (migration `0008`, insert-only,
+    4 more triggers), `sampleN` always `null` (never invented — the source reports a
+    lifetime total, not a hand count), an absent stat is an ABSENT ROW, never a stored
+    zero. Bulk import: `pnpm players:import-external <path-to-json>`
+    (`apps/web/scripts/import-external-hud.ts` +
+    `apps/web/src/server/external-hud-import-service.ts`), exact-nickname reuse, never a
+    duplicate player, insert-only with `ALREADY_PERSISTED`/`NEW_SNAPSHOT` reporting.
+  - 3 new `AdaptiveStatKey`s (`CBET_ANY_STREET`, `FOLD_TO_CBET_ANY_STREET`,
+    `CHECK_RAISE_ANY_STREET`), 1 new sizing rule (`SIZE_WINNER_VALUE_UP`, stat `WSD`), 1
+    new reason key (`OPPONENT_WINS_SHOWDOWNS`) — 17 stats -> 20, 3 sources, 12 frequency /
+    5 sizing rules. (`SIZE_WINNER_VALUE_UP` was subsequently REMOVED by the WP-K follow-up
+    below — ADR-0071. The rule counts below that entry are the current ones.)
+  - Golden regression fixtures for two real, extreme-vs-typical players (Shadow7,
+    acn1977) across the 8 named spot families, plus a permanent test that the two profiles
+    actually produce different ADAPTIVE output — the audit `prompt` itself asked for.
+    Finding: `STEAL` (this player's own steal-open rate) never drives a rule, because the
+    rule that reads blind defense wants `FOLD_BB_TO_STEAL` (a different seat's stat) which
+    this source does not report — recorded, not silently patched over.
+  - Reports: `docs/reports/EXTERNAL_ADAPTIVE_00_AUDIT.md` (written first),
+    `EXTERNAL_ADAPTIVE_PROFILE_IMPORT.md` (K1), `EXTERNAL_ADAPTIVE_MATH_CALIBRATION.md`
+    (K3), `EXTERNAL_ADAPTIVE_KOREAN_REASON_UI.md` (K5), `EXTERNAL_ADAPTIVE_FINAL.md`
+    (consolidated).
+
+- **WP-K follow-up — ADAPTIVE sanity calibration, DONE, 2026-09-03.** A three-item audit of
+  WP-K with minimal corrections; no structural change, REFERENCE untouched, the 1% grid and
+  every existing safety cap kept.
+  - **§1 — an aggression-DOWN rule must not read a VALUE hand (ADR-0070).** WP-K's golden
+    fixtures bet a STRONG hand LESS often than REFERENCE (Shadow7 `BET 54`, acn1977
+    `BET 49`, against `BET 60`) at opponents who fold to a c-bet only 26% / 24% of the time.
+    Two causes: `FOLD_TO_CBET_LOW` was `bands: null` and `CHECK_RAISE_HIGH` read all three
+    bands, so both DECREASING rules hit VALUE; and the §9 guard rail zeroed the one
+    INCREASING rule in the same spots, making the table a one-way ratchet. Fix: both
+    de-escalating rules scoped to `['MARGINAL','WEAK']`, and a new
+    `FOLD_TO_CBET_LOW_VALUE_UP` (`['VALUE']`, gain 3000, cap 800) carrying the value half of
+    the read. The check-raise half removed an outright contradiction with the sizing pass,
+    whose `SIZE_CHECK_RAISE_DOWN` note has said since WP-J that a VALUE hand wants the
+    opposite treatment. The guard rail itself was NOT touched.
+  - **§2 — `WSD` demoted from a primary sizing signal to a secondary one (ADR-0071).**
+    `SIZE_WINNER_VALUE_UP` REMOVED: a high `WSD` says an opponent wins the showdowns they
+    reach, not that they call more, and the rule contradicted `WSD`'s own anchor note
+    ("no directional opinion at all about this one"). Replaced by an optional
+    `suppressedWhen` on `AdaptiveSizingRule`, used once — `SIZE_STATION_VALUE_UP` withholds
+    its rung when `WSD` is above the anchor, because a high `WTSD` describes both the
+    station and the strong player and `WSD` is the stat that separates them. A suppressor
+    can only ever remove a rung, is held to the same confidence gate as the primary signal,
+    and an absent secondary reading suppresses nothing.
+  - **§3 — a street-blind reading yields to real per-street evidence (ADR-0072).**
+    ADR-0067(c)'s per-stat `EXTERNAL_HUD` precedence plus ADR-0067(e)'s fan-out let one
+    lifetime `Check/Raise 17%` override a `CHECK_RAISE_RIVER` measured over real river
+    opportunities. The fan-out now skips per-street keys already covered by a
+    `MANUAL_HUD`/`LEARNED_MODEL` reading with `sampleN > 0`, and the losing reading is never
+    written rather than written and outranked. The provenance note was reworded to
+    `prompt`'s own phrasing, "외부 HUD 전체 통계 · 스트리트 구분 없음 (모든 스트리트에 동일
+    적용)", which the reason row already renders verbatim.
+  - Current counts: 20 stats, 3 sources, **13 frequency rules / 4 sizing rules**, 12 reason
+    keys, 11 note codes. New golden spot 9 (STRONG hand, villain already acted) is where the
+    corrected value direction is visible: Shadow7 `RAISE 50% -> 52%`.
+  - Report: `docs/reports/EXTERNAL_ADAPTIVE_SANITY_FOLLOWUP.md`.
+
+- **Hands-on Table UX V2 (WP-1..WP-11) DONE, 2026-09-03.** The manual table became usable at
+  speed: immediate seat leave, in-place player replacement, quick HUD entry, quick next hand,
+  inline stack resync, button resync, both strategy readings side by side, and a card picker
+  sized for real use. Decisions: **ADR-0073** (a lineup correction rebases the current hand at
+  the same hand number — it is not a skip; supersedes ADR-0057 for occupancy/player/button),
+  **ADR-0074** (a folded seat's stack is exactly `startingStack − totalContribution`, every
+  other dealt-in seat is dirty; `skipped_hands.reason`), **ADR-0075** (seat state is persisted
+  at every between-hands boundary), **ADR-0076** (typed HUD numbers use `EXTERNAL_HUD`
+  semantics; one player holds at most one seat per session), **ADR-0077** (hero's decision
+  leads the right column; a seat selection opens a drawer and never replaces the strategy),
+  **ADR-0078** (a stack correction is a lineup correction, so mid-hand it rebases; an
+  unverified stack stays unverified across a reload; a deal-time button advance is announced),
+  **ADR-0079** ("new player" means new — an existing nickname is refused, not silently reused
+  with a partial profile).
+  - **The whole milestone turns on one distinction**: CORRECTION (rebase — same hand number, no
+    rotation, no audit row) versus QUICK NEXT HAND (exactly one rotation, +1, an audit row with
+    a derived reason). Every row of that table is pinned by unit tests and by E2E.
+  - Migrations `0009` (`skipped_hands.reason`, additive) and `0010`
+    (`session_seats.stack_unverified`, additive). Both hand-written: drizzle-kit generated a
+    12-step table recreate that would have **dropped the insert-only triggers**. Both upgrade
+    tests freeze the pre-migration state for real and prove the column is absent first, so
+    neither is vacuous.
+  - **`updateSessionTable`'s seam is finally wired** (through narrow `updateSessionSeats` /
+    `updateSessionButtonSeat`), closing the long-standing "stacks are not persisted across
+    hands" gap as a side effect of WP-5.
+  - `poker-core` gained exactly one primitive: `replaceSeatPlayer` (swaps the seat's player,
+    never touching occupancy, stack, button or hero).
+  - **Two independent fresh-context reviews** (data integrity/money/DB paths; requirements and
+    honesty), neither told the desired conclusion: **0 BLOCKER**, 4 MAJOR, and a set of MINORs.
+    All four MAJORs were reproduced against a real database and are fixed, each pinned by a test
+    confirmed to fail against the reintroduced defect:
+    a mid-hand stack correction was **destroyed by the derived settlement value** (rule 3);
+    a mid-hand rebase advanced the button permanently with nothing on screen saying so;
+    `새 플레이어 추가` with an existing nickname **collapsed a ten-stat opponent profile** to the
+    two or three stats just typed; and an unverified stack was persisted while its 확인 필요
+    mark was memory-only, so a reload presented unconfirmed money as confirmed.
+    Both reviews independently confirmed **no assertion was deleted or weakened** (559 added /
+    41 removed, all removals being contracts ADR-0073/0077 retired).
+  - Follow-up work found and closed two settlement dead-ends the reviews had not named: a stack
+    correction and a player replacement while a COMPLETE hand awaited settlement, the latter of
+    which produced a hand that could never settle and had no exit.
+  - E2E grew to 32 specs including the full 17-step WP-10 scenario and a reload-persistence spec.
+    E2E caught the one product regression the unit suite could not: the enlarged palette
+    overflowed the entry tray and **clipped the last suit row off-screen**.
+  - **An independent RE-VERIFICATION then re-ran every original repro** rather than trusting the
+    fix reports: 11 CLOSED, 3 PARTIAL (all three intentional, e.g. the button round trip), and
+    **3 new defects, two of them regressions this milestone introduced** — the enlarged tray
+    floor occluded the bottom seat row below ~637px of viewport height, and the enlarged card
+    grid put the four deuces past the right edge with no scrollbar below ~1110px of width.
+    **E2E could not have caught the second**: Playwright's `.click()` calls
+    `scrollIntoViewIfNeeded`, which a real pointer has no equivalent of, so layout is now judged
+    by `document.elementFromPoint` measurement instead. All three are fixed and measured across
+    seven viewports in both palette states: zero occluded seats, zero unreachable cards, zero
+    document scroll, dock always inside the viewport.
+  - Final frozen-source gate: `pnpm verify` green (145 files / 2598 tests), `pnpm e2e` 32/32.
+  - Reports: `docs/reports/HANDS_ON_TABLE_UX_V2.md` (consolidated),
+    `HANDS_ON_TABLE_UX_V2_DESIGN.md` (the design contract, written first),
+    `HANDSON_V2_WP_E_STRATEGY_PANEL.md`, `WP10_E2E_REPORT.md`, `HANDSON_V2_R1_FIX_UI.md`,
+    `R2_LAYOUT_AND_DEADEND_FIXES.md`.
+
 ## Next
 
 - **Hands-on testing by the user.** Launch with `pnpm dev` and open
   `http://localhost:3210`. This is the point of the Alpha: find what is wrong by using it.
-- **Phase 8 — Observe / dirty stack flow** (`web`, `poker-core`), fresh agent. Hero fold ->
-  Observe mode, Skip Rest, dirty marking, inline resync with next-dirty focus, next-hand
-  rotation, manual button/blind override (ADR-0031), and the editable auto top-up threshold
-  whose column ADR-0045 deliberately deferred. **Hand persistence belongs here too** — see
-  known issues.
+- **Phase 8 is now substantially delivered** by Hands-on Table UX V2: hero fold -> quick next
+  hand, dirty marking, inline resync with next-dirty focus, next-hand rotation and the manual
+  button override all exist. What Phase 8 still owns and V2 did NOT do: the manual **blind**
+  override surface (ADR-0031's primitives exist in `poker-core` with no UI), the editable auto
+  top-up threshold whose column ADR-0045 deferred, and **live-hand recovery** — an in-progress
+  hand is still memory-only (ADR-0059) and persisted undo stays deferred with it.
 - **Then Phases 9 -> 10, then 12.** Phase 11 is deferred past the MVP (ADR-0033).
 
 ## Known issues / explicit TODOs
+
+- **Hands-on Table UX V2 — deliberate limitations, none silent** (full list in
+  `docs/reports/HANDS_ON_TABLE_UX_V2.md` §11):
+  - **A rebase loses the in-progress hand.** Correcting a seat after entering several actions
+    means re-entering them. The alternative — splicing a seat out of an event log that already
+    happened — produces a hand whose arithmetic balances and whose history is fiction
+    (ADR-0073's explicit trade-off).
+  - **A button round trip does not restore the button.** Sitting the button seat out mid-hand
+    advances the button by ADR-0058(c)'s deal-time rule and sitting them back in does not move
+    it back. The deal rule was NOT forked; instead the rebase notice now names the seat the
+    button moved to, and `[버튼으로 지정]` is the way back (ADR-0078(c)).
+  - **A quick skip reduces the table's total chips.** Folded seats' contributions are removed
+    while the pot they went into is discarded. That is the honest reading of "the rest was not
+    observed"; it lives only in the in-memory table and resolves when the dirty seats are
+    resynced. No `hands` row, player observation or trace is ever produced by one.
+  - **`0009` and `0010` cannot be reversed by `DROP COLUMN`** — SQLite refuses to drop a column
+    a CHECK references. There are no down-migrations in this repo, so this is informational;
+    both migration headers say so.
+  - **`SeatCard`'s root is `<div role="button">`**, because a `<button>` may not contain the
+    inline stack input. Click and Enter/Space selection are pinned by regression tests, but a
+    `role="button"` element holding a real `<button>` child has presentational-children
+    semantics, so assistive technology may not expose the inner control. Recorded in the file
+    header.
+  - **Viewports under ~620px tall leave a very thin felt.** Unchanged by this milestone and not
+    made worse; the action dock is inside the viewport at every size measured
+    (1440x800 / 1280x720 / 1024x640, all 52/52 cards visible with no clipping).
+  - **`PLAYER_EXISTS` guidance pre-fills a search rather than reading a structured field.** The
+    refusal names the match in its message; a `matchedPlayerId` on the result would let the UI
+    jump straight to that player.
+  - **E2E does not cover** the full seat-an-empty-seat flow or the seat-state save-failure
+    banner; both are covered by unit/component tests. The exact-stack assertions
+    (99.84 / 99.34 BB) are coupled to the ante policy and will break deliberately if it changes.
+  - **Viewports 560-600px tall need a vertical scroll inside the palette.** Seats, header, dock
+    and a full palette want 644px and the screen has less. The palette yields; the seat rows and
+    the action dock never do. Lowering the felt's 304px requirement (the controls under each seat
+    card) is the way out and was not attempted.
+  - **`scrollbar-gutter: stable` was measured in Chromium only.** Firefox and Safari unmeasured.
+  - **The dead-end guidance recognises its state by observation** — the engine's error code plus
+    a COMPLETE hand awaiting settlement — rather than re-implementing engine logic in the UI. It
+    can appear when `[핸드 시작]` would in fact succeed; the sentence is conditional, so it does
+    not become false.
+  - **The partial-profile collapse mechanism is still live at the service layer.** A
+    `requireNew: false` replacement carrying a partial `externalHud` for the seat's current
+    occupant, or a partial `saveExternalHudSnapshot`, still shrinks the latest profile. It is
+    unreachable from the UI (the swap panel sends `externalHud` only in NEW mode; the profile
+    panel pre-fills from the latest snapshot so a one-field correction cannot drop the other
+    nine), but a server action is a public endpoint and this gate is UI-side only. Left as is for
+    a local single-user app; a server-side guard would need its own decision.
+- **`packages/strategy-core/src/postflop/benchmark.test.ts` is load-sensitive.** It passes 4/4 in
+  isolation and was observed failing once in seven full-suite runs: it compares measured latencies,
+  and parallel load skews the measurement. Predates this milestone.
+
+- **Strategy C2 (WP-J) — deliberate limitations, none silent** (full list in
+  `docs/reports/HARDENING_WP_J_ADAPTIVE_PLAYER_STRATEGY.md` §13):
+  - **A manual HUD reading alone cannot move a preflop mix.** Capping the effective sample at
+    `floor(K/2)` holds manual confidence at 3333 bps, and confidence is applied twice — once
+    shrinking the estimate, once scaling the contribution — so the single applicable preflop
+    rule tops out near 155 bps, under half a 500-bps grid step. The panel is honest about it
+    (`ADAPTED`, `changed=false`, both the entered and the effective sample shown) rather than
+    inventing a movement. **This is the calibration decision most worth revisiting if HUD
+    entry feels inert in use**; changing it bumps `ADAPTIVE_POLICY_VERSION`.
+  - **ADAPTIVE cannot exploit an action REFERENCE assigns no row** (ADR-0065); it re-weights
+    the kinds REFERENCE emitted.
+  - **The manual HUD reaches 8 of the (now 20) stats.** Widening `HudStatKey` needs a CHECK
+    rebuild of an insert-only table, which ADR-0046 rules out without its own ADR.
+  - **The 12 frequency and 5 sizing rules are authored, unbacktested heuristics**, tagged
+    `HEURISTIC` with mandatory notes and never labelled GTO.
+  - **`actsAfterHero` uses first-orbit action order**, so after a re-raise it under-reports
+    who is still to act — the multiway guard fires LESS often than it should, which is wrong
+    in the permissive direction and worth knowing.
+  - **`trimToCap`'s no-progress branch is unreachable and untested, and says so in its own
+    comment**; it needs about `cap / 250` action rows per side and a baseline has at most six.
+  - **`reference_trace_id` can be `null` and both trace tables are insert-only**, so a missing
+    link can never be repaired: run `pnpm strategy:backfill` before `pnpm adaptive:backfill`.
+  - **A `BACKFILL` trace is composed against TODAY's evidence**, not the evidence that existed
+    when the hand was played. `source`, `player_model_version` and the snapshot maps date it.
+  - **The manual-HUD sample cap lives at the server mapping boundary**; any future builder of
+    an `AdaptiveOpponentInput` must apply `manualHudSampleCap` too.
+- **WP-K (external HUD + 1% calibration) — deliberate limitations, none silent** (full list
+  in `docs/reports/EXTERNAL_ADAPTIVE_FINAL.md`):
+  - **`STEAL` never drives a rule.** The external HUD reports how often THIS player opens
+    from a steal position; the rule that reads blind defense (`FOLD_BB_TO_STEAL_HIGH`)
+    needs how often the BIG BLIND folds to one — a different seat's stat this source does
+    not measure. `VPIP`/`PFR` are imported, stored, and displayed but likewise drive no
+    frequency or sizing rule today — a pre-existing WP-J property, not new to WP-K.
+  - **`adaptive_strategy_traces` does not yet persist which `EXTERNAL_HUD` snapshot informed
+    a decision** — only manual-HUD and learned-model snapshot ids are columns on that table.
+    A deliberate scope decision to stay inside WP-K's approved plan, not an oversight.
+  - **The generic-to-per-street fan-out (ADR-0067(e)) applies one number to all three
+    streets uniformly.** Partly addressed by the WP-K follow-up (ADR-0072): the stand-in now
+    yields to any per-street reading with a real denominator, and says "스트리트 구분 없음"
+    verbatim on screen. What remains is that where no real reading exists, one number still
+    stands in for three streets whose anchors differ (e.g. a 7% check-raise reads BELOW the
+    800 bps flop anchor and ABOVE the 600 bps turn one), so the same profile can behave
+    differently by street for a reason the user did not supply.
+- **WP-K follow-up — the one open question it deliberately did not answer.** The §9 guard
+  rail (ADR-0065(e)) zeroes EVERY positive `AGGRESSION` contribution while a live opponent
+  with an above-anchor `THREE_BET` or street `CHECK_RAISE` is still to act, making no
+  distinction between escalating a bluff and escalating a value bet. It is why golden spots
+  4 and 7 now return ADAPTIVE ≡ REFERENCE rather than a value increase. `prompt` said to
+  keep the existing safety caps, so the guard was not touched; a case can be made that a
+  VALUE hand WANTS the check-raise and should be exempt. Recorded as falsifying evidence on
+  ADR-0070 and as limitation 1 in
+  `docs/reports/EXTERNAL_ADAPTIVE_SANITY_FOLLOWUP.md`. Related and also unchanged:
+  `THREE_BET` is used as a POSTFLOP guard stat, so any opponent above a 7% 3-bet rate trips
+  the guard on every postflop street.
 
 - **Strategy A+B — deferred review findings (CLAUDE.md rule 5 requires these listed).** All
   behavioral findings from the two independent reviews are fixed; these documented
@@ -328,10 +600,15 @@ post-session player learning). Strategy A+B and Phases 1-7 stay accepted.
   (documented, accepted this milestone). Two tabs playing the same session collide on hand
   numbering — the second tab gets an honest CONFLICT banner whose retry cannot succeed;
   server-side renumbering would need a new ADR.
-- **Stacks are still not persisted across hands.** `updateSessionTable` remains uncalled:
-  wins/losses/auto top-up advance in memory only, and a reloaded session returns to its
-  configured stacks. `sessions.hand_number` IS now advanced (by `insertCompletedHand`, the
-  R1 BLOCKER fix), so numbering survives reload even though stacks do not.
+- ~~**Stacks are still not persisted across hands.**~~ — **closed by ADR-0075** (Hands-on
+  Table UX V2). Seat occupancy, player and stack, plus the button seat, are written back at
+  every between-hands boundary through `updateSessionSeats` / `updateSessionButtonSeat`, and a
+  reload restores them (pinned by `seat-state-persistence.spec.ts`). Two residuals:
+  `updateSessionTable` itself is still uncalled and does not write `stack_unverified` (it takes
+  a whole `TableState`, which has no notion of human confirmation, so it would have to invent
+  one — documented in its doc comment); and a quick-skipped hand number is not persisted, so a
+  reload right after a quick skip may reuse it. Nothing ever claimed that number, so nothing
+  collides.
 - **C0+C1 deferred review findings (R1 MINORs, documented not fixed):** the analysis VPIP
   denominator (true opportunity count) is not directly comparable to the manually entered
   HUD VPIP shown elsewhere; a delayed cbet widens the `CBET_TURN`/`CBET_RIVER` denominators
@@ -454,17 +731,26 @@ post-session player learning). Strategy A+B and Phases 1-7 stay accepted.
 
 ## Test status
 
-Strategy C0+C1 (history capture + player learning) final frozen-source gate, 2026-09-01.
+WP-K follow-up (ADAPTIVE sanity calibration) final frozen-source gate, 2026-09-03.
 
 | Suite                       | Result                            |
 | --------------------------- | --------------------------------- |
 | `pnpm verify` (typecheck + test + lint + lint:licences + build) | pass — exit 0 |
-| `pnpm test`                 | pass — **2091 tests** (3 skipped opt-in bench) |
-| — `db` project              | pass — 135 tests                  |
+| `pnpm test`                 | pass — **140 files passed / 1 skipped**, 2383 passed / 3 skipped |
+| — `adaptive-core` project   | pass — 143 tests                  |
+| — `db` project              | pass — 157 tests                  |
 | — `analysis-core` project   | pass — 66 tests                   |
-| — `player-core` project     | pass — 202 tests                  |
-| — `strategy-core` project   | pass — 783 tests                  |
-| `pnpm e2e`                  | pass — **26 Playwright tests**    |
+| — `player-core` project     | pass — 191 tests                  |
+| — `strategy-core` project   | pass — 783 tests (REFERENCE untouched by the follow-up) |
+| — `web` project             | pass — 483 passed / 3 skipped     |
+| `pnpm e2e`                  | pass — **30 Playwright tests**    |
+
+(WP-K (external HUD + 1% ADAPTIVE calibration) gate, 2026-09-03: 139 files / 2363 tests,
+30 Playwright tests.)
+
+(Strategy C2 (WP-J adaptive) gate, 2026-09-02: 136 files / 2307 tests, 30 Playwright tests.)
+
+(Strategy C0+C1 gate, 2026-09-01: 2091 tests, 26 Playwright tests.)
 
 (Strategy A+B gate, 2026-09-01: 106 files / 1826 tests, 23 Playwright tests.)
 

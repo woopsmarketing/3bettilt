@@ -1,0 +1,620 @@
+@import 'tailwindcss';
+
+/*
+ * 3BetTilt design tokens.
+ *
+ * A high-contrast reading surface for people who are learning the game, not a casino skin.
+ * Red is the brand's accent and is spent sparingly: calls to action, the active nav item,
+ * the selected matrix cell. It is NOT the colour of a poker action.
+ *
+ * Strategy colours are a separate scale on purpose (build spec §4). A cell that is red
+ * because "raise" must never be confusable with a cell that is red because "selected", so
+ * the raise colour is deliberately warmer than the brand red, and every colour-carried
+ * meaning is also carried by text and a legend.
+ *
+ * =========================================================================================
+ * HOW THEMING WORKS HERE (WP-2)
+ * =========================================================================================
+ * Dark is the site's identity and therefore the DEFAULT. `@theme` below holds the dark
+ * values; the light theme redefines the same token NAMES under a theme selector. Token
+ * names describe a ROLE, never a lightness, so nothing is renamed and no component gains a
+ * `dark:`/`light:` variant (FISHTILT_STATE ruling 103).
+ *
+ * Verified against Tailwind v4.3.3's own output, not assumed: `@theme` emits the tokens as
+ * custom properties on `:root, :host` inside `@layer theme`, and every utility compiles to
+ * `var(--color-…)`. So a later, unlayered, higher-specificity `:root[data-theme='…']` rule
+ * re-points every one of those utilities at once. If a future Tailwind inlines theme values
+ * instead, this file must change shape — `theme-tokens.test.ts` fails loudly if the three
+ * theme blocks stop agreeing with `@theme`, which is the tripwire for that.
+ *
+ * Precedence, in the order the blocks appear below:
+ *   1. `@theme`                              → dark, the default for everyone
+ *   2. `@media (prefers-color-scheme: light)` on `:root:not([data-theme='dark'])`
+ *                                            → a visitor with no stored choice (or with JS
+ *                                              off) whose OS asks for light gets light
+ *   3. `:root[data-theme='light']` / `[data-theme='dark']`
+ *                                            → an explicit choice wins in BOTH directions
+ *
+ * `src/app/layout.tsx` stamps `data-theme` in a blocking inline script before first paint,
+ * so there is no flash of the wrong theme.
+ *
+ * -----------------------------------------------------------------------------------------
+ * CONTRAST AUDIT (WCAG AA — 4.5:1 body text, 3:1 large text / UI boundaries)
+ * -----------------------------------------------------------------------------------------
+ * Every pair below is one the shipped app actually renders, measured with the exact hex
+ * values in this file by the relative-luminance formula. `theme-tokens.test.ts` recomputes
+ * all of them from this file on every test run, in BOTH themes, so these numbers cannot rot.
+ *
+ *   pair                                        dark      light
+ *   text-100  / ground-900   (body on page)     18.29     16.76
+ *   text-100  / panel-700    (body on card)     15.97     18.47
+ *   text-100  / panel-600    (nested/floating)  15.27     17.36
+ *   text-100  / ground-800   (body in a well)   17.19     16.14
+ *   text-300  / ground-900   (secondary)         7.60      5.77
+ *   text-300  / panel-700                        6.64      6.36
+ *   text-500  / ground-900   LARGE/UI ONLY       4.14      3.72
+ *   brand-500 / ground-900   (brand as ink)      5.50      5.47
+ *   brand-500 / panel-700                        4.80      6.02
+ *   brand-500 / panel-600                        4.59      5.66
+ *   ink-on-brand / brand-600 (button label)      5.09      8.00
+ *   ink-on-brand / brand-hover (label, hover)    4.68      6.02
+ *   line-500  / ground-900   (border)            3.71      3.18
+ *   line-500  / panel-700                        3.24      3.50
+ *   line-500  / panel-600                        3.10      3.29
+ *   suit-red-500 / panel-600 (card face)         5.11      5.23
+ *   ink-on-action / act-raise-500 (IN cell)      5.28      5.24
+ *   ink-on-action / act-call-500  (DIFFERS)      6.37      5.86
+ *   text-100  / act-fold-500      (OUT cell)     9.50     11.19
+ *   act-raise-500 / ground-900 (AS TEXT)         5.37      4.76
+ *   act-raise-500 / act-fold-500 (IN vs OUT)     2.79      3.18
+ *
+ * CLOSED IN WP-2b: the five primary buttons used to do `bg-brand-600 hover:bg-brand-500`,
+ * which put the label on `brand-500` while hovered — 3.27:1 originally, 3.60:1 after WP-2
+ * moved the label to `ink-on-brand`, both under the 4.5 body minimum. `brand-500` is the
+ * identity red `#ff334d` and may not be darkened, so the hover now points at a dedicated
+ * `--color-brand-hover` fill instead (ToolCTA, RangeQuiz, QuizQuestionCard, QuizResult,
+ * HomeCallToAction). No pair in this file is below its minimum in either theme.
+ *
+ * -----------------------------------------------------------------------------------------
+ * TOKEN-BY-TOKEN USAGE RULES (enforced by convention and by `theme-tokens.test.ts`)
+ * -----------------------------------------------------------------------------------------
+ * ELEVATION. Four surfaces, ordered by how far off the page they sit, NOT by lightness —
+ * which is why the same names work in both themes:
+ *   ground-900  the page itself
+ *   ground-800  a WELL: recessed, for a result box inside a card
+ *   panel-700   a CARD: the default raised container (`Panel`, `LinkCard`)
+ *   panel-600   NESTED or FLOATING: a card inside a card, a popover, a neutral matrix cell
+ * In the dark theme the ladder brightens as it rises; in the light theme the card is the
+ * white one and the page around it is tinted. The card/page delta was widened this WP
+ * (1.15:1 dark, was 1.06:1) because a card that only differed from the page by its border
+ * is the main reason the site read as flat.
+ *
+ * - `--color-text-500` is a deliberately quiet tone that clears 3:1 but NOT 4.5:1. It MAY be
+ *   used for large headings (≥ 24px regular / ≥ 19px bold), inactive-state text, decorative
+ *   glyphs and supplementary meta text. It MUST NOT be used for body copy, labels, table
+ *   values or button text.
+ * - `--color-brand-600` is a FILL colour only, always with `ink-on-brand` on top, and
+ *   `--color-brand-hover` is that same fill while pointed at — also ink-on-brand only.
+ *   `--color-brand-500` is the one that is safe as text, a link colour or an icon fill — in
+ *   BOTH themes, which is why the light value is a much darker red than `#ff334d`. Pure
+ *   `#ff334d` on a white card is 3.60:1 and fails as body text; the fill/ink split is what
+ *   lets the light theme keep the brand without breaking AA. `brand-500` MUST NOT be used as
+ *   a fill under text — that is what `brand-hover` was added for.
+ * - `--color-line-500` is the only border/divider token, tuned to clear 3:1 against all four
+ *   surfaces in both themes.
+ * - `--color-suit-red-500` is `PokerCard`'s heart/diamond ink and is deliberately NOT the
+ *   brand red: a selected-state red and a suit red must stay distinct meanings. Spade/club
+ *   ink reuses `--color-text-100`, so the "black" suit is whatever the page's ink is.
+ * - `--color-ink-on-action` / `--color-ink-on-brand` are INK-ON-FILL tokens. They exist
+ *   because `text-ground-900` (dark ink on a saturated fill) and `text-text-100` (light ink
+ *   on a saturated fill) both invert with the theme and both break the moment they do —
+ *   light-on-light and dark-on-dark respectively (ruling 104). An ink-on-fill token is
+ *   audited against ITS FILL, not against the page, and never tracks a surface token.
+ * - `--color-act-fold-500` is only ever a FILLED background carrying `text-100`. It is not
+ *   safe as a border, an outline, or a text colour on the page background.
+ */
+@theme {
+  /* ---- Surfaces (elevation ladder; dark values) ---- */
+  --color-ground-900: #090a0d;
+  --color-ground-800: #101319;
+  --color-panel-700: #171b21;
+  --color-panel-600: #1b1f26;
+
+  /* ---- Boundary ---- */
+  --color-line-500: #616c7a;
+
+  /* ---- Ink on surfaces ---- */
+  --color-text-100: #f5f6f7;
+  --color-text-300: #9aa1ac;
+  /* Intentionally sub-AA for body text (4.14:1 / 3.61:1) — see the usage rule above. */
+  --color-text-500: #6b7380;
+
+  /* ---- Brand ---- */
+  --color-brand-500: #ff334d;
+  --color-brand-600: #d71e36;
+  /* The brand fill WHILE POINTED AT. Not `brand-500`: that is the identity red, and white
+     ink on it is 3.60:1 (WP-2b task 2). This is the lightest, most saturated red at
+     `brand-500`'s hue that still carries `ink-on-brand` at AA — L* 48.8 / C* 82.4 / h 23.8°
+     against `brand-500`'s L* 56.3 / C* 83.0 / h 25.9°. Same hue, same chroma, capped
+     lightness; the hover still reads as the brand red intensifying, not as a neutral. */
+  --color-brand-hover: #e70341;
+  /* Deepest brand tint. No consumer today; kept because the audit above cites it and
+     removing a token is a rename by another name. */
+  --color-brand-950: #3a1118;
+
+  /* ---- Playing-card suit ink (PokerCard) ---- */
+  --color-suit-red-500: #ff4d63;
+
+  /* ---- Strategy actions. Distinct from the brand scale by design. ---- */
+  --color-act-raise-500: #e4572e;
+  --color-act-call-500: #2ba3a3;
+  --color-act-fold-500: #3a414d;
+
+  /* ---- Ink drawn ON a saturated fill (never on a surface) ---- */
+  --color-ink-on-action: #0b0d10;
+  --color-ink-on-brand: #ffffff;
+
+  /* ---- Modal/popover backdrop ---- */
+  --color-scrim-900: rgb(0 0 0 / 0.66);
+
+  /*
+   * Typography. No webfont file and no `@font-face` (ruling 111): `next/font/local` and
+   * `next/font/google` both fail to resolve under this app's `nodenext` config, exactly as
+   * `next/link` does, and the owner's reasons for a system stack are readability and a
+   * multilingual future. So the stack NAMES the real Hangul faces instead of trusting the
+   * browser to fall back to one, and stays generic after that, so another locale inherits
+   * its own system face for free. `-apple-system`/`system-ui` already resolve Hangul on
+   * their platforms; the explicit faces are the safety net for the ones that do not.
+   */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Apple SD Gothic Neo', 'Segoe UI', 'Malgun Gothic',
+    Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /*
+   * Line height, fixed per step rather than left at Tailwind's Latin-tuned defaults.
+   * Hangul is set in full-width square blocks with no ascender/descender rhythm to help the
+   * eye find the next line, so Korean prose needs roughly 1.7–1.8 where English wants 1.5.
+   * Before this WP the app compensated by writing `leading-[1.8]` by hand at individual call
+   * sites, which fixed the components that remembered and left MDX prose at 1.5. Setting the
+   * step's own line height fixes both at once. Sizes stay at Tailwind's defaults — the scale
+   * was not the problem, the leading was.
+   */
+  --text-xs--line-height: 1.6;
+  --text-sm--line-height: 1.75;
+  --text-base--line-height: 1.8;
+  --text-lg--line-height: 1.65;
+  --text-xl--line-height: 1.5;
+  --text-2xl--line-height: 1.4;
+  --text-3xl--line-height: 1.32;
+  --text-4xl--line-height: 1.22;
+
+  /*
+   * The Stage 3 type scale (D-S3-11). Named by ROLE, like the widths, so a page says
+   * "this is an article title" rather than picking `text-3xl` from memory:
+   *   prose      — 17px body for Korean long-form, leading 1.8. One step above the 16px UI
+   *                size; UI/meta text stays on `text-sm`/`text-[0.9375rem]`.
+   *   h2         — a section heading inside an article: 24px on a phone, 26px on desktop.
+   *   article-h1 — the title of a long-form page: 30px → 44px, fluid.
+   *   hero-h1    — the title of an editorial hero (home, hubs, tools): 36px → 56px, fluid.
+   * The two fluid sizes are `clamp()`s rather than breakpoint steps so the title grows with
+   * the viewport instead of jumping at 640px, and each carries its own tighter leading —
+   * a 56px Korean line at 1.8 leaves a hole under it.
+   */
+  --text-prose: 1.0625rem;
+  --text-prose--line-height: 1.8;
+  --text-h2: clamp(1.5rem, 1.35rem + 0.5vw, 1.625rem);
+  --text-h2--line-height: 1.35;
+  --text-article-h1: clamp(1.875rem, 1.2rem + 2.2vw, 2.75rem);
+  --text-article-h1--line-height: 1.25;
+  --text-hero-h1: clamp(2.25rem, 1.4rem + 3vw, 3.5rem);
+  --text-hero-h1--line-height: 1.15;
+
+  /*
+   * Corner radius, one step softer than Tailwind's defaults across the board. This is the
+   * cheapest lever the "고급 + 친근" brief has: the geometry changes everywhere at once
+   * (cards, buttons, badges, inputs) without a single component edit.
+   */
+  --radius-sm: 0.3125rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /*
+   * Content widths, by role rather than by number, so a page declares what KIND of thing it
+   * is instead of picking a `max-w-*` from memory. Stage 3 (D-S3-10) re-measured every one
+   * of them against the design review's finding that "content floats too small on a large
+   * desktop"; the px values are at a 16px root.
+   *   reading  — 46rem / 736px. A single column of Korean long-form prose at the 17px body
+   *              size (`--text-prose`): ~41 full-width glyphs per line. Was 42rem; the
+   *              five long-form templates all name this token, and
+   *              `theme-tokens.test.ts` holds them to it.
+   *   breakout — 60rem / 960px. What an article's visual, table, hand replay or matrix may
+   *              widen to when it leaves the reading column (`Section width="breakout"`).
+   *   grid     — 68rem / 1088px. Hub grids (`/learn`, `/blog`, `/glossary`, `/hands`).
+   *   shell    — 78rem / 1248px. The header/footer bar, the home page and the tool pages.
+   *   matrix   — 85rem / 1360px, unchanged. The one width dictated by content rather than
+   *              by reading comfort: Compare mode on `/tools/range` puts two full 13x13
+   *              matrices side by side, each 608px (13 * 44px cells + 12 * 3px gaps), and
+   *              two of them plus the column gap need 1240px. Measured in WP-4.
+   *   lead     — 42rem / 672px. NOT a page column: the measure of a lead/description
+   *              paragraph sitting inside a wider container (`PageHero`, `SectionHeading`,
+   *              the footer blurb), so it does not run the full width of a grid page.
+   *   figure   — 22rem / 352px. NOT a page column either: the natural size of a small
+   *              drawing that fills its parent but never exceeds itself (`OutsFigure`'s
+   *              card pile, `HomeHeroVisual`'s mini matrix).
+   * WP-S3-03 retired the last ten off-token `max-w-*` literals onto these seven; the
+   * mapping is in `docs/reports/stage3/handoff/WP_S3_03_HANDOFF.md`.
+   */
+  --container-reading: 46rem;
+  --container-breakout: 60rem;
+  --container-grid: 68rem;
+  --container-shell: 78rem;
+  --container-matrix: 85rem;
+  --container-lead: 42rem;
+  --container-figure: 22rem;
+
+  /*
+   * Vertical rhythm between a page's top-level sections. Two steps, not one: `section` is
+   * the phone value and `section-lg` is the desktop value (D-S3-11), so a page alternates
+   * `py-section lg:py-section-lg` — or uses `Section`, which does that for it.
+   */
+  --spacing-section: 3.5rem;
+  --spacing-section-lg: 5rem;
+
+  /*
+   * The one elevation shadow. Deliberately singular: on a dark UI a shadow is nearly
+   * invisible and layering is carried by surface + border instead, so a shadow only earns
+   * its place on something that genuinely floats over the page (the `Term` popover). The
+   * light theme, where a shadow actually reads, gets a real soft one.
+   *
+   * The colours are an inner `var()` rather than literals, and that is not decoration:
+   * Tailwind BAKES a `--shadow-*` theme value into the utility at build time (verified in the
+   * built stylesheet), so redefining `--shadow-raised` under a theme selector changes nothing.
+   * An inner variable survives into the utility and resolves at use time, which is what makes
+   * the shadow theme-aware. `--ft-*` lives outside `@theme` on purpose — it is a private
+   * value, not a design token, and must not generate a utility of its own.
+   */
+  --shadow-raised: 0 18px 40px -12px var(--ft-shadow-cast), 0 0 0 1px var(--ft-shadow-edge);
+}
+
+/*
+ * Dark is the default and needs no palette block of its own — `@theme` above IS the dark
+ * palette. This only declares the UA colour scheme, so form controls, scrollbars and the
+ * canvas behind the page match before any component paints.
+ */
+:root {
+  color-scheme: dark;
+
+  --ft-shadow-cast: rgb(0 0 0 / 0.75);
+  --ft-shadow-edge: rgb(0 0 0 / 0.4);
+}
+
+/*
+ * A visitor with no stored choice whose OS asks for light — including a visitor with
+ * JavaScript disabled, for whom `data-theme` is never stamped at all. `:not([data-theme='dark'])`
+ * is what keeps an explicit dark choice winning over the OS preference.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+
+    --color-ground-900: #f2f4f7;
+    --color-ground-800: #ecf0f5;
+    --color-panel-700: #ffffff;
+    --color-panel-600: #f6f8fb;
+
+    --color-line-500: #808a96;
+
+    --color-text-100: #10141a;
+    --color-text-300: #566070;
+    --color-text-500: #767e8b;
+
+    --color-brand-500: #c2183a;
+    --color-brand-600: #a01230;
+    --color-brand-hover: #c2183a;
+    --color-brand-950: #ffe4e8;
+
+    --color-suit-red-500: #c62b23;
+
+    --color-act-raise-500: #c0410f;
+    --color-act-call-500: #17706f;
+    --color-act-fold-500: #c3cad4;
+
+    --color-ink-on-action: #ffffff;
+    --color-ink-on-brand: #ffffff;
+
+    --color-scrim-900: rgb(9 12 18 / 0.44);
+
+    --ft-shadow-cast: rgb(16 20 26 / 0.22);
+    --ft-shadow-edge: rgb(16 20 26 / 0.06);
+  }
+}
+
+/* An explicit choice always wins, in both directions. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-ground-900: #f2f4f7;
+  --color-ground-800: #ecf0f5;
+  --color-panel-700: #ffffff;
+  --color-panel-600: #f6f8fb;
+
+  --color-line-500: #808a96;
+
+  --color-text-100: #10141a;
+  --color-text-300: #566070;
+  --color-text-500: #767e8b;
+
+  --color-brand-500: #c2183a;
+  --color-brand-600: #a01230;
+  /* Light mode had headroom the dark one did not — the old `hover:bg-brand-500` was already
+     6.02:1 here. So the hover keeps exactly the shade it has always had, which happens to be
+     this theme's `brand-500` value. Coinciding today is a measurement, not a reference: the
+     two are separate roles and either may move without the other. */
+  --color-brand-hover: #c2183a;
+  --color-brand-950: #ffe4e8;
+
+  --color-suit-red-500: #c62b23;
+
+  --color-act-raise-500: #c0410f;
+  --color-act-call-500: #17706f;
+  --color-act-fold-500: #c3cad4;
+
+  --color-ink-on-action: #ffffff;
+  --color-ink-on-brand: #ffffff;
+
+  --color-scrim-900: rgb(9 12 18 / 0.44);
+
+  --ft-shadow-cast: rgb(16 20 26 / 0.22);
+  --ft-shadow-edge: rgb(16 20 26 / 0.06);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-ground-900: #090a0d;
+  --color-ground-800: #101319;
+  --color-panel-700: #171b21;
+  --color-panel-600: #1b1f26;
+
+  --color-line-500: #616c7a;
+
+  --color-text-100: #f5f6f7;
+  --color-text-300: #9aa1ac;
+  --color-text-500: #6b7380;
+
+  --color-brand-500: #ff334d;
+  --color-brand-600: #d71e36;
+  --color-brand-hover: #e70341;
+  --color-brand-950: #3a1118;
+
+  --color-suit-red-500: #ff4d63;
+
+  --color-act-raise-500: #e4572e;
+  --color-act-call-500: #2ba3a3;
+  --color-act-fold-500: #3a414d;
+
+  --color-ink-on-action: #0b0d10;
+  --color-ink-on-brand: #ffffff;
+
+  --color-scrim-900: rgb(0 0 0 / 0.66);
+
+  --ft-shadow-cast: rgb(0 0 0 / 0.75);
+  --ft-shadow-edge: rgb(0 0 0 / 0.4);
+}
+
+/*
+ * `::backdrop` safety net.
+ *
+ * `::backdrop` only started inheriting custom properties from its originating element
+ * recently (CSS Position-4); before that it inherited from nothing, so
+ * `background-color: var(--color-scrim-900)` resolved to nothing and the popover got a
+ * transparent backdrop. Declaring the one variable the backdrop actually reads directly on
+ * the pseudo-element costs four lines and removes the browser-version question entirely.
+ */
+::backdrop {
+  --color-scrim-900: rgb(0 0 0 / 0.66);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) ::backdrop {
+    --color-scrim-900: rgb(9 12 18 / 0.44);
+  }
+}
+
+:root[data-theme='light'] ::backdrop {
+  --color-scrim-900: rgb(9 12 18 / 0.44);
+}
+
+:root[data-theme='dark'] ::backdrop {
+  --color-scrim-900: rgb(0 0 0 / 0.66);
+}
+
+/*
+ * "Show this only while <theme> is the one being painted."
+ *
+ * `ThemeToggle` renders BOTH of its icons on the server, because the server cannot know which
+ * theme a given reader stored and this site navigates by full page load — picking one in React
+ * state would mismatch on hydration on every single page. These two classes resolve it in CSS
+ * instead, following exactly the same three-way cascade as the palette above, so the right icon
+ * is showing before any JavaScript has run.
+ *
+ * `display: none`, not `visibility`/`opacity`: the hidden half must leave the accessibility
+ * tree, not merely be invisible.
+ */
+.theme-only-dark {
+  display: inline-flex;
+}
+
+.theme-only-light {
+  display: none;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .theme-only-dark {
+    display: none;
+  }
+
+  :root:not([data-theme='dark']) .theme-only-light {
+    display: inline-flex;
+  }
+}
+
+:root[data-theme='light'] .theme-only-dark {
+  display: none;
+}
+
+:root[data-theme='light'] .theme-only-light {
+  display: inline-flex;
+}
+
+:root[data-theme='dark'] .theme-only-dark {
+  display: inline-flex;
+}
+
+:root[data-theme='dark'] .theme-only-light {
+  display: none;
+}
+
+/*
+ * NOTE FOR ANYONE TEMPTED TO ADD A BRIDGE RULE HERE.
+ *
+ * WP-2 shipped `.bg-brand-600 { --color-text-100: var(--color-ink-on-brand); }` — a fill
+ * re-pointing the page-ink token for its own subtree — because fifteen `bg-brand-600
+ * text-text-100` call sites sat outside that WP's file boundary and would otherwise have
+ * rendered near-black ink on dark red at 3.6:1 in the light theme.
+ *
+ * WP-2b removed it. Every call site now names `text-ink-on-brand` directly, which is what
+ * the token was for. Do not bring the rule back: a utility that silently means something
+ * different depending on an ancestor is exactly the kind of action-at-a-distance the token
+ * split exists to avoid. `theme-tokens.test.ts` asserts both that the rule is absent and
+ * that no `.tsx` pairs `bg-brand-600` with `text-text-100`, so the two can never drift apart
+ * again.
+ */
+
+html {
+  background: var(--color-ground-900);
+}
+
+body {
+  background: var(--color-ground-900);
+  color: var(--color-text-100);
+  font-family: var(--font-sans);
+}
+
+/* Lining figures, so a column of percentages lines up. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Korean line breaking for prose (D-S3-11). `keep-all` stops a word being cut between two
+ * of its syllables at the end of a line — the default `normal` breaks Hangul anywhere, which
+ * is why `PositionLegend` had to wrap every pairing in `whitespace-nowrap`. `anywhere` is the
+ * safety valve: a URL or a long notation string with no break opportunity still wraps rather
+ * than pushing the column into horizontal scroll (the rule `responsive-a11y.spec.ts` holds).
+ *
+ * A `@utility`, not a bare class, so it composes with variants (`sm:prose-ko`) and sorts with
+ * the other utilities. Applied by the MDX element map and by the prose-carrying primitives
+ * (`QuickAnswer`, `Quote`, `Callout`, the hero lead); NOT set on `body`, because `keep-all`
+ * on a 44px button label or a table cell can widen a control past its box.
+ */
+@utility prose-ko {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Keyboard focus rings — Tailwind v4 semantics (WP-S3-17, a site-wide defect found by the
+ * a11y audit: 39 of 40 Tab stops on every page painted NO ring).
+ *
+ * Every control here is written `outline-none focus-visible:outline-2 focus-visible:outline-
+ * brand-500`, the v3 idiom. In v4 the compiled `.outline-none` is
+ * `{ --tw-outline-style: none; outline-style: none }` and `.focus-visible\:outline-2` is
+ * `{ outline-style: var(--tw-outline-style); outline-width: 2px }` — so on focus the outline
+ * style resolves to the `none` that `outline-none` stored in the custom property, and the
+ * ring the class promises never draws (v4's `outline-hidden` is the utility that means what
+ * `outline-none` used to). Rather than touch 111 call sites, this one unlayered rule resets
+ * the custom property to `solid` on any element that (a) is showing keyboard focus and (b)
+ * asked for a focus-visible outline. Unlayered beats `@layer utilities`, so it wins over
+ * `.outline-none` regardless of order. Elements that only say `outline-none` (the skip
+ * link's target, a quiz heading that takes programmatic focus) are untouched and stay
+ * ring-less, which is what they meant. The second selector is the same reset for a ring
+ * drawn on a CHILD of the focused control (`group-focus-visible:outline-*` on a small pill
+ * inside a 44px anchor — `LessonHeader`'s category chip).
+ */
+[class*='focus-visible:outline']:focus-visible,
+.group:focus-visible [class*='group-focus-visible:outline'] {
+  --tw-outline-style: solid;
+}
+
+/*
+ * `table-scroll` (WP-S3-17) — a wide table scrolls inside its own box on a phone (the rule
+ * `responsive-a11y.spec.ts` holds: the TABLE scrolls, the page never does), and a reader has
+ * to be able to tell. A native scrollbar is invisible on iOS until it is touched, so a
+ * five-column table cut off at 390px looks like a four-column table. The affordance is a
+ * fade at the right edge, drawn ONLY while there is more table to the right: a scroll-driven
+ * animation (no JavaScript) runs the fade from 1 to 0 across the scroll range, and a table
+ * that fits has no scroll range, so its timeline is inactive and the fade stays at its base
+ * opacity of 0. A browser without scroll-driven animations gets today's behaviour (no fade).
+ *
+ * Two boxes: `.table-scroll` positions the fade and hoists the timeline name into scope;
+ * `.table-scroll > [data-scroller]` is the actual scroller that owns the timeline.
+ */
+.table-scroll {
+  position: relative;
+  timeline-scope: --table-scroll;
+  /* Size containment on the inline axis: the table's min-content width (now that its row
+     headers and numeric cells never wrap) must not travel up and widen a grid/flex column
+     that has no `min-w-0` of its own — it did on `/tools/starting-hand` at 360px, where a
+     five-column table pushed the page to 391px. Contained, the box takes the column's
+     width and the scroller inside it does the scrolling. */
+  contain: inline-size;
+}
+.table-scroll > [data-scroller] {
+  overflow-x: auto;
+  scroll-timeline: --table-scroll x;
+}
+.table-scroll::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 2.5rem;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(to right, transparent, var(--color-ground-900));
+  animation: table-scroll-fade linear both;
+  animation-timeline: --table-scroll;
+}
+@keyframes table-scroll-fade {
+  from {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * `prefers-reduced-motion`, respected globally rather than per-component (WP-A a11y
+ * requirement). Any transition/animation any component adds — the mobile nav opening, a
+ * hover state, a focus ring — collapses to effectively instant for a reader who asked the
+ * OS for less motion. Scoped to transform/opacity/colour-adjacent properties rather than
+ * `all`, so it does not also disable non-visual timing (e.g. debounce logic implemented
+ * with CSS custom properties, which this app does not have, but the rule should not assume).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

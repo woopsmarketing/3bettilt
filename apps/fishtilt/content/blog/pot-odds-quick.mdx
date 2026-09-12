@@ -1,0 +1,175 @@
+<QuickAnswer>
+
+팟오즈 계산은 "내가 낼 돈 ÷ 콜한 뒤의 최종 팟"입니다. 상대 베팅이 팟에서 차지하는 비율만 알면 답이 정해지므로, 흔한 벳 크기 세 가지는 숫자를 그대로 외워 둘 수 있습니다. 하프팟 벳은 <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|3" />, 2/3팟 벳은 <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|4" />, 팟 크기 그대로인 풀팟 벳은 <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|6" />의 승률이 있어야 콜이 손익분기점에 옵니다.
+
+</QuickAnswer>
+
+팟오즈를 빠르게 구하는 절차는 세 단계뿐입니다. 상대 베팅이 팟에서 차지하는 비율을 보고, 콜한 뒤 걸리는 돈 전체(최종 팟)를 구한 다음, 내가 낼 돈을 그 최종 팟으로 나누면 됩니다. 팟오즈가 정확히 무엇을 재는 값인지부터 보고 싶다면 [팟오즈 레슨](/learn/pot-odds)을 먼저 읽어 주세요. 여기서는 이미 알고 있다고 보고, 계산만 빠르게 합니다.
+
+<Figure caption="팟 6BB에 하프팟 3BB를 맞은 상황입니다. 막대 전체가 콜한 뒤의 최종 팟이고, 색칠된 칸이 내가 내는 돈입니다. 나누는 기준은 눈에 보이는 팟이 아니라 이 막대 전체입니다.">
+  <PotOddsFigure pot="6" bet="3" />
+</Figure>
+
+## 벳 크기 세 가지, 필요한 승률 표
+
+아래 금액은 모두 <Term id="term-big-blind">빅 블라인드(BB)</Term>의 배수입니다. <Term id="term-pot">팟(Pot)</Term>이 6BB일 때 상대가 하프팟(3BB)을 베팅하면, 이 콜의 <Term id="term-pot-odds">팟오즈(Pot Odds)</Term>가 요구하는 최소 승률은 <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|3" />입니다. 2/3팟인 4BB를 베팅하면 <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|4" />로 올라가고, 팟 크기 그대로인 6BB를 베팅하면 <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|6" />까지 올라갑니다.
+
+<DataTable
+  caption="팟 6BB를 기준으로, 흔한 벳 크기 세 가지에 콜하려면 필요한 최소 승률입니다. 내가 내는 돈은 상대 베팅과 같고, 최종 팟은 원래 팟, 상대 베팅, 내 콜을 더한 값입니다."
+  rowHeader="size"
+  columns={[
+    { key: 'size', label: '벳 크기' },
+    { key: 'bet', label: '상대 베팅', numeric: true, align: 'end' },
+    { key: 'final', label: '최종 팟', numeric: true, align: 'end' },
+    { key: 'required', label: '필요 승률', numeric: true, align: 'end', highlight: true },
+  ]}
+  rows={[
+    {
+      key: 'half',
+      cells: {
+        size: '하프팟 (팟의 1/2)',
+        bet: '3BB',
+        final: '12BB',
+        required: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|3" />,
+      },
+    },
+    {
+      key: 'two-thirds',
+      cells: {
+        size: '2/3팟',
+        bet: '4BB',
+        final: '14BB',
+        required: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|4" />,
+      },
+    },
+    {
+      key: 'full',
+      cells: {
+        size: '풀팟 (팟과 같은 크기)',
+        bet: '6BB',
+        final: '18BB',
+        required: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|6" />,
+      },
+    },
+  ]}
+/>
+
+벳이 팟에서 차지하는 비율이 커질수록 필요한 승률도 함께 올라간다는 흐름만 기억해 두면, 정확한 숫자를 떠올리기 전에도 대략 어느 쪽인지 감을 잡을 수 있습니다. 표에 없는 크기를 만나면 절차를 그대로 밟으면 됩니다. 원래 팟에 상대 베팅과 내 콜을 더해 최종 팟을 만들고, 내 콜을 그 최종 팟으로 나눕니다.
+
+## 실제 액수가 달라져도 같은 숫자가 나옵니다
+
+이 숫자는 팟의 실제 금액이 아니라, 벳이 팟에서 차지하는 비율에만 좌우됩니다. 팟이 9BB이고 상대가 2/3팟인 6BB를 베팅해도 필요 승률은 <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="9|6" />로, 팟이 6BB였을 때의 2/3팟 벳과 정확히 같은 숫자가 나옵니다. 비율만 같다면 실제 액수를 몰라도 이 계산을 그대로 재사용할 수 있다는 뜻입니다.
+
+<StatsRow
+  aria-label="팟 크기가 달라도 벳 비율이 같으면 같은 필요 승률이 나옵니다"
+  items={[
+    {
+      label: '팟 6BB · 벳 4BB',
+      value: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|4" />,
+      note: '2/3팟 벳',
+    },
+    {
+      label: '팟 9BB · 벳 6BB',
+      value: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="9|6" />,
+      note: '역시 2/3팟 벳 — 같은 숫자',
+    },
+  ]}
+/>
+
+<Callout title="세 단계, 다시 정리하면">
+
+1. 상대 베팅이 팟의 몇 분의 몇인지 봅니다
+2. 원래 팟, 상대 베팅, 내 콜을 더해 최종 팟을 구합니다
+3. 내가 낼 돈을 최종 팟으로 나누면 필요한 최소 승률입니다
+
+</Callout>
+
+## 덜 흔한 크기도 같은 절차로 나옵니다
+
+세 가지 숫자만 외워 두어도 대부분의 벳은 어느 쪽에 가까운지 바로 보입니다. 그래도 표를 조금 더 채워 두면, 작은 벳과 오버벳이 필요 승률을 어디까지 움직이는지 한눈에 들어옵니다.
+
+<DataTable
+  caption="팟 8BB(작은 벳 두 줄)와 팟 6BB(오버벳 두 줄)를 기준으로 계산한, 덜 흔한 벳 크기의 필요 승률입니다. 비율이 같으면 팟 크기와 상관없이 같은 숫자가 나오므로 기준 팟은 나누기 편한 크기로 골랐습니다."
+  rowHeader="size"
+  columns={[
+    { key: 'size', label: '벳 크기' },
+    { key: 'pot', label: '팟', numeric: true, align: 'end' },
+    { key: 'bet', label: '상대 베팅', numeric: true, align: 'end' },
+    { key: 'required', label: '필요 승률', numeric: true, align: 'end', highlight: true },
+  ]}
+  rows={[
+    {
+      key: 'quarter',
+      cells: {
+        size: '1/4팟',
+        pot: '8BB',
+        bet: '2BB',
+        required: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="8|2" />,
+      },
+    },
+    {
+      key: 'three-quarters',
+      cells: {
+        size: '3/4팟',
+        pot: '8BB',
+        bet: '6BB',
+        required: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="8|6" />,
+      },
+    },
+    {
+      key: 'one-and-half',
+      cells: {
+        size: '1.5배 오버벳',
+        pot: '6BB',
+        bet: '9BB',
+        required: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|9" />,
+      },
+    },
+    {
+      key: 'double',
+      cells: {
+        size: '2배 오버벳',
+        pot: '6BB',
+        bet: '12BB',
+        required: <Fact name="POT_ODDS_REQUIRED_EQUITY" arg="6|12" />,
+      },
+    },
+  ]}
+/>
+
+벳이 팟의 두 배까지 커져도 필요 승률은 절반에 닿지 않습니다. 내 콜도 최종 팟에 들어가기 때문에, 상대가 아무리 크게 걸어도 내가 내는 몫이 최종 팟의 절반을 넘을 수는 없습니다.
+
+## 아웃츠와 나란히 놓으면
+
+필요 승률은 비교의 기준선일 뿐이라, 반대편에 놓을 숫자가 있어야 뜻이 생깁니다. 드로우를 들고 있다면 그 반대편 숫자는 [아웃츠](/glossary/outs)로 구한 완성 확률이고, 둘을 나란히 놓는 방법과 어느 스트리트의 확률을 써야 하는지는 [아웃츠 9장 = 플러시 드로우](/blog/outs-nine)에서 플러시 드로우 하나를 끝까지 따라가며 다룹니다. 완성된 패를 들고 상대의 패를 짐작해 보는 경우라면 반대편 숫자는 [승률 계산기](/tools/equity)가 구하는 승률입니다. 어느 쪽이든 이 글의 숫자는 그 숫자와 견줄 기준선까지만 알려줍니다.
+
+## 사람들이 자주 헷갈리는 부분
+
+### 이 세 숫자만 외우면 계산기는 필요 없나요?
+
+하프팟·2/3팟·팟사이즈처럼 딱 떨어지는 비율이라면 위 숫자를 그대로 씁니다. 하지만 3/4팟이나 애매한 올인 액수처럼 딱 떨어지지 않는 벳이라면 이 세 숫자만으로는 답이 나오지 않습니다. 그런 경우에는 아래 계산기에 실제 팟과 벳을 그대로 넣는 쪽이 빠릅니다.
+
+### 벳 크기가 바뀌면 아웃이 나올 확률도 같이 바뀌나요?
+
+아닙니다. 아웃이 나올 확률은 남은 카드 수와 스트리트에만 좌우되고, 벳 크기와는 무관합니다. 벳 크기가 좌우하는 것은 이 글이 다루는 필요 승률 쪽이고, 두 숫자를 나란히 놓고 비교하는 것은 별도의 이야기입니다.
+
+### 계산은 맞는데, 그래서 콜해야 하나요?
+
+이 계산은 손익분기점이 어디인지만 알려줍니다. 내 패가 실제로 그 승률만큼 이길 수 있는지는 이 계산과는 별개의 문제이고, 이 사이트가 대신 정해주지 않습니다.
+
+### 상대 베팅이 딱 떨어지는 비율이 아니면 어떻게 하나요?
+
+그럴 때도 절차는 똑같습니다. 원래 팟에 상대 베팅과 내 콜을 더해 최종 팟을 구하고, 내가 낼 돈을 그 최종 팟으로 나누기만 하면 됩니다. 세 가지 비율은 암산을 위한 지름길일 뿐이고, 절차 자체는 어떤 벳 크기에도 똑같이 적용됩니다.
+
+### 내 스택이 상대 베팅보다 작으면 어떻게 계산하나요?
+
+내가 실제로 낼 수 있는 돈까지만 콜이 되고, 상대 베팅 중 내가 맞추지 못한 나머지는 팟에 들어가지 않고 상대에게 돌아갑니다. 그래서 나누는 값도 최종 팟도 위 표와 달라집니다. 아래 계산기에는 내 콜 금액을 따로 넣는 칸이 있어 이런 경우를 그대로 계산할 수 있습니다.
+
+<ToolCTA
+  tool="toolPotOdds"
+  params={{ pot: '9', bet: '6' }}
+  title="다른 팟과 벳 크기도 3초 안에 확인해보세요"
+  action="팟 오즈 계산기 열기"
+>
+  숫자를 바꿔 넣으면 필요한 최소 승률이 바로 계산됩니다.
+</ToolCTA>

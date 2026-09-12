@@ -9,11 +9,12 @@
  * missing row. Stacks are ACTUAL entered values in integer milliBB.
  */
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
-import { ok, type SessionId } from '@gto-self/shared';
+import { ok, type MilliBB, type PlayerId, type SessionId } from '@gto-self/shared';
 import {
   validateTableConfig,
   type AutoTopUpPolicy,
   type SeatIndex,
+  type SeatOccupancy,
   type TableState,
 } from '@gto-self/poker-core';
 import type { Timestamp } from '@gto-self/player-core';
@@ -71,6 +72,12 @@ function autoTopUpColumns(policy: AutoTopUpPolicy | null): {
   };
 }
 
+/**
+ * The three columns the TABLE owns, for one seat. `stack_unverified` is deliberately NOT
+ * here: `TableState` does not carry it (it is session state, like the auto top-up pair —
+ * ADR-0078b), so `updateSessionTable` would have to invent it. `insertSession` adds it from
+ * `SessionRecord.seatStackUnverified`, and `updateSessionSeats` is its only later writer.
+ */
 function seatRows(sessionId: SessionId, table: TableState) {
   return SEATS.map((seat) => {
     const value = table.seats[seat];
@@ -130,6 +137,7 @@ export function insertSession(db: GtoDatabase, record: SessionRecord): DbResult<
           seatRows(record.id, record.table).map((row) => ({
             ...row,
             ...autoTopUpColumns(record.seatAutoTopUp[row.seat] ?? null),
+            stackUnverified: record.seatStackUnverified[row.seat] === true ? 1 : 0,
           })),
         )
         .run();
@@ -212,6 +220,11 @@ export function listSessions(
  * own policy. `TableState` does not carry them (they are session state, not table config —
  * ADR-0045), so rewriting them from one would invent data. `updateSessionSeatAutoTopUp` is
  * the only way a seat's policy changes after the session is created.
+ *
+ * `session_seats.stack_unverified` is NOT touched either, for exactly the same reason:
+ * `TableState` carries no notion of whether a human has confirmed a number (ADR-0078b), so
+ * this function has nothing honest to write there. `updateSessionSeats` is its only writer
+ * after `insertSession`.
  */
 export function updateSessionTable(
   db: GtoDatabase,
@@ -255,8 +268,9 @@ export function updateSessionTable(
  * Set (or clear) ONE seat's own auto top-up policy. The table-side toggle.
  *
  * Auto top-up is a per-seat preference, so this writes exactly two columns of exactly one
- * row: occupancy, player and stack are the table's business and are never touched here, and
- * neither is the session's default policy or its `updated_at`.
+ * row: occupancy, player, stack and `stack_unverified` are the table's business and are never
+ * touched here, and neither is the session's default policy or its `updated_at`. Toggling a
+ * top-up policy must not silently confirm — or unconfirm — a stack (ADR-0078b).
  *
  * `policy === null` clears the seat back to "records no policy". A policy whose `threshold`
  * differs from its `targetStack` is REFUSED, exactly as `insertSession` refuses one.
@@ -301,9 +315,9 @@ export function updateSessionSeatAutoTopUp(
 /**
  * Set ONE seat's occupancy: `ACTIVE` <-> `SITTING_OUT`. The table-side `S` toggle.
  *
- * Writes exactly one column of exactly one row: the player and the stack are the table's
- * business and are never touched here, matching `updateSessionSeatAutoTopUp` immediately
- * above. Moving a seat to `EMPTY` is `updateSessionTable`'s business (vacating a seat is a
+ * Writes exactly one column of exactly one row: the player, the stack and its
+ * `stack_unverified` mark are the table's business and are never touched here, matching
+ * `updateSessionSeatAutoTopUp` immediately above. Moving a seat to `EMPTY` is `updateSessionTable`'s business (vacating a seat is a
  * bigger operation than this toggle), not this function — only `ACTIVE` and `SITTING_OUT`
  * are accepted.
  *
@@ -332,6 +346,217 @@ export function updateSessionSeatOccupancy(
       field: 'seat',
       actual: String(seat),
     });
+  }
+  return ok(null);
+}
+
+/**
+ * One seat's stored state, as `updateSessionSeats` accepts it.
+ *
+ * Exactly the three columns the table owns: `occupancy`, `player_id`, `stack`. The auto
+ * top-up pair is deliberately absent — it is a per-seat PREFERENCE, not table state, and
+ * `updateSessionSeatAutoTopUp` remains the only way it changes (ADR-0045).
+ *
+ * `stack` is an ACTUAL entered value in integer milliBB, never a bucket (`CLAUDE.md` rule 1).
+ */
+export interface SessionSeatStateUpdate {
+  readonly seat: SeatIndex;
+  readonly occupancy: SeatOccupancy;
+  readonly playerId: PlayerId | null;
+  readonly stack: MilliBB;
+  /**
+   * `true` while `stack` above is a number nobody has confirmed since the hand that disturbed
+   * it — the 확인 필요 mark, stored rather than kept in memory (ADR-0078b, migration `0010`).
+   *
+   * REQUIRED, not optional-with-a-default: this updater is the ONLY writer of the column
+   * after the session is created, so an omitted field would silently clear a seat's warning
+   * on the next unrelated sync and present an unverified number as a confirmed one — exactly
+   * the defect the column exists to fix. Every caller states which of the two it means.
+   */
+  readonly stackUnverified: boolean;
+}
+
+/**
+ * What the one transaction each of the two narrow updaters below runs decided, WITHOUT
+ * throwing. Every member is reported before the first write of that transaction, so a
+ * `NOT_FOUND` or a backwards `updated_at` leaves the database byte-identical rather than
+ * half-applied. Anything the DATABASE refuses afterwards (a CHECK, an FK) throws instead and
+ * rolls the whole transaction back — see the note on `updateSessionSeats`.
+ */
+type SessionWriteOutcome =
+  | { readonly kind: 'OK' }
+  | { readonly kind: 'NO_SESSION' }
+  | { readonly kind: 'MISSING_SEAT'; readonly seat: SeatIndex }
+  | { readonly kind: 'BACKWARDS'; readonly storedUpdatedAt: number };
+
+/** `NO_SESSION` / `MISSING_SEAT` / `BACKWARDS` as this package's typed errors. */
+function sessionWriteError(
+  outcome: Exclude<SessionWriteOutcome, { readonly kind: 'OK' }>,
+  id: SessionId,
+  updatedAt: Timestamp,
+): DbError {
+  switch (outcome.kind) {
+    case 'NO_SESSION':
+      return dbError('NOT_FOUND', `session ${id} does not exist`, { table: 'sessions', id });
+    case 'MISSING_SEAT':
+      return dbError('NOT_FOUND', `session ${id} has no seat ${outcome.seat}`, {
+        table: 'session_seats',
+        id,
+        field: 'seat',
+        actual: String(outcome.seat),
+      });
+    case 'BACKWARDS':
+      return dbError(
+        'INVALID_INPUT',
+        `session ${id}: updatedAt must not move updated_at backwards`,
+        {
+          table: 'sessions',
+          id,
+          field: 'updated_at',
+          expected: `>= ${outcome.storedUpdatedAt}`,
+          actual: String(updatedAt),
+        },
+      );
+  }
+}
+
+/**
+ * Write the CURRENT stored state of one or more seats: occupancy, player, stack and whether
+ * that stack is still UNVERIFIED, plus the session's `updated_at`. The between-hands correction path (a manual stack re-sync, a seat
+ * sitting out, a player swap — ADR-0074's §4 persistence boundary).
+ *
+ * Narrow ON PURPOSE, in the shape of `updateSessionSeatAutoTopUp` / `updateSessionSeatOccupancy`
+ * rather than of `updateSessionTable`: sending a whole `TableState` over the wire to move one
+ * stack would let a stale client rewrite `config_json`, `hero_seat` or `hand_number`. Those
+ * three columns, and BOTH auto top-up columns of every seat, are never touched here.
+ *
+ * ALL OR NOTHING. One transaction, and every existence check runs BEFORE the first write, so a
+ * missing session or seat writes nothing at all. A value the DATABASE refuses — a negative or
+ * fractional `stack`, an `EMPTY` seat that still names a player, a `player_id` with no
+ * `players` row — throws inside the transaction, which rolls back every earlier seat in the
+ * same call. The stack CHECKs on `session_seats` are deliberately the authority on what a
+ * storable stack is; this function does not keep a second opinion about them
+ * (`CLAUDE.md` rule 1 lives in `poker-core` and in the constraint, not here).
+ *
+ * A duplicate `seat` is REFUSED rather than resolved last-write-wins: two disagreeing values
+ * for one seat is a caller bug, and silently dropping one of them is the lossy behaviour
+ * `CLAUDE.md` rule 5 forbids. An empty `seats` list writes nothing — not even `updated_at` —
+ * but still reports `NOT_FOUND` for a session that does not exist.
+ *
+ * `updated_at` never moves backwards, exactly as `closeSession` refuses to rewind it.
+ */
+export function updateSessionSeats(
+  db: GtoDatabase,
+  id: SessionId,
+  seats: readonly SessionSeatStateUpdate[],
+  updatedAt: Timestamp,
+): DbResult<null> {
+  const seen = new Set<SeatIndex>();
+  for (const seat of seats) {
+    if (seen.has(seat.seat)) {
+      return dbErr('INVALID_INPUT', `session ${id}: seat ${seat.seat} was supplied twice`, {
+        table: 'session_seats',
+        id,
+        field: 'seat',
+        actual: String(seat.seat),
+      });
+    }
+    seen.add(seat.seat);
+  }
+
+  const written = attempt({ table: 'session_seats', id }, () =>
+    db.transaction((tx): SessionWriteOutcome => {
+      const stored = tx
+        .select({ updatedAt: sessions.updatedAt })
+        .from(sessions)
+        .where(eq(sessions.id, id))
+        .all()[0];
+      if (stored === undefined) return { kind: 'NO_SESSION' };
+      if (updatedAt < stored.updatedAt) {
+        return { kind: 'BACKWARDS', storedUpdatedAt: stored.updatedAt };
+      }
+      if (seats.length === 0) return { kind: 'OK' };
+
+      // Every requested row is proven to exist BEFORE anything is written, so the loop below
+      // cannot leave some seats updated and others silently skipped.
+      const present = new Set(
+        tx
+          .select({ seat: sessionSeats.seat })
+          .from(sessionSeats)
+          .where(
+            and(
+              eq(sessionSeats.sessionId, id),
+              inArray(
+                sessionSeats.seat,
+                seats.map((seat) => seat.seat),
+              ),
+            ),
+          )
+          .all()
+          .map((row) => row.seat),
+      );
+      for (const seat of seats) {
+        if (!present.has(seat.seat)) return { kind: 'MISSING_SEAT', seat: seat.seat };
+      }
+
+      tx.update(sessions).set({ updatedAt }).where(eq(sessions.id, id)).run();
+      for (const seat of seats) {
+        tx.update(sessionSeats)
+          .set({
+            occupancy: seat.occupancy,
+            playerId: seat.playerId,
+            stack: seat.stack,
+            stackUnverified: seat.stackUnverified ? 1 : 0,
+          })
+          .where(and(eq(sessionSeats.sessionId, id), eq(sessionSeats.seat, seat.seat)))
+          .run();
+      }
+      return { kind: 'OK' };
+    }),
+  );
+  if (!written.ok) return written;
+  if (written.value.kind !== 'OK') {
+    return { ok: false, error: sessionWriteError(written.value, id, updatedAt) };
+  }
+  return ok(null);
+}
+
+/**
+ * Move (or clear) the button seat, and nothing else.
+ *
+ * Writes exactly `sessions.button_seat` and `sessions.updated_at`. `hero_seat`,
+ * `hand_number` and `config_json` are NOT touched: designating the button is a correction to
+ * where the button is, never a hand advance — the button rotation that belongs to a hand is
+ * `poker-core`'s business and reaches storage through the hand itself.
+ *
+ * `null` clears the button back to "no button designated", which is what a session that has
+ * not started a hand yet stores. A session that does not exist is `NOT_FOUND`, not a silent
+ * no-op, and `updated_at` never moves backwards.
+ */
+export function updateSessionButtonSeat(
+  db: GtoDatabase,
+  id: SessionId,
+  buttonSeat: SeatIndex | null,
+  updatedAt: Timestamp,
+): DbResult<null> {
+  const written = attempt({ table: 'sessions', id }, () =>
+    db.transaction((tx): SessionWriteOutcome => {
+      const stored = tx
+        .select({ updatedAt: sessions.updatedAt })
+        .from(sessions)
+        .where(eq(sessions.id, id))
+        .all()[0];
+      if (stored === undefined) return { kind: 'NO_SESSION' };
+      if (updatedAt < stored.updatedAt) {
+        return { kind: 'BACKWARDS', storedUpdatedAt: stored.updatedAt };
+      }
+      tx.update(sessions).set({ buttonSeat, updatedAt }).where(eq(sessions.id, id)).run();
+      return { kind: 'OK' };
+    }),
+  );
+  if (!written.ok) return written;
+  if (written.value.kind !== 'OK') {
+    return { ok: false, error: sessionWriteError(written.value, id, updatedAt) };
   }
   return ok(null);
 }

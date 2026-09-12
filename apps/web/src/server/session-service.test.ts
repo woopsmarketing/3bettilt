@@ -612,12 +612,28 @@ describe('searchPlayers', () => {
     expect(found.matches[0]?.kind).toBe('EXACT');
   });
 
-  it('returns nothing for a blank or unmatched query, and never throws', () => {
-    for (const query of ['', '   ', 'zzz']) {
+  it('returns nothing for a whitespace or unmatched query, and never throws', () => {
+    for (const query of ['   ', 'zzz']) {
       const found = searchPlayers(handle.db, query);
       expect(found.ok).toBe(true);
       if (found.ok) expect(found.matches).toEqual([]);
     }
+  });
+
+  /**
+   * An EMPTY query BROWSES rather than matching nothing: the seat player picker (WP-2) is
+   * opened with nothing typed, and a picker that showed an empty list until the user guessed
+   * a prefix would be useless. A whitespace query is still a query, and still matches nothing.
+   */
+  it('lists every player for an empty query, tagged BROWSE', () => {
+    const found = searchPlayers(handle.db, '');
+    expect(found.ok).toBe(true);
+    if (!found.ok) return;
+    expect(found.matches.length).toBeGreaterThan(0);
+    expect(found.matches.every((match) => match.kind === 'BROWSE')).toBe(true);
+    expect(found.matches.map((match) => match.nickname).sort()).toContain('Dan');
+    // Every match carries the id the picker needs to disable a player who is already seated.
+    expect(found.matches.every((match) => match.id.length > 0)).toBe(true);
   });
 
   it('refuses a non-string query', () => {

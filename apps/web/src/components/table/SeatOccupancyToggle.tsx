@@ -1,21 +1,18 @@
 'use client';
 
 /**
- * One occupied seat's ACTIVE <-> SITTING_OUT toggle, rendered under its `SeatCard` (whose
- * root is a `<button>`, so this cannot live inside it — same reason `SeatAutoTopUp` sits
- * beside it rather than in it).
+ * One occupied seat's ACTIVE <-> SITTING_OUT toggle, rendered under its `SeatCard`.
  *
  * Both this button and the `S` hotkey (`TableRoot.tsx`) call the SAME `onToggle`, so a
  * keystroke and a click can never disagree about what "toggle this seat" means.
  *
- * The toggle is immediate at the TABLE level (`packages/poker-core/src/table.ts` —
- * `setSeatOccupancy`, wired through `tableStore.ts`): a hand already in progress is a pure
- * fold over its own event log and never re-reads the table, so flipping this can never
- * touch a live hand. Only the NEXT `startHand()` sees the new occupancy (`dealtInSeats`
- * excludes SITTING_OUT structurally). That cuts BOTH ways — sitting a dealt-in seat out and
- * re-activating a seat the current hand skipped are equally "next hand" — so whenever the
- * live lineup disagrees with the stored occupancy, `pending` says so plainly ("다음 핸드부터")
- * rather than implying an effect that has not happened yet (`CLAUDE.md` rule 3, R1 MINOR-12).
+ * **THERE IS NO "다음 핸드부터" STATE ANY MORE (ADR-0073).** Sitting a seat out used to reach
+ * the table at once and the felt only on the next deal, because a hand is a fold over its own
+ * event log and never re-reads the table — so this component carried a `pending` flag saying
+ * the two disagreed. The rebase removed the disagreement rather than papering over it: a
+ * change made while a hand is live discards that hand and re-deals the corrected lineup at the
+ * same hand number, so the felt agrees with the toggle in the same commit. `copy.ts` dropped
+ * the timing union with it, and `seatOccupancyToggleState` now takes only the occupancy.
  */
 import type { SeatIndex, SeatOccupancy } from '@gto-self/poker-core';
 import { seatOccupancyToggleState } from '../../lib/table/copy.js';
@@ -25,15 +22,10 @@ export interface SeatOccupancyToggleProps {
   /** The seat's CURRENT stored occupancy. Never `EMPTY` — the caller only renders this
    * for an occupied seat, mirroring `SeatAutoTopUp`. */
   readonly occupancy: SeatOccupancy;
-  /**
-   * True while the hand in progress DISAGREES with `occupancy` — it still has a
-   * now-SITTING_OUT seat dealt in, or does not have a now-ACTIVE one. See the module doc.
-   */
-  readonly pending: boolean;
   readonly onToggle: (seat: SeatIndex) => void;
 }
 
-export function SeatOccupancyToggle({ seat, occupancy, pending, onToggle }: SeatOccupancyToggleProps) {
+export function SeatOccupancyToggle({ seat, occupancy, onToggle }: SeatOccupancyToggleProps) {
   const sittingOut = occupancy === 'SITTING_OUT';
   return (
     <div
@@ -57,7 +49,7 @@ export function SeatOccupancyToggle({ seat, occupancy, pending, onToggle }: Seat
         data-testid={`seat-${seat}-occupancy-state`}
         className={sittingOut ? 'text-dirty-500' : 'text-ink-700'}
       >
-        {seatOccupancyToggleState(occupancy, pending)}
+        {seatOccupancyToggleState(occupancy)}
       </span>
     </div>
   );

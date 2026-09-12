@@ -27,6 +27,8 @@ import {
   insertPlayer,
   insertPreset,
   insertSession,
+  listPlayers,
+  playerIdsWithExternalHud,
   searchPlayersByNicknamePrefix,
   updateSessionSeatAutoTopUp,
   updateSessionSeatOccupancy,
@@ -51,6 +53,9 @@ import { buildTableState, planSession, type SeatPlan } from '../lib/session-setu
 
 /** How many autocomplete candidates the setup form asks for. */
 export const PLAYER_SEARCH_LIMIT = 8;
+
+/** How many players the seat picker's empty-query "browse all" lists at once. */
+export const PLAYER_BROWSE_LIMIT = 50;
 
 /** Thrown to unwind the transaction. Never escapes this module. */
 class Rollback extends Error {
@@ -78,45 +83,93 @@ export interface StartSessionDeps {
 }
 
 /**
- * Resolve one seat's player: an id the user picked, an existing nickname, or a new player.
+ * The ONE identity resolution in this app: an id the user picked, an existing nickname, or a
+ * new player.
  *
  * The nickname lookup is what stops two seats — or two sessions — creating duplicate
  * players for the same person. `players.normalized_nickname` is UNIQUE, so this is a reuse
  * path rather than a race guard, but reusing deliberately means the seat points at the
  * player's whole history instead of a fresh empty one.
+ *
+ * Extracted from `resolvePlayer` (which is still the setup form's caller, and still turns a
+ * failure into a `FormIssue`) so the table's seat-player replacement can go through EXACTLY
+ * this path instead of growing a second identity system beside it (ADR-0076). It reports
+ * rather than throws, because its second caller is not inside a `Rollback` unwind.
  */
-function resolvePlayer(db: GtoDatabase, seat: SeatPlan, deps: StartSessionDeps): PlayerId {
-  if (seat.existingPlayerId !== null) {
-    const found = findPlayerById(db, asId<'Player'>(seat.existingPlayerId));
-    if (!found.ok) throw new Rollback([fromDbError(found.error, seat.seat, 'nickname')]);
-    if (found.value === null) {
-      throw new Rollback([
-        issue(
-          seat.seat,
-          'nickname',
-          'that player no longer exists; retype the nickname',
-          'NOT_FOUND',
-        ),
-      ]);
+export type ResolvePlayerResult =
+  | {
+      readonly ok: true;
+      readonly playerId: PlayerId;
+      /** The STORED nickname, which for a reused player is not necessarily what was typed. */
+      readonly nickname: string;
+      readonly created: boolean;
     }
-    return found.value.id;
+  | { readonly ok: false; readonly code: string | null; readonly message: string };
+
+export function resolveOrCreatePlayer(
+  db: GtoDatabase,
+  identity: { readonly existingPlayerId: string | null; readonly nickname: string },
+  deps: StartSessionDeps,
+): ResolvePlayerResult {
+  if (identity.existingPlayerId !== null) {
+    const found = findPlayerById(db, asId<'Player'>(identity.existingPlayerId));
+    if (!found.ok) return { ok: false, code: found.error.code, message: found.error.message };
+    if (found.value === null) {
+      return {
+        ok: false,
+        code: 'NOT_FOUND',
+        message: 'that player no longer exists; retype the nickname',
+      };
+    }
+    return {
+      ok: true,
+      playerId: found.value.id,
+      nickname: found.value.nickname,
+      created: false,
+    };
   }
 
-  const existing = findPlayerByNormalizedNickname(db, seat.nickname);
-  if (!existing.ok) throw new Rollback([fromDbError(existing.error, seat.seat, 'nickname')]);
-  if (existing.value !== null) return existing.value.id;
+  const existing = findPlayerByNormalizedNickname(db, identity.nickname);
+  if (!existing.ok)
+    return { ok: false, code: existing.error.code, message: existing.error.message };
+  if (existing.value !== null) {
+    return {
+      ok: true,
+      playerId: existing.value.id,
+      nickname: existing.value.nickname,
+      created: false,
+    };
+  }
 
   const created = createPlayer({
     id: asId<'Player'>(deps.ids.next()),
-    nickname: seat.nickname,
+    nickname: identity.nickname,
     createdAt: deps.now,
   });
-  if (!created.ok) {
-    throw new Rollback([issue(seat.seat, 'nickname', created.error.message, created.error.code)]);
-  }
+  if (!created.ok) return { ok: false, code: created.error.code, message: created.error.message };
   const inserted = insertPlayer(db, created.value);
-  if (!inserted.ok) throw new Rollback([fromDbError(inserted.error, seat.seat, 'nickname')]);
-  return inserted.value.id;
+  if (!inserted.ok) {
+    return { ok: false, code: inserted.error.code, message: inserted.error.message };
+  }
+  return {
+    ok: true,
+    playerId: inserted.value.id,
+    nickname: inserted.value.nickname,
+    created: true,
+  };
+}
+
+/** The setup form's caller: same resolution, reported as a seat-addressed `FormIssue`. */
+function resolvePlayer(db: GtoDatabase, seat: SeatPlan, deps: StartSessionDeps): PlayerId {
+  const resolved = resolveOrCreatePlayer(
+    db,
+    { existingPlayerId: seat.existingPlayerId, nickname: seat.nickname },
+    deps,
+  );
+  if (!resolved.ok) {
+    throw new Rollback([issue(seat.seat, 'nickname', resolved.message, resolved.code)]);
+  }
+  return resolved.playerId;
 }
 
 /** Internal. The optional manual HUD reading for one seat. Never required. */
@@ -230,6 +283,9 @@ export function startSession(
         table: table.value,
         autoTopUp: plan.autoTopUp,
         seatAutoTopUp: seedSeatAutoTopUp(plan.autoTopUp, plan.seats),
+        // No seat starts UNVERIFIED (ADR-0078b): every stack in a brand-new session is a
+        // number the user just typed into the setup form. `{}` is that fact, not a default.
+        seatStackUnverified: {},
         createdAt: deps.now,
         updatedAt: deps.now,
         closedAt: null,
@@ -416,17 +472,55 @@ export function updateSeatOccupancy(db: GtoDatabase, input: unknown): UpdateSeat
   return { ok: true, seat, occupancy };
 }
 
-/** The setup form's nickname autocomplete. Not on any hot path — see `docs/UX.md`. */
+/**
+ * The setup form's nickname autocomplete AND the seat player picker's "browse existing
+ * players" list. An empty query lists every player instead of matching none, so the picker
+ * can be opened with nothing typed — this is the seat dropdown's browse mode. Either way,
+ * players with an `EXTERNAL_HUD` snapshot sort first and carry `hasExternalHud: true`, so
+ * the tester can quickly find the 5-6 profiles worth picking. Not on any hot path — see
+ * `docs/UX.md`.
+ */
 export function searchPlayers(db: GtoDatabase, query: unknown): SearchPlayersResult {
   if (typeof query !== 'string') return { ok: false, message: 'search query must be text' };
   const trimmed = query.slice(0, 200);
+
+  const hudIds = playerIdsWithExternalHud(db);
+  if (!hudIds.ok) return { ok: false, message: hudIds.error.message };
+
+  if (trimmed === '') {
+    const all = listPlayers(db, { limit: PLAYER_BROWSE_LIMIT });
+    if (!all.ok) return { ok: false, message: all.error.message };
+    const matches: PlayerMatch[] = [...all.value]
+      .sort((a, b) => {
+        const aHud = hudIds.value.has(a.id) ? 0 : 1;
+        const bHud = hudIds.value.has(b.id) ? 0 : 1;
+        if (aHud !== bHud) return aHud - bHud;
+        return a.normalizedNickname.localeCompare(b.normalizedNickname);
+      })
+      .map((player) => ({
+        id: player.id,
+        nickname: player.nickname,
+        kind: 'BROWSE',
+        hasExternalHud: hudIds.value.has(player.id),
+      }));
+    return { ok: true, matches };
+  }
+
   const found = searchPlayersByNicknamePrefix(db, trimmed, { limit: PLAYER_SEARCH_LIMIT });
   if (!found.ok) return { ok: false, message: found.error.message };
-  const matches: PlayerMatch[] = found.value.map((match) => ({
-    id: match.player.id,
-    nickname: match.player.nickname,
-    kind: match.kind,
-  }));
+  const matches: PlayerMatch[] = [...found.value]
+    .sort((a, b) => {
+      const aHud = hudIds.value.has(a.player.id) ? 0 : 1;
+      const bHud = hudIds.value.has(b.player.id) ? 0 : 1;
+      if (aHud !== bHud) return aHud - bHud;
+      return 0;
+    })
+    .map((match) => ({
+      id: match.player.id,
+      nickname: match.player.nickname,
+      kind: match.kind,
+      hasExternalHud: hudIds.value.has(match.player.id),
+    }));
   return { ok: true, matches };
 }
 

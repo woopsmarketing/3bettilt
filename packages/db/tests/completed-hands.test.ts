@@ -81,6 +81,7 @@ describe('completed hand persistence', () => {
           closedAt: null,
           autoTopUp: null,
           seatAutoTopUp: {},
+          seatStackUnverified: {},
         }),
       );
     }

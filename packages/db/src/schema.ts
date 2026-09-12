@@ -41,6 +41,7 @@ import { Money, type Id } from '@gto-self/shared';
 import {
   BET_SIZE_BUCKETS,
   BET_SIZE_KINDS,
+  EXTERNAL_HUD_STAT_KEYS,
   HUD_STAT_KEYS,
   LINEUP_SHAPES,
   MAX_CENTI_PERCENT,
@@ -276,6 +277,114 @@ export const playerHudSnapshotStats = sqliteTable(
       sql`${isIntegral(t.valueCentipercent)} and ${t.valueCentipercent} >= 0 and ${t.valueCentipercent} <= ${sql.raw(String(MAX_CENTI_PERCENT))}`,
     ),
     check('player_hud_snapshot_stats_ordinal_non_negative', sql`${t.ordinal} >= 0`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// player_external_hud_snapshots (+ readings) — WP-K
+// ---------------------------------------------------------------------------
+
+/**
+ * A LIFETIME reading imported in bulk from a third-party HUD, as opposed to
+ * `player_hud_snapshots` (`MANUAL_HUD_ENTRY`, a session-scale reading typed in by hand).
+ * See `@gto-self/player-core`'s `externalHud.ts` module doc for why this is a sibling
+ * table rather than a widened `player_hud_snapshots`.
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE, exactly like `player_hud_snapshots` — see the
+ * `player_external_hud_snapshots_no_update`/`_no_delete` triggers in this table's own
+ * migration (drizzle-kit cannot emit a trigger, so they are hand-authored there, same as
+ * `0001` and `0007`).
+ *
+ * `sample_n` is nullable and stays `NULL` for every row `WP-K` writes: the source
+ * screenshots show a lifetime total but not a hand count, and one is never fabricated.
+ * `NULL` here is a fact about what we don't know, not a confidence signal by itself —
+ * `adaptive-core` gives an `EXTERNAL_HUD` reading real confidence regardless.
+ *
+ * Permanently separate from `player_hud_snapshots` and `player_observations`: no view
+ * averages this with either, and there must never be one.
+ */
+export const playerExternalHudSnapshots = sqliteTable(
+  'player_external_hud_snapshots',
+  {
+    id: text('id').primaryKey(),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    /** Single-member union in the domain; the CHECK keeps it self-describing in storage. */
+    source: text('source').notNull(),
+    /** Single-member union today: every external profile imported is a lifetime total. */
+    scope: text('scope').notNull(),
+    /** Single-member union today: `WP-K` only imports profiles described as established. */
+    reliability: text('reliability').notNull(),
+    recordedAt: integer('recorded_at').notNull(),
+    /** Always NULL today — see the table doc. Never defaulted to 0 or a guessed value. */
+    sampleN: integer('sample_n'),
+    /** Groups every player row one bulk-import run wrote, for audit only. */
+    importBatchId: text('import_batch_id').notNull(),
+  },
+  (t) => [
+    index('player_external_hud_snapshots_player_recorded_idx').on(t.playerId, t.recordedAt, t.id),
+    index('player_external_hud_snapshots_batch_idx').on(t.importBatchId),
+    check('player_external_hud_snapshots_source', sql`${t.source} = 'EXTERNAL_HUD'`),
+    check('player_external_hud_snapshots_scope', sql`${t.scope} = 'LIFETIME'`),
+    check('player_external_hud_snapshots_reliability', sql`${t.reliability} = 'ESTABLISHED'`),
+    check('player_external_hud_snapshots_recorded_at_range', timeWindow(t.recordedAt)),
+    check(
+      'player_external_hud_snapshots_sample_n_range',
+      sql`${t.sampleN} is null or (${isIntegral(t.sampleN)} and ${t.sampleN} >= 0 and ${t.sampleN} <= ${sql.raw(String(MAX_HAND_SAMPLE))})`,
+    ),
+    check(
+      'player_external_hud_snapshots_import_batch_not_empty',
+      sql`length(${t.importBatchId}) > 0`,
+    ),
+  ],
+);
+
+/**
+ * One stat reading inside one external HUD snapshot. `stat_key` is the generic 10-member
+ * `ExternalHudStatKey` vocabulary (`@gto-self/player-core`), NOT `HudStatKey` — deliberately
+ * a different CHECK list, so this table's own street-blind `CBET_ANY_STREET` etc. can never
+ * be confused with `player_hud_snapshot_stats`' per-street keys.
+ *
+ * A stat the source did not report gets NO ROW here, never a `NULL`/`0` value — omission is
+ * how "unknown" survives end to end (`CLAUDE.md` rule 3).
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE, same reasoning as `player_hud_snapshot_stats`.
+ */
+export const playerExternalHudSnapshotStats = sqliteTable(
+  'player_external_hud_snapshot_stats',
+  {
+    snapshotId: text('snapshot_id')
+      .notNull()
+      .references(() => playerExternalHudSnapshots.id, {
+        onDelete: 'cascade',
+        onUpdate: 'restrict',
+      }),
+    statKey: text('stat_key').notNull(),
+    enteredText: text('entered_text').notNull(),
+    /** Hundredths of a percentage point, 0..10000. NOT money, and never a float. */
+    valueCentipercent: integer('value_centipercent').notNull(),
+    ordinal: integer('ordinal').notNull(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'player_external_hud_snapshot_stats_pk',
+      columns: [t.snapshotId, t.statKey],
+    }),
+    uniqueIndex('player_external_hud_snapshot_stats_ordinal_unique').on(t.snapshotId, t.ordinal),
+    check(
+      'player_external_hud_snapshot_stats_key',
+      sql`${t.statKey} in ${inList(EXTERNAL_HUD_STAT_KEYS)}`,
+    ),
+    check(
+      'player_external_hud_snapshot_stats_entered_text_not_empty',
+      sql`length(${t.enteredText}) > 0`,
+    ),
+    check(
+      'player_external_hud_snapshot_stats_value_range',
+      sql`${isIntegral(t.valueCentipercent)} and ${t.valueCentipercent} >= 0 and ${t.valueCentipercent} <= ${sql.raw(String(MAX_CENTI_PERCENT))}`,
+    ),
+    check('player_external_hud_snapshot_stats_ordinal_non_negative', sql`${t.ordinal} >= 0`),
   ],
 );
 
@@ -522,6 +631,21 @@ export const sessionSeats = sqliteTable(
      * would be a stub (`CLAUDE.md` rule 5).
      */
     autoTopUpTargetStack: integer('auto_top_up_target_stack'),
+    /**
+     * `1` while `stack` is a number nobody has confirmed since the hand that disturbed it
+     * (ADR-0078b): the seat is showing its pre-hand figure with a 확인 필요 mark on it, and
+     * the mark has to survive a reload or an UNVERIFIED number renders as a confirmed one.
+     *
+     * NOT NULL with a `0` default, unlike the nullable `auto_top_up_*` pair above: "no
+     * policy recorded" is a real third state for auto top-up, while a stack is either
+     * confirmed or it is not. Every row written before migration `0010` is `0` — the safe
+     * reading, because before that migration a corrected stack was the only stack the seat
+     * could be storing. 0/1 rather than a boolean column so the integrality CHECK reads
+     * exactly like its neighbours.
+     *
+     * Cleared where the in-memory mark is cleared: when the user states the stack.
+     */
+    stackUnverified: integer('stack_unverified').notNull().default(0),
   },
   (t) => [
     primaryKey({ name: 'session_seats_pk', columns: [t.sessionId, t.seat] }),
@@ -551,6 +675,10 @@ export const sessionSeats = sqliteTable(
     check(
       'session_seats_auto_top_up_pair',
       sql`(${t.autoTopUpEnabled} is null and ${t.autoTopUpTargetStack} is null) or (${t.autoTopUpEnabled} is not null and ${t.autoTopUpTargetStack} is not null)`,
+    ),
+    check(
+      'session_seats_stack_unverified_boolean',
+      sql`${isIntegral(t.stackUnverified)} and ${t.stackUnverified} in (0, 1)`,
     ),
   ],
 );
@@ -1195,5 +1323,411 @@ export const playerModelShowEvidence = sqliteTable(
     check('player_model_show_evidence_outcome', sql`${t.outcome} in ${inList(SHOW_OUTCOMES)}`),
     check('player_model_show_evidence_won_gross_range', moneyRange(t.wonGross)),
     check('player_model_show_evidence_won_gross_non_negative', sql`${t.wonGross} >= 0`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// strategy_decision_traces
+// ---------------------------------------------------------------------------
+
+/** Caller-supplied branded id for one Hero decision point's stored REFERENCE trace. */
+export type StrategyDecisionTraceId = Id<'StrategyDecisionTrace'>;
+
+/** The only strategy mode that exists today (Strategy A+B). */
+export const STRATEGY_TRACE_MODES = ['REFERENCE'] as const;
+export type StrategyTraceMode = (typeof STRATEGY_TRACE_MODES)[number];
+
+/** ADR-0056's provenance vocabulary, applied per-trace to `primaryAction`'s recommendation. */
+export const STRATEGY_TRACE_PROVENANCE_QUALITIES = ['SOURCE', 'DERIVED', 'HEURISTIC'] as const;
+export type StrategyTraceProvenanceQuality = (typeof STRATEGY_TRACE_PROVENANCE_QUALITIES)[number];
+
+/** How this trace reached storage. `ONLINE` — generated as the hand was played/persisted. */
+export const STRATEGY_TRACE_SOURCES = ['ONLINE', 'BACKFILL'] as const;
+export type StrategyTraceSource = (typeof STRATEGY_TRACE_SOURCES)[number];
+
+/** `poker-core`'s street enum, applied to the decision point's street. */
+export const STRATEGY_TRACE_STREETS = ['PREFLOP', 'FLOP', 'TURN', 'RIVER'] as const;
+export type StrategyTraceStreet = (typeof STRATEGY_TRACE_STREETS)[number];
+
+/** `poker-core`'s action vocabulary, applied to the Hero action actually taken. */
+export const STRATEGY_TRACE_ACTIONS = ['FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN'] as const;
+export type StrategyTraceAction = (typeof STRATEGY_TRACE_ACTIONS)[number];
+
+/** `0 <= column <= 10000` — a basis-points fraction (ADR-0016/ADR-0056's integer convention). */
+const bpsRange = (column: AnySQLiteColumn): SQL =>
+  sql`${isIntegral(column)} and ${column} >= 0 and ${column} <= 10000`;
+
+/**
+ * One Hero decision point in a COMPLETED hand: what the REFERENCE strategy engine
+ * recommended at that moment, computed by replaying `hand_events` after the hand was
+ * persisted (that generation logic lives elsewhere — this table only stores the result).
+ *
+ * `id` is `${handId}:${commandSeq}`, caller-supplied and stable, exactly like `hands.id`
+ * (ADR-0007) — never autoincrement. `(hand_id, command_seq)` is additionally indexed
+ * UNIQUE so the natural key cannot be duplicated under a different `id`.
+ *
+ * `actions_json` is a JSON-encoded array of `{action, frequencyBps, toAmountMbb}` rows;
+ * decoding it into `player-core`/`strategy-core` types is a repository concern, not a
+ * storage concern (ADR-0038's case for a document over a table applies here as it does to
+ * `player_model_show_evidence.spot_keys_json`).
+ *
+ * `heroEquityBps`, `potOddsBps` and `spr` are nullable: a decision point does not always
+ * have an equity/pot-odds/SPR figure available (e.g. a preflop-only spot with no board).
+ * `spr` is stored as a plain nullable integer with no invented scaling — `poker-core`'s own
+ * `spr()` returns a float ratio and has no precedent integer encoding in this schema; a
+ * later phase that needs sub-integer precision adds it deliberately, in its own migration.
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE (same posture as `player_model_snapshots` and the
+ * rest of the derived layer, ADR-0059/ADR-0060's "completed hand history is immutable"
+ * extended to this derived-but-permanent per-decision record): a trace is recomputed as a
+ * NEW row (a new `strategy_version`), never rewritten in place.
+ */
+export const strategyDecisionTraces = sqliteTable(
+  'strategy_decision_traces',
+  {
+    id: text('id').primaryKey(),
+    handId: text('hand_id')
+      .notNull()
+      .references(() => hands.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    commandSeq: integer('command_seq').notNull(),
+    street: text('street').notNull(),
+    heroSeat: integer('hero_seat').notNull(),
+    strategyMode: text('strategy_mode').notNull(),
+    strategyVersion: text('strategy_version').notNull(),
+    family: text('family').notNull(),
+    /** JSON array of `{action, frequencyBps, toAmountMbb}`. Decoded by the repository. */
+    actionsJson: text('actions_json').notNull(),
+    primaryAction: text('primary_action').notNull(),
+    /** The recommended raise/bet-to amount, milliBB. NULL for FOLD/CHECK/CALL recommendations. */
+    recommendedToAmountMbb: integer('recommended_to_amount_mbb'),
+    heroEquityBps: integer('hero_equity_bps'),
+    potOddsBps: integer('pot_odds_bps'),
+    /** A plain integer ratio, no invented scaling — see the table doc comment. */
+    spr: integer('spr'),
+    provenanceQuality: text('provenance_quality').notNull(),
+    environmentStatus: text('environment_status').notNull(),
+    actualHeroAction: text('actual_hero_action').notNull(),
+    computedAt: integer('computed_at').notNull(),
+    source: text('source').notNull(),
+  },
+  (t) => [
+    uniqueIndex('strategy_decision_traces_hand_command_unique').on(t.handId, t.commandSeq),
+    check('strategy_decision_traces_id_not_empty', sql`length(${t.id}) > 0`),
+    check('strategy_decision_traces_command_seq_non_negative', sql`${t.commandSeq} >= 0`),
+    check('strategy_decision_traces_street', sql`${t.street} in ${inList(STRATEGY_TRACE_STREETS)}`),
+    check('strategy_decision_traces_hero_seat_range', seatRange(t.heroSeat)),
+    check(
+      'strategy_decision_traces_strategy_mode',
+      sql`${t.strategyMode} in ${inList(STRATEGY_TRACE_MODES)}`,
+    ),
+    check(
+      'strategy_decision_traces_strategy_version_not_empty',
+      sql`length(${t.strategyVersion}) > 0`,
+    ),
+    check('strategy_decision_traces_family_not_empty', sql`length(${t.family}) > 0`),
+    check('strategy_decision_traces_actions_json_not_empty', sql`length(${t.actionsJson}) > 0`),
+    check(
+      'strategy_decision_traces_primary_action',
+      sql`${t.primaryAction} in ${inList(STRATEGY_TRACE_ACTIONS)}`,
+    ),
+    check(
+      'strategy_decision_traces_recommended_to_amount_range',
+      sql`${t.recommendedToAmountMbb} is null or (${moneyRange(t.recommendedToAmountMbb)} and ${t.recommendedToAmountMbb} >= 0)`,
+    ),
+    check(
+      'strategy_decision_traces_hero_equity_range',
+      sql`${t.heroEquityBps} is null or (${bpsRange(t.heroEquityBps)})`,
+    ),
+    check(
+      'strategy_decision_traces_pot_odds_range',
+      sql`${t.potOddsBps} is null or (${bpsRange(t.potOddsBps)})`,
+    ),
+    check(
+      'strategy_decision_traces_spr_range',
+      sql`${t.spr} is null or (${isIntegral(t.spr)} and ${t.spr} >= 0)`,
+    ),
+    check(
+      'strategy_decision_traces_provenance_quality',
+      sql`${t.provenanceQuality} in ${inList(STRATEGY_TRACE_PROVENANCE_QUALITIES)}`,
+    ),
+    check(
+      'strategy_decision_traces_environment_status_not_empty',
+      sql`length(${t.environmentStatus}) > 0`,
+    ),
+    check(
+      'strategy_decision_traces_actual_hero_action',
+      sql`${t.actualHeroAction} in ${inList(STRATEGY_TRACE_ACTIONS)}`,
+    ),
+    check('strategy_decision_traces_computed_at_range', timeWindow(t.computedAt)),
+    check('strategy_decision_traces_source', sql`${t.source} in ${inList(STRATEGY_TRACE_SOURCES)}`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// skipped_hands
+// ---------------------------------------------------------------------------
+
+/** Caller-supplied branded id for one skipped-hand audit row. */
+export type SkippedHandId = Id<'SkippedHand'>;
+
+/**
+ * WHY the user skipped the hand (ADR-0073, added additively by `0009`).
+ *
+ * `QUICK_SKIP` — "this hand really happened, I just did not enter the rest of it".
+ * `HERO_FOLDED_UNOBSERVED` — Hero was dealt in and had already FOLDED at skip time, so the
+ * rest of the hand played out without us and is genuinely unobserved.
+ *
+ * The column is NULLABLE and `NULL` is NOT a third member: it means "recorded before this
+ * column existed", i.e. a row whose reason was never captured. Every row written from now on
+ * carries a value — the client derives it from the view and always sends one.
+ */
+export const SKIPPED_HAND_REASONS = ['QUICK_SKIP', 'HERO_FOLDED_UNOBSERVED'] as const;
+export type SkippedHandReason = (typeof SKIPPED_HAND_REASONS)[number];
+
+/**
+ * A best-effort audit row for a hand the user chose to SKIP rather than play or persist.
+ *
+ * A skipped hand never becomes a `hands` row and never feeds analysis — there is
+ * deliberately no FK to `hands` here, and nothing joins this table against the completed
+ * hand history. It exists only so a session's skip count is auditable.
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE: a skip is a historical fact about what the user
+ * did, exactly like `analysis_runs` records that a run happened.
+ */
+export const skippedHands = sqliteTable(
+  'skipped_hands',
+  {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    handNumber: integer('hand_number').notNull(),
+    skippedAt: integer('skipped_at').notNull(),
+    /**
+     * Why the hand was skipped, or NULL on a row written before `0009` existed. NULL is
+     * "not recorded", never a third reason and never a default — see `SKIPPED_HAND_REASONS`.
+     */
+    reason: text('reason'),
+  },
+  (t) => [
+    index('skipped_hands_session_idx').on(t.sessionId, t.skippedAt, t.id),
+    check('skipped_hands_id_not_empty', sql`length(${t.id}) > 0`),
+    check('skipped_hands_hand_number_non_negative', sql`${t.handNumber} >= 0`),
+    check('skipped_hands_skipped_at_range', timeWindow(t.skippedAt)),
+    check(
+      'skipped_hands_reason',
+      sql`${t.reason} is null or ${t.reason} in ${inList(SKIPPED_HAND_REASONS)}`,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// adaptive_strategy_traces
+// ---------------------------------------------------------------------------
+
+/** Caller-supplied branded id for one Hero decision point's stored ADAPTIVE trace. */
+export type AdaptiveStrategyTraceId = Id<'AdaptiveStrategyTrace'>;
+
+/**
+ * Did the composition layer actually move anything?
+ *
+ * `ADAPTED` — at least one rule cleared its confidence gate and the recommendation differs
+ * from (or was deliberately re-derived over) the REFERENCE baseline.
+ * `INSUFFICIENT_DATA` — nothing cleared the gate; the stored `adaptive_actions_json` IS the
+ * baseline, verbatim. No adaptive number is ever invented in that state (`CLAUDE.md` rule 2).
+ */
+export const ADAPTIVE_TRACE_STATUSES = ['ADAPTED', 'INSUFFICIENT_DATA'] as const;
+export type AdaptiveTraceStatus = (typeof ADAPTIVE_TRACE_STATUSES)[number];
+
+/**
+ * How this trace reached storage. `LIVE` — composed at the table while the hand was being
+ * played. `BACKFILL` — recomputed later over already-persisted history.
+ *
+ * Deliberately NOT `STRATEGY_TRACE_SOURCES`: that vocabulary's `ONLINE` member names the
+ * post-hand replay path of `strategy_decision_traces`, which is a different provenance from
+ * an in-session composition. Two vocabularies, because they mean two different things.
+ */
+export const ADAPTIVE_TRACE_SOURCES = ['LIVE', 'BACKFILL'] as const;
+export type AdaptiveTraceSource = (typeof ADAPTIVE_TRACE_SOURCES)[number];
+
+/**
+ * One Hero decision point's DERIVED ADAPTIVE recommendation: what the composition layer
+ * proposed after folding opponent-specific evidence into the REFERENCE baseline, together
+ * with the whole audit trail that produced it.
+ *
+ * **A SEPARATE TABLE from `strategy_decision_traces`, deliberately.** That table's
+ * `strategy_mode` CHECK is `in ('REFERENCE')` and STAYS that way: a REFERENCE trace is what
+ * the solver-facing engine says about a spot with no knowledge of who is sitting in it, and
+ * an ADAPTIVE trace is a derived opinion about one specific opponent. Widening the existing
+ * CHECK would have made the two indistinguishable to every consumer that reads that table
+ * expecting player-independent baselines — including the analysis layer. Two tables cannot
+ * be confused; one table with a mode column can. This row instead POINTS AT its baseline
+ * through `reference_trace_id`, so the derivation is auditable in both directions.
+ *
+ * `id` is `${handId}:${commandSeq}:ADAPTIVE`, caller-supplied and stable, exactly like
+ * `hands.id` (ADR-0007) — never autoincrement. `(hand_id, command_seq)` is additionally
+ * indexed UNIQUE so the natural key cannot be duplicated under a different `id`.
+ *
+ * Five JSON documents carry the audit trail, decoded into typed structures by
+ * `rows.ts` and never cast: `baseline_actions_json` / `adaptive_actions_json`
+ * (`{action, frequencyBps, toAmountMbb}` rows, before and after), `frequency_delta_json`
+ * (per-kind SIGNED bps), `adjustments_json` (every rule that fired, with its stat, sample
+ * size, confidence, sources and reason — `CLAUDE.md` rule 3: the evidence is stored, not
+ * just the conclusion), and the two snapshot-id maps that pin exactly which manual HUD row
+ * and which learned model snapshot each opponent's numbers came from.
+ *
+ * `reference_trace_id` is NULLABLE: a LIVE composition happens while the hand is still in
+ * progress, so the `strategy_decision_traces` row for that decision point may not exist yet
+ * (it is written from the completed-hand replay). A FK that could not be satisfied at write
+ * time would have forced the caller to either drop the link or invent a row.
+ *
+ * `primary_villain_player_id` is NULLABLE for the same class of reason: a heads-up-to-the-
+ * pot spot always has one, an `INSUFFICIENT_DATA` trace over an unknown lineup may not.
+ *
+ * INSERT-ONLY, ENFORCED BY THE DATABASE (`0007_adaptive_strategy_traces.sql`, same posture
+ * as `strategy_decision_traces` and the rest of the derived layer): a recomposition is a
+ * NEW row under a new `adaptive_policy_version`, never a rewrite of an existing one. What
+ * the app recommended at the moment the user acted is a historical fact.
+ */
+export const adaptiveStrategyTraces = sqliteTable(
+  'adaptive_strategy_traces',
+  {
+    id: text('id').primaryKey(),
+    handId: text('hand_id')
+      .notNull()
+      .references(() => hands.id, { onDelete: 'restrict', onUpdate: 'restrict' }),
+    commandSeq: integer('command_seq').notNull(),
+    /** The `strategy_decision_traces` row this was derived from, when one exists yet. */
+    referenceTraceId: text('reference_trace_id').references(() => strategyDecisionTraces.id, {
+      onDelete: 'restrict',
+      onUpdate: 'restrict',
+    }),
+    street: text('street').notNull(),
+    heroSeat: integer('hero_seat').notNull(),
+    status: text('status').notNull(),
+    adaptivePolicyVersion: text('adaptive_policy_version').notNull(),
+    primaryVillainPlayerId: text('primary_villain_player_id').references(() => players.id, {
+      onDelete: 'restrict',
+      onUpdate: 'restrict',
+    }),
+    opponentCount: integer('opponent_count').notNull(),
+    /** JSON array of `{action, frequencyBps, toAmountMbb}` — the REFERENCE mix, verbatim. */
+    baselineActionsJson: text('baseline_actions_json').notNull(),
+    /** JSON array of `{action, frequencyBps, toAmountMbb}` — the composed mix. */
+    adaptiveActionsJson: text('adaptive_actions_json').notNull(),
+    /** JSON array of `{action, deltaBps}` — per-kind SIGNED movement, adaptive minus baseline. */
+    frequencyDeltaJson: text('frequency_delta_json').notNull(),
+    baselinePrimaryAction: text('baseline_primary_action').notNull(),
+    adaptivePrimaryAction: text('adaptive_primary_action').notNull(),
+    /** The baseline bet/raise-to amount, milliBB. NULL for a FOLD/CHECK/CALL baseline. */
+    baselineToAmountMbb: integer('baseline_to_amount_mbb'),
+    /** The composed bet/raise-to amount, milliBB. NULL when no size was recommended. */
+    adaptiveToAmountMbb: integer('adaptive_to_amount_mbb'),
+    /** Index into the engine's pot-fraction buckets; `-1` is ALL_IN. NULL when unsized. */
+    baselineSizingBucket: integer('baseline_sizing_bucket'),
+    adaptiveSizingBucket: integer('adaptive_sizing_bucket'),
+    /** Total probability mass moved, in bps: `sum(|adaptive - baseline|) / 2`. */
+    totalShiftBps: integer('total_shift_bps').notNull(),
+    /** 1 when the global shift cap actually bound and scaled the contributions down. */
+    capApplied: integer('cap_applied').notNull(),
+    /** JSON array of every rule that fired, with its full evidence. */
+    adjustmentsJson: text('adjustments_json').notNull(),
+    /** JSON array of `{playerId, snapshotId}` — which manual HUD row each opponent used. */
+    manualHudSnapshotIdsJson: text('manual_hud_snapshot_ids_json').notNull(),
+    /** JSON array of `{playerId, snapshotId}` — which learned snapshot each opponent used. */
+    playerModelSnapshotIdsJson: text('player_model_snapshot_ids_json').notNull(),
+    /** The PRIMARY villain's learned-snapshot `modelVersion`. NULL when none was used. */
+    playerModelVersion: integer('player_model_version'),
+    computedAt: integer('computed_at').notNull(),
+    source: text('source').notNull(),
+  },
+  (t) => [
+    uniqueIndex('adaptive_strategy_traces_hand_command_unique').on(t.handId, t.commandSeq),
+    check('adaptive_strategy_traces_id_not_empty', sql`length(${t.id}) > 0`),
+    check(
+      'adaptive_strategy_traces_command_seq_non_negative',
+      sql`${isIntegral(t.commandSeq)} and ${t.commandSeq} >= 0`,
+    ),
+    check(
+      'adaptive_strategy_traces_reference_trace_id_not_empty',
+      sql`${t.referenceTraceId} is null or length(${t.referenceTraceId}) > 0`,
+    ),
+    check('adaptive_strategy_traces_street', sql`${t.street} in ${inList(STRATEGY_TRACE_STREETS)}`),
+    check(
+      'adaptive_strategy_traces_hero_seat_range',
+      sql`${isIntegral(t.heroSeat)} and ${seatRange(t.heroSeat)}`,
+    ),
+    check(
+      'adaptive_strategy_traces_status',
+      sql`${t.status} in ${inList(ADAPTIVE_TRACE_STATUSES)}`,
+    ),
+    check(
+      'adaptive_strategy_traces_policy_version_not_empty',
+      sql`length(${t.adaptivePolicyVersion}) > 0`,
+    ),
+    check(
+      'adaptive_strategy_traces_primary_villain_not_empty',
+      sql`${t.primaryVillainPlayerId} is null or length(${t.primaryVillainPlayerId}) > 0`,
+    ),
+    check('adaptive_strategy_traces_opponent_count_range', countRange(t.opponentCount)),
+    check(
+      'adaptive_strategy_traces_baseline_actions_json_not_empty',
+      sql`length(${t.baselineActionsJson}) > 0`,
+    ),
+    check(
+      'adaptive_strategy_traces_adaptive_actions_json_not_empty',
+      sql`length(${t.adaptiveActionsJson}) > 0`,
+    ),
+    check(
+      'adaptive_strategy_traces_frequency_delta_json_not_empty',
+      sql`length(${t.frequencyDeltaJson}) > 0`,
+    ),
+    check(
+      'adaptive_strategy_traces_baseline_primary_action',
+      sql`${t.baselinePrimaryAction} in ${inList(STRATEGY_TRACE_ACTIONS)}`,
+    ),
+    check(
+      'adaptive_strategy_traces_adaptive_primary_action',
+      sql`${t.adaptivePrimaryAction} in ${inList(STRATEGY_TRACE_ACTIONS)}`,
+    ),
+    check(
+      'adaptive_strategy_traces_baseline_to_amount_range',
+      sql`${t.baselineToAmountMbb} is null or (${moneyRange(t.baselineToAmountMbb)} and ${t.baselineToAmountMbb} >= 0)`,
+    ),
+    check(
+      'adaptive_strategy_traces_adaptive_to_amount_range',
+      sql`${t.adaptiveToAmountMbb} is null or (${moneyRange(t.adaptiveToAmountMbb)} and ${t.adaptiveToAmountMbb} >= 0)`,
+    ),
+    check(
+      'adaptive_strategy_traces_baseline_sizing_bucket_range',
+      sql`${t.baselineSizingBucket} is null or (${isIntegral(t.baselineSizingBucket)} and ${t.baselineSizingBucket} >= -1 and ${t.baselineSizingBucket} <= 7)`,
+    ),
+    check(
+      'adaptive_strategy_traces_adaptive_sizing_bucket_range',
+      sql`${t.adaptiveSizingBucket} is null or (${isIntegral(t.adaptiveSizingBucket)} and ${t.adaptiveSizingBucket} >= -1 and ${t.adaptiveSizingBucket} <= 7)`,
+    ),
+    check('adaptive_strategy_traces_total_shift_bps_range', bpsRange(t.totalShiftBps)),
+    check(
+      'adaptive_strategy_traces_cap_applied_boolean',
+      sql`${isIntegral(t.capApplied)} and ${t.capApplied} in (0, 1)`,
+    ),
+    check(
+      'adaptive_strategy_traces_adjustments_json_not_empty',
+      sql`length(${t.adjustmentsJson}) > 0`,
+    ),
+    check(
+      'adaptive_strategy_traces_manual_hud_ids_json_not_empty',
+      sql`length(${t.manualHudSnapshotIdsJson}) > 0`,
+    ),
+    check(
+      'adaptive_strategy_traces_model_snapshot_ids_json_not_empty',
+      sql`length(${t.playerModelSnapshotIdsJson}) > 0`,
+    ),
+    check(
+      'adaptive_strategy_traces_player_model_version_positive',
+      sql`${t.playerModelVersion} is null or (${isIntegral(t.playerModelVersion)} and ${t.playerModelVersion} >= 1)`,
+    ),
+    check('adaptive_strategy_traces_computed_at_range', timeWindow(t.computedAt)),
+    check('adaptive_strategy_traces_source', sql`${t.source} in ${inList(ADAPTIVE_TRACE_SOURCES)}`),
   ],
 );

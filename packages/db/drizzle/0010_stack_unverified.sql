@@ -1,0 +1,44 @@
+-- `session_seats.stack_unverified` — is this seat's stored `stack` a number nobody has
+-- confirmed since the hand that disturbed it? (ADR-0078(b)).
+--
+-- Purely ADDITIVE. The flag was memory-only before this migration, so a reload rendered an
+-- UNVERIFIED stack exactly like a confirmed one, with no warning on it. It is stored now so
+-- the 확인 필요 mark survives the reload that the number itself already survived.
+--
+-- NOT NULL DEFAULT 0, unlike the nullable `auto_top_up_*` pair `0003` added: "records no
+-- policy" is a real third state for auto top-up, while a stack is either confirmed or it is
+-- not. `0` is the SAFE reading for every pre-existing row, and it is also the true one: the
+-- unverified mark did not exist before this migration, so every stack already in the table
+-- was either typed by the user or settled from a completed hand. `0` therefore asserts
+-- nothing that was not already the case — it is not a backfilled guess (`CLAUDE.md` rule 5).
+-- The 0/1 integer-boolean convention and the `typeof(...) = 'integer'` guard are copied from
+-- `session_seats.auto_top_up_enabled` verbatim, so the two columns cannot drift apart.
+--
+-- HAND-WRITTEN, NOT GENERATED, for exactly the reasons `0003_per_seat_auto_top_up.sql` and
+-- `0009_skipped_hand_reason.sql` record. `drizzle-kit generate` emitted the SQLite 12-step
+-- recreate (`__new_session_seats` + `DROP TABLE session_seats` + rename) for this diff, and
+-- that output is destructive here on three counts:
+--
+--   1. Its `INSERT INTO __new_session_seats(..., "stack_unverified") SELECT ...,
+--      "stack_unverified" FROM "session_seats"` selects the column being ADDED, so it fails
+--      with `no such column` on any database, empty or not.
+--   2. Its `PRAGMA foreign_keys=OFF` is a NO-OP: drizzle's migrator runs every migration
+--      inside one transaction and SQLite ignores that pragma while a transaction is open
+--      (ADR-0046). `DROP TABLE session_seats` would therefore run with foreign keys
+--      ENFORCED, against a table both `hand_players` and every session's seats hang off.
+--   3. It drops and re-creates `session_seats_player_idx`. `ALTER TABLE ... ADD COLUMN`
+--      leaves the index — and the two foreign keys, and all eight CHECK constraints —
+--      exactly as they were.
+--
+-- NOT REVERSIBLE BY AN OBVIOUS INVERSE. SQLite refuses `DROP COLUMN` on a column named by a
+-- CHECK constraint, and `session_seats_stack_unverified_boolean` names this one, so undoing
+-- this migration means the same 12-step table recreate this file exists to avoid. This
+-- repository has no down-migrations, so the note is INFORMATIONAL: it is here so that
+-- whoever first writes one knows this column needs the recreate (preserving both FKs, all
+-- CHECKs and `session_seats_player_idx`) rather than a one-line `DROP COLUMN`.
+--
+-- PG: `ALTER TABLE session_seats ADD COLUMN stack_unverified boolean NOT NULL DEFAULT
+-- false`, dropping the `typeof(...)` term and the `in (0, 1)` term, which `boolean` makes
+-- redundant.
+
+ALTER TABLE `session_seats` ADD `stack_unverified` integer DEFAULT 0 NOT NULL CONSTRAINT "session_seats_stack_unverified_boolean" CHECK(typeof("session_seats"."stack_unverified") = 'integer' and "session_seats"."stack_unverified" in (0, 1));

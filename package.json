@@ -9,7 +9,9 @@
   },
   "scripts": {
     "dev": "pnpm --filter @gto-self/web dev",
+    "dev:fishtilt": "pnpm --filter @gto-self/fishtilt dev",
     "build": "pnpm --filter @gto-self/web build",
+    "build:fishtilt": "pnpm --filter @gto-self/fishtilt build",
     "typecheck": "pnpm -r --parallel typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -19,8 +21,12 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "e2e": "pnpm --filter @gto-self/web e2e",
+    "e2e:fishtilt": "pnpm --filter @gto-self/fishtilt e2e",
     "db:generate": "pnpm --filter @gto-self/db db:generate",
     "db:migrate": "pnpm --filter @gto-self/db db:migrate",
+    "strategy:backfill": "pnpm --filter @gto-self/web strategy:backfill",
+    "adaptive:backfill": "pnpm --filter @gto-self/web adaptive:backfill",
+    "players:import-external": "pnpm --filter @gto-self/web players:import-external",
     "verify": "pnpm typecheck && pnpm test && pnpm lint && pnpm lint:licences && pnpm build",
     "lint:licences": "node scripts/check-licence-hygiene.mjs"
   },

@@ -1,0 +1,40 @@
+-- `skipped_hands.reason` — WHY a hand was skipped (ADR-0073).
+--
+-- Purely ADDITIVE. Every row written before this migration keeps `NULL`, which means "the
+-- reason was never recorded", NOT a third reason and NOT a default (`CLAUDE.md` rule 3 and
+-- rule 5). The column therefore stays NULLABLE forever; only rows written from now on carry
+-- one of the two members, and the client always sends one.
+--
+-- HAND-WRITTEN, NOT GENERATED, for the same reason `0003_per_seat_auto_top_up.sql` is:
+-- `drizzle-kit generate` emits the SQLite 12-step table-recreate (`__new_skipped_hands` +
+-- `DROP TABLE skipped_hands` + rename) whenever a CHECK set changes, and that output is
+-- destructive here on two counts:
+--
+--   1. Its `INSERT INTO __new_skipped_hands(..., "reason") SELECT ..., "reason" FROM
+--      "skipped_hands"` selects the column being ADDED, so it fails with `no such column`.
+--   2. `skipped_hands` carries the `skipped_hands_no_update` / `skipped_hands_no_delete`
+--      insert-only triggers from `0006`. `DROP TABLE` drops a table's triggers with it, and
+--      nothing in the generated script re-creates them — the insert-only guarantee
+--      (`CLAUDE.md` rule 3, ADR-0037's pattern) would silently disappear. Its
+--      `PRAGMA foreign_keys=OFF` is a no-op besides: drizzle's migrator runs each migration
+--      inside a transaction and SQLite ignores that pragma while one is open (ADR-0046).
+--
+-- `ALTER TABLE ... ADD COLUMN` is the correct migration for a purely additive nullable
+-- column: no table rewrite, existing rows are untouched, the triggers and the
+-- `skipped_hands_session_idx` index stay exactly as they are, and the CHECK constraint name
+-- matches `src/schema.ts` verbatim. SQLite appends the column definition to the stored
+-- CREATE TABLE text, so this is the same constraint `0000` would have produced.
+--
+-- NOT REVERSIBLE BY AN OBVIOUS INVERSE. SQLite refuses `DROP COLUMN` on a column that a CHECK
+-- constraint references, and `skipped_hands_reason` references this one, so the inverse of this
+-- additive migration is NOT `ALTER TABLE skipped_hands DROP COLUMN reason` — it is the same
+-- 12-step table recreate this file exists to avoid, which on `skipped_hands` must also
+-- re-create the `skipped_hands_no_update` / `skipped_hands_no_delete` insert-only triggers and
+-- `skipped_hands_session_idx`. This repository has no down-migrations, so this note is purely
+-- INFORMATIONAL: it is here so that whoever first writes one does not reach for `DROP COLUMN`
+-- and find it refused, or work around the refusal by dropping the table.
+--
+-- PG: `ALTER TABLE skipped_hands ADD COLUMN reason text; ALTER TABLE skipped_hands ADD
+-- CONSTRAINT skipped_hands_reason CHECK (...)`.
+
+ALTER TABLE `skipped_hands` ADD `reason` text CONSTRAINT "skipped_hands_reason" CHECK("skipped_hands"."reason" is null or "skipped_hands"."reason" in ('QUICK_SKIP', 'HERO_FOLDED_UNOBSERVED'));

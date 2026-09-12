@@ -26,6 +26,19 @@ const NO_ANALYSIS_CORE = {
   message: 'analysis-core is composed by apps/web only; no package imports it (ADR-0061).',
 };
 
+/**
+ * `adaptive-core` is the TOP of the domain graph (WP-J design contract §1): it composes the
+ * REFERENCE baseline with an opponent profile. Every package below it — the poker engine,
+ * the GTO baseline, the REFERENCE engine, player-core, analysis-core — must stay unaware
+ * that it exists, or the composition layer would be able to reach back down and influence
+ * the baseline it is supposed to consume as a finished value.
+ */
+const NO_ADAPTIVE_CORE = {
+  group: ['@gto-self/adaptive-core', '@gto-self/adaptive-core/*'],
+  message:
+    'adaptive-core composes the layers below it; nothing below may import it (WP-J design contract §1).',
+};
+
 /** `solver-lab` is a research sandbox and is never shipped (ADR-0013). */
 const NO_SOLVER_LAB = {
   group: ['*solver-lab*'],
@@ -103,6 +116,7 @@ export default tseslint.config(
             'poker-core is the engine; strategy-core reads it through its own adapter and never the other way round.',
         },
         NO_ANALYSIS_CORE,
+        NO_ADAPTIVE_CORE,
       ]),
     },
   },
@@ -126,6 +140,7 @@ export default tseslint.config(
             'gto-core (solved data) and strategy-core (the local REFERENCE engine) are mutually unaware.',
         },
         NO_ANALYSIS_CORE,
+        NO_ADAPTIVE_CORE,
       ]),
     },
   },
@@ -154,6 +169,7 @@ export default tseslint.config(
             'Composing player data with the REFERENCE baseline belongs above both packages, never inside player-core.',
         },
         NO_ANALYSIS_CORE,
+        NO_ADAPTIVE_CORE,
       ]),
     },
   },
@@ -184,6 +200,7 @@ export default tseslint.config(
             'strategy-core (local REFERENCE) and gto-core (solved data) are separate and mutually unaware.',
         },
         NO_ANALYSIS_CORE,
+        NO_ADAPTIVE_CORE,
       ]),
     },
   },
@@ -208,6 +225,7 @@ export default tseslint.config(
             'strategy-core (local REFERENCE) and gto-core (solved data) are separate and mutually unaware.',
         },
         NO_ANALYSIS_CORE,
+        NO_ADAPTIVE_CORE,
       ]),
     },
   },
@@ -237,6 +255,92 @@ export default tseslint.config(
           group: ['@gto-self/coinpoker-parser', '@gto-self/coinpoker-parser/*'],
           message:
             'analysis-core consumes poker-core events, whatever produced them; it never depends on a particular importer.',
+        },
+        NO_ADAPTIVE_CORE,
+      ]),
+    },
+  },
+  {
+    files: ['packages/adaptive-core/**/*.ts'],
+    rules: {
+      // WP-J design contract §1. The COMPOSITION layer, and the top of the domain graph:
+      // it reads the REFERENCE engine's finished answer and an opponent profile, both as
+      // plain values, and produces a second clearly-labelled answer.
+      //
+      // `strategy-core` and `player-core` are ALLOWED here — this is the one package whose
+      // whole job is to hold both at once, which is why every layer below it bans the pair.
+      // Everything else is banned, and three of those bans carry the design:
+      //
+      //   - `analysis-core`: ADR-0061 stands. Learned-model numbers arrive as the neutral
+      //     `AdaptiveStatObservation[]` DTO built in `apps/web/src/server/`, so no event-log
+      //     or persistence knowledge reaches this package.
+      //   - `poker-core`: this package never sees a `HandState`. If it could, the baseline
+      //     would stop being an argument and start being something it recomputes, and the
+      //     "REFERENCE is byte-identical whatever the player data is" invariant would be a
+      //     convention instead of a structural fact.
+      //   - `gto-core`: solved data and the local REFERENCE engine stay mutually unaware,
+      //     and ADAPTIVE composes the latter.
+      'no-restricted-imports': restrict([
+        NO_UI,
+        NO_DB,
+        NO_SOLVER_LAB,
+        NO_ANALYSIS_CORE,
+        {
+          group: ['@gto-self/poker-core', '@gto-self/poker-core/*'],
+          message:
+            'adaptive-core composes an already-computed baseline; it never touches the poker engine (WP-J design contract §1).',
+        },
+        {
+          group: ['@gto-self/gto-core', '@gto-self/gto-core/*'],
+          message:
+            'ADAPTIVE composes the local REFERENCE engine; solved GTO data has no part in it (ADR-0021).',
+        },
+      ]),
+    },
+  },
+  {
+    files: ['packages/learn-core/**/*.ts'],
+    rules: {
+      // FishTilt's beginner-education domain (`docs/reports/FISHTILT_00_AUDIT_AND_PLAN.md`
+      // §5.2). It answers questions a learner asks about a hand — pot odds, outs, exact
+      // heads-up equity, facts about the 169 starting-hand classes — and it authors no
+      // strategy of its own.
+      //
+      // `strategy-core` is ALLOWED, and read-only: this package reads that one's evaluator,
+      // equity engine, hand-class model and provenance-carrying ranges as finished values.
+      // Two bans carry the design rather than merely tidying the graph:
+      //
+      //   - `poker-core`: FishTilt never runs a hand. There is no betting engine, no seat
+      //     and no pot to settle behind a teaching site, so a `HandState` must not be
+      //     reachable from here. Positions come from `strategy-core`'s `StrategyPosition`.
+      //   - `player-core` / `analysis-core` / `adaptive-core`: opponent tendencies have no
+      //     part in explaining the game to a beginner, and the public site holds no player
+      //     data at all (ADR-0021, ADR-0061, ADR-0063).
+      //
+      // `gto-core` is banned for the reason CLAUDE.md rule 2 gives: nothing in this
+      // repository may be presented as solved output, and FishTilt never says "GTO".
+      'no-restricted-imports': restrict([
+        NO_UI,
+        NO_DB,
+        NO_SOLVER_LAB,
+        NO_ANALYSIS_CORE,
+        NO_ADAPTIVE_CORE,
+        {
+          group: ['@gto-self/poker-core', '@gto-self/poker-core/*'],
+          message:
+            'learn-core explains the game; it never runs a hand. Use strategy-core for hand-class, evaluator and equity machinery.',
+        },
+        {
+          group: ['@gto-self/gto-core', '@gto-self/gto-core/*'],
+          message: 'FishTilt never presents solved output and never says GTO (CLAUDE.md rule 2).',
+        },
+        {
+          group: ['@gto-self/player-core', '@gto-self/player-core/*'],
+          message: 'A beginner-education layer has no opponent model and no player data.',
+        },
+        {
+          group: ['@gto-self/coinpoker-parser', '@gto-self/coinpoker-parser/*'],
+          message: 'FishTilt reads no hand histories.',
         },
       ]),
     },
@@ -285,6 +389,7 @@ export default tseslint.config(
             'The parser produces poker events; it knows nothing about GTO, strategy or players.',
         },
         NO_ANALYSIS_CORE,
+        NO_ADAPTIVE_CORE,
       ]),
     },
   },
@@ -309,6 +414,8 @@ export default tseslint.config(
             '@gto-self/coinpoker-parser/*',
             '@gto-self/analysis-core',
             '@gto-self/analysis-core/*',
+            '@gto-self/adaptive-core',
+            '@gto-self/adaptive-core/*',
           ],
           message: 'solver-lab depends on `shared` alone (ADR-0013).',
         },
@@ -345,6 +452,51 @@ export default tseslint.config(
     // fixture that no route can reach cannot put one there.
     files: ['apps/web/src/server/**/*.{ts,tsx}', 'apps/web/tests/**/*.{ts,tsx}'],
     rules: { 'no-restricted-imports': restrict([NO_SOLVER_LAB]) },
+  },
+  {
+    files: ['apps/fishtilt/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      // FishTilt is the PUBLIC education site. Unlike `apps/web` it has no database at
+      // all — no login, no session, no stored hand (build spec §50) — so `@gto-self/db` is
+      // banned outright here with no server-side exception to reach for. A future feature
+      // that seems to need one is a design question, not a lint waiver.
+      //
+      // The domain bans mirror `learn-core`'s: no poker engine, no opponent model, no
+      // solved-data placeholder, no hand-history parser. What is left — `shared`,
+      // `strategy-core` and `learn-core` — is exactly the set that can put a number on
+      // screen and say honestly where it came from.
+      'no-restricted-imports': restrict([
+        NO_SOLVER_LAB,
+        NO_ANALYSIS_CORE,
+        NO_ADAPTIVE_CORE,
+        {
+          ...NO_DB,
+          message:
+            'FishTilt is the public education site and has no database. It never imports @gto-self/db.',
+        },
+        {
+          group: ['@gto-self/poker-core', '@gto-self/poker-core/*'],
+          message:
+            'FishTilt never runs a hand. Positions and hand-class machinery come from strategy-core.',
+        },
+        {
+          group: ['@gto-self/gto-core', '@gto-self/gto-core/*'],
+          message: 'FishTilt never presents solved output and never says GTO (CLAUDE.md rule 2).',
+        },
+        {
+          group: ['@gto-self/player-core', '@gto-self/player-core/*'],
+          message: 'The public site holds no player data.',
+        },
+        {
+          group: ['@gto-self/coinpoker-parser', '@gto-self/coinpoker-parser/*'],
+          message: 'FishTilt reads no hand histories.',
+        },
+      ]),
+    },
   },
   {
     files: ['**/*.test.ts', '**/*.test.tsx', 'solver-lab/**/*.ts', 'scripts/**/*.mjs'],

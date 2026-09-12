@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { setupSeat, startSession } from './helpers.js';
+import { selectSeat, setupSeat, startSession } from './helpers.js';
 
 /**
  * Session setup end to end in a real browser: configure a session, start it, and land on
@@ -89,7 +89,7 @@ test('starts a hand on the table and shows what the engine says', async ({ page 
 
   // Esc returns the right panel to its default. Hero is not the seat on the clock here
   // (the button is seat 3), so that default is the action log.
-  await page.getByTestId('seat-1').click();
+  await selectSeat(page, 1);
   await expect(page.getByTestId('player-profile')).toBeVisible();
   await expect(page.getByTestId('right-panel')).toHaveAttribute('data-panel', 'PLAYER');
   await page.keyboard.press('Escape');

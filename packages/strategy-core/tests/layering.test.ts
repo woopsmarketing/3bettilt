@@ -33,7 +33,12 @@ const PACKAGES_DIR = fileURLToPath(new URL('../..', import.meta.url));
 const GUARDED = ['strategy-core', 'gto-core'] as const;
 
 /** Package names that must not appear in any specifier, as themselves or as a subpath. */
-const FORBIDDEN = ['@gto-self/player-core', '@gto-self/analysis-core', '@gto-self/db'] as const;
+const FORBIDDEN = [
+  '@gto-self/player-core',
+  '@gto-self/analysis-core',
+  '@gto-self/adaptive-core',
+  '@gto-self/db',
+] as const;
 
 /** Every `.ts` file under a directory, recursively. */
 function sourceFiles(dir: string): readonly string[] {

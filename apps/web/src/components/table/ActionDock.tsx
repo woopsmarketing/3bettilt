@@ -47,10 +47,17 @@ import { useTableStore } from './TableStoreProvider.js';
 const bb = (amount: MilliBB): string => Money.formatBB(amount, { maxDecimals: 3 });
 const bbUnit = (amount: MilliBB): string => Money.formatBB(amount, { maxDecimals: 3, unit: true });
 
-/** The keys this dock owns. `Enter` / `Esc` belong to the editor, not to this table. */
-type HotkeyId = 'F' | 'C' | 'R' | 'A' | 'Z' | 'N';
+/**
+ * The keys this dock owns. `Enter` / `Esc` belong to the editor, not to this table.
+ *
+ * `X` (Quick Next Hand / skip) has no button of its own here — the button lives in
+ * `TableRoot` next to Start Hand — but the hotkey is wired through this dock's single
+ * listener rather than a second one, so it shares the exact same guards (typing target,
+ * modifier keys, repeat, palette suppression) as `F C R A Z N`.
+ */
+type HotkeyId = 'F' | 'C' | 'R' | 'A' | 'Z' | 'N' | 'X';
 
-const HOTKEY_IDS: readonly HotkeyId[] = ['F', 'C', 'R', 'A', 'Z', 'N'];
+const HOTKEY_IDS: readonly HotkeyId[] = ['F', 'C', 'R', 'A', 'Z', 'N', 'X'];
 
 interface DockAction {
   readonly label: string;
@@ -125,9 +132,21 @@ export interface ActionDockProps {
    * The buttons are unaffected; a click is unambiguous and still works.
    */
   readonly hotkeysSuppressed?: boolean;
+  /**
+   * Quick Next Hand / skip (ADR-0074). The button and its own gate live in `TableRoot`
+   * (`skip-hand`, `skippable`); these two props exist only so the `X` hotkey can call the
+   * exact same handler under the exact same gate, never a second implementation of either.
+   */
+  readonly onSkipHand?: () => void;
+  readonly skippable?: boolean;
 }
 
-export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps) {
+export function ActionDock({
+  view,
+  hotkeysSuppressed = false,
+  onSkipHand,
+  skippable = false,
+}: ActionDockProps) {
   // `hand` is needed by `previewWager` / `wagerToForPotFraction`, which take engine state.
   // It is the SAME store commit `view` came from, so the two cannot disagree.
   const hand = useTableStore((state) => state.hand);
@@ -282,6 +301,12 @@ export function ActionDock({ view, hotkeysSuppressed = false }: ActionDockProps)
       // hands: `canStartHand` is false while a hand is live.
       enabled: startable,
       run: startHand,
+    },
+    X: {
+      label: '빠른 다음 핸드',
+      detail: undefined,
+      enabled: skippable,
+      run: () => onSkipHand?.(),
     },
   };
 

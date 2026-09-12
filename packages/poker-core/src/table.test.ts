@@ -8,6 +8,7 @@ import {
   createTable,
   dealtInSeats,
   defaultAutoTopUpPolicy,
+  replaceSeatPlayer,
   seatPlayer,
   setButtonSeat,
   setHeroSeat,
@@ -98,6 +99,58 @@ describe('seat mutation', () => {
     const back = unwrap(setSeatOccupancy(out, 0, 'ACTIVE'));
     expect(back.buttonSeat).toBe(seated.buttonSeat);
     expect(unwrap(advanceButton(back)).buttonSeat).toBe(unwrap(advanceButton(seated)).buttonSeat);
+  });
+});
+
+describe('replaceSeatPlayer', () => {
+  const seated = buildTable({ stacks: { 0: BB(100), 2: BB(50), 4: BB(75) }, buttonSeat: 0 });
+
+  it('swaps the occupant and leaves occupancy, stack, button and hero exactly as they were', () => {
+    const withHero = unwrap(setHeroSeat(seated, 0));
+    const swapped = unwrap(replaceSeatPlayer(withHero, 0, player('newcomer')));
+
+    expect(tableSeatAt(swapped, 0).playerId).toBe(player('newcomer'));
+    expect(tableSeatAt(swapped, 0).occupancy).toBe('ACTIVE');
+    // The stack is the OLD occupant's number, deliberately left alone rather than invented.
+    expect(tableSeatAt(swapped, 0).stack).toBe(BB(100));
+    expect(swapped.buttonSeat).toBe(0);
+    expect(swapped.heroSeat).toBe(0);
+    // Nothing else moved.
+    expect(swapped.handNumber).toBe(withHero.handNumber);
+    expect(tableSeatAt(swapped, 2)).toBe(tableSeatAt(withHero, 2));
+    expect(tableSeatAt(swapped, 4)).toBe(tableSeatAt(withHero, 4));
+  });
+
+  it('keeps the button and hero pointers that vacate + re-seat would have destroyed', () => {
+    const withHero = unwrap(setHeroSeat(seated, 0));
+    const viaVacate = unwrap(seatPlayer(vacateSeat(withHero, 0), 0, player('newcomer'), BB(100)));
+    // The pair loses both pointers — which is exactly why this primitive exists.
+    expect(viaVacate.buttonSeat).toBeNull();
+    expect(viaVacate.heroSeat).toBeNull();
+
+    const swapped = unwrap(replaceSeatPlayer(withHero, 0, player('newcomer')));
+    expect(swapped.buttonSeat).toBe(0);
+    expect(swapped.heroSeat).toBe(0);
+  });
+
+  it('replaces the occupant of a SITTING_OUT seat without waking it up', () => {
+    const out = unwrap(setSeatOccupancy(seated, 2, 'SITTING_OUT'));
+    const swapped = unwrap(replaceSeatPlayer(out, 2, player('newcomer')));
+
+    expect(tableSeatAt(swapped, 2).occupancy).toBe('SITTING_OUT');
+    expect(tableSeatAt(swapped, 2).playerId).toBe(player('newcomer'));
+    expect(tableSeatAt(swapped, 2).stack).toBe(BB(50));
+    expect(dealtInSeats(swapped)).toEqual([0, 4]);
+  });
+
+  it('re-seating the player already there succeeds and returns the SAME table', () => {
+    const same = replaceSeatPlayer(seated, 2, player('p2'));
+    expect(same.ok).toBe(true);
+    expect(unwrap(same)).toBe(seated);
+  });
+
+  it('refuses an EMPTY seat — that needs a starting stack and belongs to seatPlayer', () => {
+    expect(errCode(replaceSeatPlayer(seated, 1, player('newcomer')))).toBe('SEAT_EMPTY');
   });
 });
 

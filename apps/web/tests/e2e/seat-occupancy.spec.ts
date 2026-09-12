@@ -1,14 +1,23 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { startSession } from './helpers.js';
+import { foldOut, handNumber, recordServerActions, startSession } from './helpers.js';
 
 /**
- * Work Package A1 — the between-hands ACTIVE <-> SITTING_OUT seat toggle, in a real browser.
+ * The ACTIVE <-> SITTING_OUT seat toggle, in a real browser, under the V2 contract.
  *
- * The two things this proves that `TableRoot.test.tsx` and `tableStore.test.ts` cannot on
- * their own: the toggle really survives a real page (no network request on the toggle's own
- * click path — persistence, when it exists, is unawaited), and a hand actually dealt from
- * the felt reflects the new lineup, not just the store's in-memory state.
+ * ADR-0073 replaced this feature's original promise. Sitting a seat out used to mean "from the
+ * next hand" — the live hand had snapshotted its lineup and could not observe the change — and
+ * this file used to assert exactly that: the pending 다음 핸드부터 label, the seat still dealt
+ * into the live hand, and nothing at all reaching the server. All three are now WRONG, and each
+ * one is replaced below by the stronger claim the new contract makes:
+ *
+ *  - the change is applied AT ONCE and the live hand is REBASED — discarded whole and re-dealt
+ *    from the corrected lineup, so the seat is not dealt in any more;
+ *  - the rebase is a CORRECTION and not a skip, so `handNumber` does not move, the button does
+ *    not rotate, and no seat is marked 확인 필요;
+ *  - the discarded hand is never silent: `hand-rebased-notice` says so and can be dismissed;
+ *  - the toggle persists through the ONE narrow occupancy write (ADR-0075) and does not also
+ *    fire the whole-table seat sync.
  *
  * Every control is addressed by `data-testid`, never by copy (`helpers.ts`).
  */
@@ -20,56 +29,58 @@ const startFourHandedSession = (page: Page): Promise<void> =>
     buttonSeat: 0,
   });
 
-/** Folds the current actor `count` times, mirroring how `action-dock.spec.ts` ends a hand. */
-async function foldOut(page: Page, count: number): Promise<void> {
-  for (let i = 0; i < count; i += 1) {
-    await page.getByTestId('dock-F').click();
-  }
-}
-
-test('a seat sat out mid-hand deals one fewer seat on the NEXT hand, leaving the live hand untouched', async ({
-  page,
-}) => {
+test('a seat sat out mid-hand REBASES the live hand at the same hand number', async ({ page }) => {
   await startFourHandedSession(page);
   await page.getByTestId('start-hand').click();
 
-  // Seat 3 is genuinely part of hand 1.
+  // Seat 3 is genuinely part of the hand on screen, and there IS a hand on screen.
   await expect(page.getByTestId('seat-3')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
-  const potBefore = await page.getByTestId('pot').textContent();
+  await expect(page.getByTestId('skip-hand')).toBeEnabled();
+  const handBefore = await handNumber(page);
+  await expect(page.getByTestId('seat-0')).toHaveAttribute('data-button', 'true');
+  // 3-handed and 4-handed post the same blinds, so the pot alone cannot show the re-deal.
+  // Who is DEALT IN can, and that is what is asserted below.
 
-  // Toggled MID-HAND. The toggle says so: this hand still has the seat dealt in.
+  const posts = recordServerActions(page);
+
+  // Toggled MID-HAND. There is no longer a pending state for it to be in.
   await page.getByTestId('seat-3-occupancy-toggle').click();
   await expect(page.getByTestId('seat-3-occupancy')).toHaveAttribute('data-sitting-out', 'true');
-  await expect(page.getByTestId('seat-3-occupancy-state')).toContainText('다음 핸드부터');
+  await expect(page.getByTestId('seat-3-occupancy-state')).toHaveText('켬');
 
-  // The LIVE hand is provably unaffected: still dealt in, and no network request fired.
-  const requests: string[] = [];
-  page.on('request', (request) => requests.push(`${request.method()} ${request.url()}`));
-  await expect(page.getByTestId('seat-3')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
-  expect(await page.getByTestId('pot').textContent()).toBe(potBefore);
-
-  // Nothing has reached the server on the toggle's own path or on the live hand's.
-  expect(requests).toEqual([]);
-
-  // Finish hand 1: three folds ends a four-handed hand uncontested.
-  await foldOut(page, 3);
-  await expect(page.getByTestId('start-hand')).toBeEnabled();
-
-  // Hand 2 deals one fewer seat. Seat 3 receives no cards, no blinds, nothing.
-  await page.getByTestId('start-hand').click();
-  await expect(page.getByTestId('engine-error')).toHaveCount(0);
+  // ADR-0073: the hand was rebuilt from the corrected lineup, AT ONCE. Seat 3 holds no cards
+  // in the hand that is on screen right now — not in some later one.
   await expect(page.getByTestId('seat-3')).toHaveAttribute('data-status', 'NOT_DEALT_IN');
   await expect(page.getByTestId('seat-0')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
   await expect(page.getByTestId('seat-1')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
   await expect(page.getByTestId('seat-2')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
-  // The toggle no longer claims to be pending: there is no hand holding it up anymore.
-  await expect(page.getByTestId('seat-3-occupancy-state')).toContainText('켬');
+  await expect(page.getByTestId('engine-error')).toHaveCount(0);
 
-  // The only request this whole window fired is the completed-hand persist for hand 1, sent
-  // after that hand was already COMPLETE (ADR-0059). The toggle itself, the live hand and
-  // the next deal still reach nothing.
-  await expect.poll(() => requests.length).toBe(1);
-  expect(requests[0]).toMatch(/^POST http:\/\/127\.0\.0\.1:\d+\/table\/[^/]+$/u);
+  // A CORRECTION, not a skip: same hand number, same button, no seat left 확인 필요, and a
+  // live hand still in progress to play.
+  expect(await handNumber(page)).toBe(handBefore);
+  await expect(page.getByTestId('seat-0')).toHaveAttribute('data-button', 'true');
+  for (const seat of [0, 1, 2, 3]) {
+    await expect(page.getByTestId(`seat-${seat}`)).toHaveAttribute('data-dirty', 'false');
+    await expect(page.getByTestId(`seat-${seat}-dirty`)).toHaveCount(0);
+  }
+  await expect(page.getByTestId('skip-hand')).toBeEnabled();
+
+  // The discarded hand is announced rather than swallowed, and the notice is dismissable.
+  await expect(page.getByTestId('hand-rebased-notice')).toBeVisible();
+  await page.getByTestId('hand-rebased-dismiss').click();
+  await expect(page.getByTestId('hand-rebased-notice')).toHaveCount(0);
+
+  // ADR-0075 §4: occupancy is persisted through `updateSeatOccupancyAction` — the ONE narrow
+  // column write — and the toggle does NOT also fire the whole-table `syncSessionSeatsAction`.
+  // Two round trips here would mean a second writer appeared on this path.
+  await expect.poll(() => posts.length).toBeGreaterThan(0);
+  await page.waitForLoadState('networkidle');
+  expect(posts).toHaveLength(1);
+
+  // The rebased hand is a real, playable hand: 3-handed, so two folds end it uncontested.
+  await foldOut(page, 2);
+  await expect(page.getByTestId('start-hand')).toBeEnabled();
 });
 
 /**
@@ -88,10 +99,12 @@ test('sitting the BUTTON seat out before the first deal still deals, with the bu
   });
   await expect(page.getByTestId('seat-1')).toHaveAttribute('data-button', 'true');
 
-  // The button seat sits out, before anything has been dealt. The button does not vanish.
+  // The button seat sits out, before anything has been dealt. The button does not vanish, and
+  // with no hand in progress there is nothing to rebase, so nothing is announced.
   await page.getByTestId('seat-1-occupancy-toggle').click();
   await expect(page.getByTestId('seat-1-occupancy')).toHaveAttribute('data-sitting-out', 'true');
   await expect(page.getByTestId('seat-1')).toHaveAttribute('data-button', 'true');
+  await expect(page.getByTestId('hand-rebased-notice')).toHaveCount(0);
 
   await page.getByTestId('start-hand').click();
 
@@ -103,7 +116,11 @@ test('sitting the BUTTON seat out before the first deal still deals, with the bu
   await expect(page.getByTestId('seat-3')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
 });
 
-test('a sitting-out player who returns is included in the following hand', async ({ page }) => {
+/**
+ * The other direction of the same rebase: a player who comes BACK mid-hand is dealt into the
+ * hand that is on screen, not into some later one.
+ */
+test('a sitting-out player who returns is rebased INTO the live hand', async ({ page }) => {
   await startFourHandedSession(page);
 
   // Sat out BEFORE any hand is dealt: hand 1 deals three-handed from the start.
@@ -112,18 +129,22 @@ test('a sitting-out player who returns is included in the following hand', async
 
   await page.getByTestId('start-hand').click();
   await expect(page.getByTestId('seat-3')).toHaveAttribute('data-status', 'NOT_DEALT_IN');
+  const handBefore = await handNumber(page);
 
-  // The player returns mid-hand 1. Seat 3 was never dealt into THIS hand, so there is
-  // nothing for the toggle to hold up — the change is not "pending" anything.
+  // The player returns MID-HAND. The hand is rebuilt with them in it, at the same hand number
+  // and on the same button — the seat they came back to is dealt in RIGHT NOW.
   await page.getByTestId('seat-3-occupancy-toggle').click();
   await expect(page.getByTestId('seat-3-occupancy')).toHaveAttribute('data-sitting-out', 'false');
-  await expect(page.getByTestId('seat-3')).toHaveAttribute('data-status', 'NOT_DEALT_IN');
+  await expect(page.getByTestId('seat-3')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');
+  await expect(page.getByTestId('engine-error')).toHaveCount(0);
+  await expect(page.getByTestId('hand-rebased-notice')).toBeVisible();
+  expect(await handNumber(page)).toBe(handBefore);
+  await expect(page.getByTestId('seat-0')).toHaveAttribute('data-button', 'true');
+  await expect(page.getByTestId('seat-3')).toHaveAttribute('data-dirty', 'false');
 
-  // Finish hand 1: two folds ends a three-handed hand uncontested.
-  await foldOut(page, 2);
+  // Four-handed again, so three folds end it, and the NEXT hand still includes seat 3.
+  await foldOut(page, 3);
   await expect(page.getByTestId('start-hand')).toBeEnabled();
-
-  // Hand 2 includes seat 3 again.
   await page.getByTestId('start-hand').click();
   await expect(page.getByTestId('engine-error')).toHaveCount(0);
   await expect(page.getByTestId('seat-3')).not.toHaveAttribute('data-status', 'NOT_DEALT_IN');

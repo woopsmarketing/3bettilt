@@ -3,9 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { SeatIndex, SeatOccupancy } from '@gto-self/poker-core';
 import { SeatOccupancyToggle } from './SeatOccupancyToggle.js';
 
-function renderToggle(occupancy: SeatOccupancy, pending = false) {
+function renderToggle(occupancy: SeatOccupancy) {
   const onToggle = vi.fn<(seat: SeatIndex) => void>();
-  render(<SeatOccupancyToggle seat={2} occupancy={occupancy} pending={pending} onToggle={onToggle} />);
+  render(<SeatOccupancyToggle seat={2} occupancy={occupancy} onToggle={onToggle} />);
   return onToggle;
 }
 
@@ -21,26 +21,31 @@ describe('SeatOccupancyToggle', () => {
     expect(state()).toHaveTextContent('끔');
   });
 
-  it('shows ON for a SITTING_OUT seat with no hand holding it up', () => {
+  it('shows ON for a SITTING_OUT seat', () => {
     renderToggle('SITTING_OUT');
     expect(wrapper()).toHaveAttribute('data-sitting-out', 'true');
     expect(toggle()).toHaveAttribute('aria-pressed', 'true');
     expect(state()).toHaveTextContent('켬');
   });
 
-  it('says "다음 핸드부터" while the current hand still has the seat dealt in', () => {
-    renderToggle('SITTING_OUT', true);
-    expect(state()).toHaveTextContent('다음 핸드부터');
-  });
+  /**
+   * ADR-0073 replaced R1 MINOR-12's "다음 핸드부터" label rather than deleting the concern
+   * behind it. That label existed because the stored occupancy and the live hand could
+   * disagree; a correction now rebases the live hand in the same commit, so they cannot. The
+   * assertion is therefore STRONGER than the one it replaces: the state chip is only ever the
+   * settled 켬/끔, and the pending wording must not reappear in either direction.
+   */
+  it('never claims a deferred effect, in either occupancy', () => {
+    const { unmount } = render(
+      <SeatOccupancyToggle seat={2} occupancy="ACTIVE" onToggle={vi.fn()} />,
+    );
+    expect(state()).toHaveTextContent('끔');
+    expect(state()).not.toHaveTextContent('다음 핸드부터');
+    unmount();
 
-  it('says "다음 핸드부터" for a re-activated seat the current hand skipped', () => {
-    // R1 MINOR-12: re-activation takes effect on the NEXT deal exactly as sitting out does,
-    // so claiming '끔' here overstated it. The chip still reads as not-sitting-out.
-    renderToggle('ACTIVE', true);
-    expect(state()).toHaveTextContent('다음 핸드부터');
-    expect(state()).not.toHaveTextContent('끔');
-    expect(wrapper()).toHaveAttribute('data-sitting-out', 'false');
-    expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+    render(<SeatOccupancyToggle seat={2} occupancy="SITTING_OUT" onToggle={vi.fn()} />);
+    expect(state()).toHaveTextContent('켬');
+    expect(state()).not.toHaveTextContent('다음 핸드부터');
   });
 
   it('calls onToggle with the seat on click, once per click', () => {

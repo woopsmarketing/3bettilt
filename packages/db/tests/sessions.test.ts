@@ -24,10 +24,16 @@ import { MANUAL_FEE_PRESET } from './fixture.js';
 
 const T0 = timestamp(1_700_000_000_000);
 const T1 = timestamp(1_700_000_060_000);
+const T2 = timestamp(1_700_000_120_000);
 const SESSION = asId<'Session'>('sess-1') as SessionId;
 
 /** A deliberately awkward exact integer: it must come back unchanged, not as a float. */
 const ODD_STACK = Money.mbb(93_701);
+
+/** The three players `beforeEach` inserts, as the seats below name them. */
+const HERO = asId<'Player'>('seat-0') as PlayerId;
+const VILLAIN_1 = asId<'Player'>('seat-1') as PlayerId;
+const VILLAIN_2 = asId<'Player'>('seat-2') as PlayerId;
 
 describe('presets and sessions', () => {
   let handle: DatabaseHandle;
@@ -86,6 +92,7 @@ describe('presets and sessions', () => {
         closedAt: null,
         autoTopUp: null,
         seatAutoTopUp: {},
+        seatStackUnverified: {},
       }),
     );
 
@@ -123,6 +130,7 @@ describe('presets and sessions', () => {
         closedAt: null,
         autoTopUp: null,
         seatAutoTopUp: {},
+        seatStackUnverified: {},
       }),
     );
     expect(handle.db.select().from(sessionSeats).all()).toHaveLength(6);
@@ -141,6 +149,7 @@ describe('presets and sessions', () => {
         closedAt: null,
         autoTopUp: null,
         seatAutoTopUp: {},
+        seatStackUnverified: {},
       }),
     );
     unwrap(
@@ -169,6 +178,7 @@ describe('presets and sessions', () => {
         closedAt: null,
         autoTopUp: null,
         seatAutoTopUp: {},
+        seatStackUnverified: {},
       }),
     );
     const advanced = { ...table, handNumber: 7, buttonSeat: 1 as const };
@@ -204,6 +214,7 @@ describe('presets and sessions', () => {
         closedAt: null,
         autoTopUp: null,
         seatAutoTopUp: {},
+        seatStackUnverified: {},
       }),
     );
     unwrap(sessionRepository.updateSessionTable(handle.db, SESSION, table, T1));
@@ -248,6 +259,7 @@ describe('presets and sessions', () => {
       closedAt: null,
       autoTopUp: null,
       seatAutoTopUp: {},
+      seatStackUnverified: {},
     });
     expect(written.ok).toBe(false);
     if (!written.ok) expect(written.error.code).toBe('CONSTRAINT_VIOLATION');
@@ -265,6 +277,7 @@ describe('presets and sessions', () => {
         closedAt: null,
         autoTopUp: null,
         seatAutoTopUp: {},
+        seatStackUnverified: {},
       }),
     );
     handle.sqlite.prepare(`update sessions set config_json = '{"nope":1}'`).run();
@@ -295,6 +308,7 @@ describe('presets and sessions', () => {
           closedAt: null,
           autoTopUp: policy,
           seatAutoTopUp: {},
+          seatStackUnverified: {},
         }),
       );
       const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
@@ -325,6 +339,7 @@ describe('presets and sessions', () => {
           closedAt: null,
           autoTopUp: policy,
           seatAutoTopUp: {},
+          seatStackUnverified: {},
         }),
       );
       expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.autoTopUp).toEqual(policy);
@@ -342,6 +357,7 @@ describe('presets and sessions', () => {
           closedAt: null,
           autoTopUp: null,
           seatAutoTopUp: {},
+          seatStackUnverified: {},
         }),
       );
       expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.autoTopUp).toBeNull();
@@ -368,6 +384,7 @@ describe('presets and sessions', () => {
           threshold: Money.mbb(40_000),
         },
         seatAutoTopUp: {},
+        seatStackUnverified: {},
       });
       expect(written.ok).toBe(false);
       if (!written.ok) expect(written.error.code).toBe('INVALID_INPUT');
@@ -386,6 +403,7 @@ describe('presets and sessions', () => {
           closedAt: null,
           autoTopUp: null,
           seatAutoTopUp: {},
+          seatStackUnverified: {},
         }),
       );
       expect(() =>
@@ -421,6 +439,7 @@ describe('presets and sessions', () => {
           closedAt: null,
           autoTopUp: null,
           seatAutoTopUp: {},
+          seatStackUnverified: {},
         }),
       );
       // `decodeAutoTopUp` also rejects a half-written pair, but a row that can never be
@@ -454,6 +473,7 @@ describe('presets and sessions', () => {
         closedAt: null,
         autoTopUp: at(100_000),
         seatAutoTopUp,
+        seatStackUnverified: {},
       });
     }
 
@@ -602,6 +622,630 @@ describe('presets and sessions', () => {
     });
   });
 
+  /**
+   * The narrow between-hands seat writer. This is a MONEY WRITE PATH (`stack` is integer
+   * milliBB), so each test below asserts not only what changed but what did NOT: the auto
+   * top-up preference columns, the session's own config/hero/hand-number, and every other
+   * session in the file.
+   */
+  describe('seat state (updateSessionSeats)', () => {
+    const at = (targetStack: number) => ({
+      enabled: true,
+      targetStack: Money.mbb(targetStack),
+      threshold: Money.mbb(targetStack),
+    });
+    const OTHER = asId<'Session'>('sess-2') as SessionId;
+
+    function insert(id: SessionId = SESSION) {
+      return sessionRepository.insertSession(handle.db, {
+        id,
+        label: null,
+        presetId: null,
+        table: buildSessionTable(),
+        createdAt: T0,
+        updatedAt: T0,
+        closedAt: null,
+        autoTopUp: at(100_000),
+        seatAutoTopUp: { 0: at(100_000), 1: at(250_000) },
+        seatStackUnverified: {},
+      });
+    }
+
+    /** Every column of `session_seats`, raw, so nothing can hide behind the decoder. */
+    const rawSeats = (id: string = SESSION) =>
+      handle.sqlite
+        .prepare(
+          `select seat, occupancy, player_id, stack, typeof(stack) as stack_type,
+                  auto_top_up_enabled as e, auto_top_up_target_stack as t
+             from session_seats where session_id = ? order by seat`,
+        )
+        .all(id);
+
+    it('writes occupancy, player and EXACT integer stack for several seats at once', () => {
+      unwrap(insert());
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 0,
+              occupancy: 'ACTIVE',
+              playerId: HERO,
+              stack: Money.mbb(41_337),
+              stackUnverified: false,
+            },
+            {
+              seat: 2,
+              occupancy: 'ACTIVE',
+              playerId: VILLAIN_2,
+              stack: Money.mbb(150_000),
+              stackUnverified: false,
+            },
+          ],
+          T1,
+        ),
+      );
+
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.table.seats[0].stack).toBe(Money.mbb(41_337));
+      expect(loaded?.table.seats[2].stack).toBe(Money.mbb(150_000));
+      // Seat 2 was SITTING_OUT before this call.
+      expect(loaded?.table.seats[2].occupancy).toBe('ACTIVE');
+      // The seat nobody named is byte-identical.
+      expect(loaded?.table.seats[1]).toEqual(buildSessionTable().seats[1]);
+      expect(loaded?.updatedAt).toBe(T1);
+      // Integer milliBB in an INTEGER column, not a REAL that happens to look right.
+      expect(rawSeats().map((row) => (row as { stack_type: string }).stack_type)).toEqual(
+        Array.from({ length: 6 }, () => 'integer'),
+      );
+    });
+
+    it('NEVER touches the auto top-up columns, the config, the hero seat or the hand number', () => {
+      unwrap(insert());
+      const before = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 1,
+              occupancy: 'SITTING_OUT',
+              playerId: VILLAIN_1,
+              stack: Money.mbb(1),
+              stackUnverified: false,
+            },
+          ],
+          T1,
+        ),
+      );
+
+      const after = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      // The per-seat PREFERENCE is not table state and must survive untouched.
+      expect(after?.seatAutoTopUp).toEqual({ 0: at(100_000), 1: at(250_000) });
+      expect(after?.autoTopUp).toEqual(at(100_000));
+      expect(after?.table.config).toEqual(before?.table.config);
+      expect(after?.table.heroSeat).toBe(before?.table.heroSeat);
+      expect(after?.table.handNumber).toBe(before?.table.handNumber);
+      expect(after?.table.buttonSeat).toBe(before?.table.buttonSeat);
+      expect(after?.createdAt).toBe(T0);
+    });
+
+    /**
+     * ADR-0078b. An unverified stack — a pre-hand figure nobody has confirmed since the hand
+     * that disturbed it — was marked in memory only while the NUMBER was already persisted,
+     * so a reload rendered unconfirmed money as confirmed money. The mark is a column now
+     * (migration `0010`), and these are the three claims that make it worth having.
+     */
+    it('stores stack_unverified and reads it back, per seat and both ways', () => {
+      unwrap(insert());
+      // A brand-new session confirms every seat: the stacks came from the setup form.
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.seatStackUnverified).toEqual(
+        {},
+      );
+
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 0,
+              occupancy: 'ACTIVE',
+              playerId: HERO,
+              stack: Money.mbb(93_701),
+              stackUnverified: true,
+            },
+            {
+              seat: 1,
+              occupancy: 'ACTIVE',
+              playerId: VILLAIN_1,
+              stack: Money.mbb(50_000),
+              stackUnverified: false,
+            },
+          ],
+          T1,
+        ),
+      );
+
+      const marked = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(marked?.seatStackUnverified).toEqual({ 0: true });
+      // The flag is about the stack; it does not change the stack.
+      expect(marked?.table.seats[0].stack).toBe(Money.mbb(93_701));
+      expect(marked?.table.seats[1].stack).toBe(Money.mbb(50_000));
+      // Raw, so nothing hides behind the decoder: an INTEGER 1/0, not a REAL or a string.
+      expect(
+        handle.sqlite
+          .prepare(
+            `select seat, stack_unverified as u, typeof(stack_unverified) as t
+               from session_seats where session_id = ? and seat in (0, 1) order by seat`,
+          )
+          .all(SESSION),
+      ).toEqual([
+        { seat: 0, u: 1, t: 'integer' },
+        { seat: 1, u: 0, t: 'integer' },
+      ]);
+
+      // Stating the stack clears the mark — the same write, the other way round.
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 0,
+              occupancy: 'ACTIVE',
+              playerId: HERO,
+              stack: Money.mbb(88_000),
+              stackUnverified: false,
+            },
+          ],
+          T2,
+        ),
+      );
+      const cleared = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(cleared?.seatStackUnverified).toEqual({});
+      expect(cleared?.table.seats[0].stack).toBe(Money.mbb(88_000));
+    });
+
+    it('updateSessionSeatAutoTopUp and updateSessionSeatOccupancy NEVER touch stack_unverified', () => {
+      unwrap(insert());
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 0,
+              occupancy: 'ACTIVE',
+              playerId: HERO,
+              stack: Money.mbb(93_701),
+              stackUnverified: true,
+            },
+          ],
+          T1,
+        ),
+      );
+
+      // Toggling a per-seat PREFERENCE must not silently confirm an unverified stack...
+      unwrap(sessionRepository.updateSessionSeatAutoTopUp(handle.db, SESSION, 0, at(300_000)));
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.seatStackUnverified).toEqual(
+        { 0: true },
+      );
+      unwrap(sessionRepository.updateSessionSeatAutoTopUp(handle.db, SESSION, 0, null));
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.seatStackUnverified).toEqual(
+        { 0: true },
+      );
+      // ... and neither must sitting the seat out and back in.
+      unwrap(sessionRepository.updateSessionSeatOccupancy(handle.db, SESSION, 0, 'SITTING_OUT'));
+      unwrap(sessionRepository.updateSessionSeatOccupancy(handle.db, SESSION, 0, 'ACTIVE'));
+      const after = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(after?.seatStackUnverified).toEqual({ 0: true });
+      expect(after?.table.seats[0].stack).toBe(Money.mbb(93_701));
+    });
+
+    it('a rolled-back seat write leaves stack_unverified as it was', () => {
+      unwrap(insert());
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 0,
+              occupancy: 'ACTIVE',
+              playerId: HERO,
+              stack: Money.mbb(93_701),
+              stackUnverified: true,
+            },
+          ],
+          T1,
+        ),
+      );
+      // Seat 0 would clear its mark; seat 3 names a player that does not exist and throws
+      // inside the same transaction, so neither lands.
+      const refused = sessionRepository.updateSessionSeats(
+        handle.db,
+        SESSION,
+        [
+          {
+            seat: 0,
+            occupancy: 'ACTIVE',
+            playerId: HERO,
+            stack: Money.mbb(41_337),
+            stackUnverified: false,
+          },
+          {
+            seat: 3,
+            occupancy: 'ACTIVE',
+            playerId: asId<'Player'>('ghost') as PlayerId,
+            stack: Money.mbb(100_000),
+            stackUnverified: false,
+          },
+        ],
+        T2,
+      );
+      expect(refused.ok).toBe(false);
+      const after = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(after?.seatStackUnverified).toEqual({ 0: true });
+      expect(after?.table.seats[0].stack).toBe(Money.mbb(93_701));
+    });
+
+    it('leaves every OTHER session alone', () => {
+      unwrap(insert());
+      unwrap(insert(OTHER));
+      const untouched = unwrap(sessionRepository.getSession(handle.db, OTHER));
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 0,
+              occupancy: 'ACTIVE',
+              playerId: HERO,
+              stack: Money.mbb(7),
+              stackUnverified: false,
+            },
+          ],
+          T1,
+        ),
+      );
+      expect(unwrap(sessionRepository.getSession(handle.db, OTHER))).toEqual(untouched);
+    });
+
+    it('reports NOT_FOUND for a session that does not exist, and writes nothing', () => {
+      unwrap(insert());
+      const missing = sessionRepository.updateSessionSeats(
+        handle.db,
+        asId<'Session'>('ghost') as SessionId,
+        [
+          {
+            seat: 0,
+            occupancy: 'ACTIVE',
+            playerId: HERO,
+            stack: Money.mbb(7),
+            stackUnverified: false,
+          },
+        ],
+        T1,
+      );
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) {
+        expect(missing.error.code).toBe('NOT_FOUND');
+        expect(missing.error.context.table).toBe('sessions');
+      }
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.updatedAt).toBe(T0);
+    });
+
+    it('reports NOT_FOUND for a seat row that is not there, leaving the OTHER seats alone', () => {
+      unwrap(insert());
+      // All six rows always exist, so this can only happen to a database corrupted by other
+      // means — and it must still refuse the WHOLE call rather than apply the seats it could.
+      handle.sqlite.prepare(`delete from session_seats where seat = 5`).run();
+      const missing = sessionRepository.updateSessionSeats(
+        handle.db,
+        SESSION,
+        [
+          {
+            seat: 0,
+            occupancy: 'ACTIVE',
+            playerId: HERO,
+            stack: Money.mbb(41_337),
+            stackUnverified: false,
+          },
+          {
+            seat: 5,
+            occupancy: 'EMPTY',
+            playerId: null,
+            stack: Money.mbb(0),
+            stackUnverified: false,
+          },
+        ],
+        T1,
+      );
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) {
+        expect(missing.error.code).toBe('NOT_FOUND');
+        expect(missing.error.context.table).toBe('session_seats');
+        expect(missing.error.context.actual).toBe('5');
+      }
+      // Seat 0 came FIRST in the list and still did not move: the check runs before the
+      // first write.
+      const seat0 = rawSeats()[0] as { stack: number };
+      expect(seat0.stack).toBe(ODD_STACK);
+      expect(
+        (handle.sqlite.prepare(`select updated_at as u from sessions`).get() as { u: number }).u,
+      ).toBe(T0);
+    });
+
+    it('ROLLS BACK every seat when the database refuses one of them', () => {
+      unwrap(insert());
+      const refused = sessionRepository.updateSessionSeats(
+        handle.db,
+        SESSION,
+        [
+          {
+            seat: 0,
+            occupancy: 'ACTIVE',
+            playerId: HERO,
+            stack: Money.mbb(41_337),
+            stackUnverified: false,
+          },
+          // A negative stack is refused by `session_seats_stack_non_negative`. The CHECK is
+          // the authority on a storable stack; this asserts the refusal is TOTAL.
+          {
+            seat: 1,
+            occupancy: 'ACTIVE',
+            playerId: VILLAIN_1,
+            stack: Money.mbb(-1),
+            stackUnverified: false,
+          },
+        ],
+        T1,
+      );
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) {
+        expect(refused.error.code).toBe('CONSTRAINT_VIOLATION');
+        expect(refused.error.message).toMatch(/CHECK constraint failed/u);
+      }
+      const rows = rawSeats() as readonly { seat: number; stack: number }[];
+      expect(rows[0]?.stack).toBe(ODD_STACK);
+      expect(rows[1]?.stack).toBe(100_000);
+      expect(
+        (handle.sqlite.prepare(`select updated_at as u from sessions`).get() as { u: number }).u,
+      ).toBe(T0);
+    });
+
+    it('ROLLS BACK when a seat names a player that does not exist', () => {
+      unwrap(insert());
+      const refused = sessionRepository.updateSessionSeats(
+        handle.db,
+        SESSION,
+        [
+          {
+            seat: 0,
+            occupancy: 'ACTIVE',
+            playerId: HERO,
+            stack: Money.mbb(41_337),
+            stackUnverified: false,
+          },
+          {
+            seat: 3,
+            occupancy: 'ACTIVE',
+            playerId: asId<'Player'>('ghost') as PlayerId,
+            stack: Money.mbb(100_000),
+            stackUnverified: false,
+          },
+        ],
+        T1,
+      );
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) expect(refused.error.code).toBe('CONSTRAINT_VIOLATION');
+      expect((rawSeats()[0] as { stack: number }).stack).toBe(ODD_STACK);
+      expect((rawSeats()[3] as { occupancy: string }).occupancy).toBe('EMPTY');
+    });
+
+    it('REFUSES a duplicate seat rather than resolving it last-write-wins', () => {
+      unwrap(insert());
+      const refused = sessionRepository.updateSessionSeats(
+        handle.db,
+        SESSION,
+        [
+          {
+            seat: 0,
+            occupancy: 'ACTIVE',
+            playerId: HERO,
+            stack: Money.mbb(41_337),
+            stackUnverified: false,
+          },
+          {
+            seat: 0,
+            occupancy: 'ACTIVE',
+            playerId: HERO,
+            stack: Money.mbb(99_000),
+            stackUnverified: false,
+          },
+        ],
+        T1,
+      );
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) {
+        expect(refused.error.code).toBe('INVALID_INPUT');
+        expect(refused.error.context.actual).toBe('0');
+      }
+      // The refusal happens before the transaction opens: NOTHING was written.
+      expect((rawSeats()[0] as { stack: number }).stack).toBe(ODD_STACK);
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.updatedAt).toBe(T0);
+    });
+
+    it('REFUSES an updatedAt that would move the session backwards', () => {
+      unwrap(insert());
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 0,
+              occupancy: 'ACTIVE',
+              playerId: HERO,
+              stack: Money.mbb(41_337),
+              stackUnverified: false,
+            },
+          ],
+          T1,
+        ),
+      );
+      const backwards = sessionRepository.updateSessionSeats(
+        handle.db,
+        SESSION,
+        [
+          {
+            seat: 0,
+            occupancy: 'ACTIVE',
+            playerId: HERO,
+            stack: Money.mbb(1_000),
+            stackUnverified: false,
+          },
+        ],
+        T0,
+      );
+      expect(backwards.ok).toBe(false);
+      if (!backwards.ok) {
+        expect(backwards.error.code).toBe('INVALID_INPUT');
+        expect(backwards.error.context.field).toBe('updated_at');
+      }
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.table.seats[0].stack).toBe(Money.mbb(41_337));
+      expect(loaded?.updatedAt).toBe(T1);
+    });
+
+    it('vacates a seat to EMPTY, and refuses an EMPTY seat that keeps chips', () => {
+      unwrap(insert());
+      unwrap(
+        sessionRepository.updateSessionSeats(
+          handle.db,
+          SESSION,
+          [
+            {
+              seat: 1,
+              occupancy: 'EMPTY',
+              playerId: null,
+              stack: Money.mbb(0),
+              stackUnverified: false,
+            },
+          ],
+          T1,
+        ),
+      );
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.table.seats[1].occupancy).toBe('EMPTY');
+      expect(loaded?.table.seats[1].playerId).toBeNull();
+      expect(loaded?.table.seats[1].stack).toBe(Money.mbb(0));
+
+      const refused = sessionRepository.updateSessionSeats(
+        handle.db,
+        SESSION,
+        [
+          {
+            seat: 2,
+            occupancy: 'EMPTY',
+            playerId: null,
+            stack: Money.mbb(48_320),
+            stackUnverified: false,
+          },
+        ],
+        T1,
+      );
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) expect(refused.error.code).toBe('CONSTRAINT_VIOLATION');
+    });
+
+    it('writes nothing at all — not even updated_at — for an empty seat list', () => {
+      unwrap(insert());
+      unwrap(sessionRepository.updateSessionSeats(handle.db, SESSION, [], T1));
+      expect(unwrap(sessionRepository.getSession(handle.db, SESSION))?.updatedAt).toBe(T0);
+      // ... but a session that is not there is still NOT_FOUND, not a quiet success.
+      const missing = sessionRepository.updateSessionSeats(
+        handle.db,
+        asId<'Session'>('ghost') as SessionId,
+        [],
+        T1,
+      );
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) expect(missing.error.code).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('button seat (updateSessionButtonSeat)', () => {
+    function insert() {
+      return sessionRepository.insertSession(handle.db, {
+        id: SESSION,
+        label: null,
+        presetId: null,
+        table: buildSessionTable(),
+        createdAt: T0,
+        updatedAt: T0,
+        closedAt: null,
+        autoTopUp: null,
+        seatAutoTopUp: {},
+        seatStackUnverified: {},
+      });
+    }
+
+    it('moves the button and bumps updated_at, and nothing else moves', () => {
+      unwrap(insert());
+      const before = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      unwrap(sessionRepository.updateSessionButtonSeat(handle.db, SESSION, 1, T1));
+
+      const after = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(after?.table.buttonSeat).toBe(1);
+      expect(after?.updatedAt).toBe(T1);
+      // Designating the button is a CORRECTION, never a hand advance.
+      expect(after?.table.handNumber).toBe(before?.table.handNumber);
+      expect(after?.table.heroSeat).toBe(before?.table.heroSeat);
+      expect(after?.table.seats).toEqual(before?.table.seats);
+      expect(after?.table.config).toEqual(before?.table.config);
+    });
+
+    it('clears the button back to none', () => {
+      unwrap(insert());
+      unwrap(sessionRepository.updateSessionButtonSeat(handle.db, SESSION, null, T1));
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.table.buttonSeat).toBeNull();
+    });
+
+    it('reports NOT_FOUND for a session that does not exist', () => {
+      const missing = sessionRepository.updateSessionButtonSeat(
+        handle.db,
+        asId<'Session'>('ghost') as SessionId,
+        0,
+        T1,
+      );
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) {
+        expect(missing.error.code).toBe('NOT_FOUND');
+        expect(missing.error.context.table).toBe('sessions');
+      }
+    });
+
+    it('REFUSES an updatedAt that would move the session backwards, and writes nothing', () => {
+      unwrap(insert());
+      unwrap(sessionRepository.updateSessionButtonSeat(handle.db, SESSION, 1, T1));
+      const backwards = sessionRepository.updateSessionButtonSeat(handle.db, SESSION, 2, T0);
+      expect(backwards.ok).toBe(false);
+      if (!backwards.ok) {
+        expect(backwards.error.code).toBe('INVALID_INPUT');
+        expect(backwards.error.context.field).toBe('updated_at');
+      }
+      const loaded = unwrap(sessionRepository.getSession(handle.db, SESSION));
+      expect(loaded?.table.buttonSeat).toBe(1);
+      expect(loaded?.updatedAt).toBe(T1);
+    });
+  });
+
   describe('seat occupancy (updateSessionSeatOccupancy)', () => {
     function insert() {
       return sessionRepository.insertSession(handle.db, {
@@ -614,6 +1258,7 @@ describe('presets and sessions', () => {
         closedAt: null,
         autoTopUp: null,
         seatAutoTopUp: {},
+        seatStackUnverified: {},
       });
     }
 
@@ -657,12 +1302,7 @@ describe('presets and sessions', () => {
       // All six rows always exist, so this can only happen to a database corrupted by
       // other means — and it must still be an error rather than a silent no-op.
       handle.sqlite.prepare(`delete from session_seats where seat = 5`).run();
-      const missing = sessionRepository.updateSessionSeatOccupancy(
-        handle.db,
-        SESSION,
-        5,
-        'ACTIVE',
-      );
+      const missing = sessionRepository.updateSessionSeatOccupancy(handle.db, SESSION, 5, 'ACTIVE');
       expect(missing.ok).toBe(false);
       if (!missing.ok) {
         expect(missing.error.code).toBe('NOT_FOUND');

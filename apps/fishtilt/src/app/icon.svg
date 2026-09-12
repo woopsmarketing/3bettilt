@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>3BetTilt</title>
+  <rect width="32" height="32" rx="7" fill="#ff334d" />
+  <g fill="#ffffff">
+    <rect x="4.5" y="4.5" width="7" height="7" rx="1.6" />
+    <rect x="12.5" y="12.5" width="7" height="7" rx="1.6" />
+    <rect x="20.5" y="20.5" width="7" height="7" rx="1.6" />
+  </g>
+  <g fill="#ffffff" opacity="0.42">
+    <rect x="12.5" y="4.5" width="7" height="7" rx="1.6" />
+    <rect x="20.5" y="4.5" width="7" height="7" rx="1.6" />
+    <rect x="20.5" y="12.5" width="7" height="7" rx="1.6" />
+  </g>
+</svg>

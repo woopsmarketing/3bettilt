@@ -73,7 +73,10 @@ export type StartSessionResult =
 export interface PlayerMatch {
   readonly id: string;
   readonly nickname: string;
-  readonly kind: 'EXACT' | 'PREFIX' | 'SUBSTRING';
+  /** `BROWSE` is an unfiltered listing shown when the seat's nickname field is empty. */
+  readonly kind: 'EXACT' | 'PREFIX' | 'SUBSTRING' | 'BROWSE';
+  /** True when this player has at least one EXTERNAL_HUD snapshot. Drives the "외부 HUD" badge and sort order. */
+  readonly hasExternalHud: boolean;
 }
 
 export type SearchPlayersResult =

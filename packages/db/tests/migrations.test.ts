@@ -37,6 +37,14 @@ const TABLES = [
   'player_spot_stats',
   'player_model_bet_sizes',
   'player_model_show_evidence',
+  // 0006 — REFERENCE strategy decision traces, and the skip audit table.
+  'strategy_decision_traces',
+  'skipped_hands',
+  // 0007 — derived ADAPTIVE strategy traces.
+  'adaptive_strategy_traces',
+  // 0008 — external (third-party) HUD lifetime profiles (WP-K).
+  'player_external_hud_snapshots',
+  'player_external_hud_snapshot_stats',
 ];
 
 /**
@@ -107,6 +115,28 @@ const INTEGRAL_COLUMNS: readonly (readonly [string, string])[] = [
   ['player_model_bet_sizes', 'current_bet_before'],
   ['player_model_bet_sizes', 'big_blind'],
   ['player_model_show_evidence', 'won_gross'],
+  ['strategy_decision_traces', 'recommended_to_amount_mbb'],
+  ['strategy_decision_traces', 'hero_equity_bps'],
+  ['strategy_decision_traces', 'pot_odds_bps'],
+  ['strategy_decision_traces', 'spr'],
+  ['strategy_decision_traces', 'computed_at'],
+  ['skipped_hands', 'skipped_at'],
+  // 0007 — every INTEGER column of `adaptive_strategy_traces`, without exception.
+  ['adaptive_strategy_traces', 'command_seq'],
+  ['adaptive_strategy_traces', 'hero_seat'],
+  ['adaptive_strategy_traces', 'opponent_count'],
+  ['adaptive_strategy_traces', 'baseline_to_amount_mbb'],
+  ['adaptive_strategy_traces', 'adaptive_to_amount_mbb'],
+  ['adaptive_strategy_traces', 'baseline_sizing_bucket'],
+  ['adaptive_strategy_traces', 'adaptive_sizing_bucket'],
+  ['adaptive_strategy_traces', 'total_shift_bps'],
+  ['adaptive_strategy_traces', 'cap_applied'],
+  ['adaptive_strategy_traces', 'player_model_version'],
+  ['adaptive_strategy_traces', 'computed_at'],
+  // 0008 — external (third-party) HUD lifetime profiles (WP-K).
+  ['player_external_hud_snapshots', 'recorded_at'],
+  ['player_external_hud_snapshots', 'sample_n'],
+  ['player_external_hud_snapshot_stats', 'value_centipercent'],
 ];
 
 /**
@@ -278,7 +308,9 @@ describe('migrations', () => {
         )
         .run();
       handle.sqlite
-        .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 100000, null, null)`)
+        .prepare(
+          `insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 100000, null, null, 0)`,
+        )
         .run();
 
       // The write the review reproduced: accepted before, stored as a REAL, and only
@@ -288,7 +320,7 @@ describe('migrations', () => {
       ).toThrow(/CHECK constraint failed/u);
       expect(() =>
         handle.sqlite
-          .prepare(`insert into session_seats values ('s1', 1, 'ACTIVE', 'p1', 0.5, null, null)`)
+          .prepare(`insert into session_seats values ('s1', 1, 'ACTIVE', 'p1', 0.5, null, null, 0)`)
           .run(),
       ).toThrow(/CHECK constraint failed/u);
 
@@ -843,6 +875,459 @@ describe('migrations', () => {
         expect(() => after.sqlite.prepare(`delete from player_model_stats`).run()).toThrow(
           /is insert-only/u,
         );
+      } finally {
+        after.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * 0007 adds ONE table and nothing else, but "additive" is a claim about the generated
+   * SQL, not about what the migrator does to a file that already holds real history. This
+   * seeds a database at 0006 — a session, a hand with a lineup and an event, and a REFERENCE
+   * trace pointing at that hand — then applies 0007 and asserts that nothing moved, that the
+   * new table's FKs, CHECKs and insert-only triggers are live on the UPGRADED file, and that
+   * `strategy_decision_traces` in particular is untouched (its `strategy_mode` CHECK still
+   * admits only REFERENCE, which is the whole reason the adaptive trace is a separate table).
+   */
+  it('applies 0007 to a populated database that already has 0000..0006', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gto-self-migrate-0007-'));
+    try {
+      const older = freezeMigrations(dir, 6);
+      const url = join(dir, 'upgrade.db');
+      const before = openDatabase({ url, migrationsFolder: older });
+      try {
+        before.sqlite
+          .prepare(
+            `insert into players values ('p1', 'Dan', 'dan', null, 1700000000000, 1700000000000, 0)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into sessions values ('s1', 'grind', null, '{}', 0, 0, 1, 1700000000000, 1700000000000, null, 1, 100000)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 93701, 1, 100000)`)
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into hands values ('h1', 's1', 0, 1700000000000, 1700000030000, 'MANUAL_PRACTICE', 1)`,
+          )
+          .run();
+        before.sqlite.prepare(`insert into hand_players values ('h1', 0, 'p1', 100000)`).run();
+        before.sqlite
+          .prepare(
+            `insert into hand_events values ('h1', 0, 'e1', 0, 'USER', 'HAND_STARTED', '{"kind":"HAND_STARTED"}')`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into strategy_decision_traces values ('h1:0', 'h1', 0, 'FLOP', 0, 'REFERENCE', 'strategy-v1', 'CBET_IP', '[{"action":"BET","frequencyBps":10000,"toAmountMbb":5000}]', 'BET', 5000, 5200, 3300, 4, 'HEURISTIC', 'OK', 'BET', 1700000040000, 'ONLINE')`,
+          )
+          .run();
+      } finally {
+        before.close();
+      }
+
+      const after = openDatabase({ url });
+      try {
+        // Nothing pre-existing moved — the REFERENCE trace least of all.
+        expect(after.sqlite.prepare(`select * from hands`).all()).toEqual([
+          {
+            id: 'h1',
+            session_id: 's1',
+            hand_number: 0,
+            started_at: 1_700_000_000_000,
+            finished_at: 1_700_000_030_000,
+            source: 'MANUAL_PRACTICE',
+            schema_version: 1,
+          },
+        ]);
+        expect(after.sqlite.prepare(`select * from hand_events`).all()).toHaveLength(1);
+        expect(after.sqlite.prepare(`select * from hand_players`).all()).toHaveLength(1);
+        expect(after.sqlite.prepare(`select * from strategy_decision_traces`).all()).toEqual([
+          {
+            id: 'h1:0',
+            hand_id: 'h1',
+            command_seq: 0,
+            street: 'FLOP',
+            hero_seat: 0,
+            strategy_mode: 'REFERENCE',
+            strategy_version: 'strategy-v1',
+            family: 'CBET_IP',
+            actions_json: '[{"action":"BET","frequencyBps":10000,"toAmountMbb":5000}]',
+            primary_action: 'BET',
+            recommended_to_amount_mbb: 5_000,
+            hero_equity_bps: 5_200,
+            pot_odds_bps: 3_300,
+            spr: 4,
+            provenance_quality: 'HEURISTIC',
+            environment_status: 'OK',
+            actual_hero_action: 'BET',
+            computed_at: 1_700_000_040_000,
+            source: 'ONLINE',
+          },
+        ]);
+        expect(after.sqlite.pragma('integrity_check')).toEqual([{ integrity_check: 'ok' }]);
+        expect(after.sqlite.pragma('foreign_key_check')).toEqual([]);
+        expect(
+          after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
+        ).toEqual([]);
+
+        // `strategy_decision_traces` is NOT widened: ADAPTIVE is a separate table, and this
+        // is the assertion that says so.
+        expect(() =>
+          after.sqlite
+            .prepare(
+              `insert into strategy_decision_traces values ('h1:1', 'h1', 1, 'FLOP', 0, 'ADAPTIVE', 'v1', 'F', '[]', 'BET', null, null, null, null, 'HEURISTIC', 'OK', 'BET', 1700000040000, 'ONLINE')`,
+            )
+            .run(),
+        ).toThrow(/CHECK constraint failed/u);
+
+        // The new table exists and accepts a real trace on the UPGRADED file.
+        const trace = (over: {
+          id: string;
+          handId?: string;
+          seq?: number;
+          shift?: string;
+          cap?: string;
+        }): string =>
+          `insert into adaptive_strategy_traces values ('${over.id}', '${over.handId ?? 'h1'}', ${over.seq ?? 0}, 'h1:0', 'FLOP', 0, 'ADAPTED', 'adaptive-v1', 'p1', 1, ` +
+          `'[{"action":"BET","frequencyBps":10000,"toAmountMbb":5000}]', ` +
+          `'[{"action":"BET","frequencyBps":10000,"toAmountMbb":6000}]', ` +
+          `'[{"action":"BET","deltaBps":0}]', 'BET', 'BET', 5000, 6000, 3, 4, ` +
+          `${over.shift ?? '1850'}, ${over.cap ?? '0'}, '[]', '[]', '[]', 1, 1700000050000, 'LIVE')`;
+
+        after.sqlite.prepare(trace({ id: 'h1:0:ADAPTIVE' })).run();
+        expect(
+          after.sqlite.prepare(`select count(*) as n from adaptive_strategy_traces`).get(),
+        ).toEqual({ n: 1 });
+
+        // ... and its FK, its UNIQUE natural key and its CHECKs are live, not merely declared.
+        expect(() =>
+          after.sqlite.prepare(trace({ id: 'orphan', handId: 'no-such-hand', seq: 9 })).run(),
+        ).toThrow(/FOREIGN KEY constraint failed/u);
+        expect(() => after.sqlite.prepare(trace({ id: 'h1:0:ADAPTIVE-2', seq: 0 })).run()).toThrow(
+          /UNIQUE constraint failed/u,
+        );
+        expect(() =>
+          after.sqlite.prepare(trace({ id: 'h1:1:ADAPTIVE', seq: 1, cap: '2' })).run(),
+        ).toThrow(/CHECK constraint failed/u);
+        expect(() =>
+          after.sqlite.prepare(trace({ id: 'h1:2:ADAPTIVE', seq: 2, shift: '1850.5' })).run(),
+        ).toThrow(/CHECK constraint failed/u);
+
+        // ... and so are the insert-only guards.
+        expect(() =>
+          after.sqlite.prepare(`update adaptive_strategy_traces set total_shift_bps = 0`).run(),
+        ).toThrow(/is insert-only/u);
+        expect(() => after.sqlite.prepare(`delete from adaptive_strategy_traces`).run()).toThrow(
+          /is insert-only/u,
+        );
+        expect(
+          after.sqlite.prepare(`select total_shift_bps as bps from adaptive_strategy_traces`).get(),
+        ).toEqual({ bps: 1_850 });
+      } finally {
+        after.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * 0009 adds ONE nullable column to `skipped_hands` and claims to be purely additive. Two
+   * things could make that claim false, and both are asserted here on a file that already
+   * holds real skip history:
+   *
+   *   1. A table REWRITE (the 12-step `__new_skipped_hands` dance `drizzle-kit generate`
+   *      emits for a CHECK change) would DROP the table and take its `skipped_hands_no_update`
+   *      / `_no_delete` triggers with it, silently deleting the insert-only guarantee. The
+   *      migration is hand-written `ALTER TABLE ... ADD COLUMN` for exactly that reason, and
+   *      the trigger assertions below are what would catch a regression to the generated form.
+   *   2. Backfilling a reason onto the existing rows would INVENT an audit fact. A pre-0009
+   *      row must come out `NULL` — "the reason was never recorded".
+   */
+  it('applies 0009 to a populated database that already has 0000..0008', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gto-self-migrate-0009-'));
+    try {
+      const older = freezeMigrations(dir, 8);
+      const url = join(dir, 'upgrade.db');
+      const before = openDatabase({ url, migrationsFolder: older });
+      try {
+        before.sqlite
+          .prepare(
+            `insert into sessions values ('s1', 'grind', null, '{}', 0, 0, 1, 1700000000000, 1700000000000, null, 1, 100000)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(`insert into skipped_hands values ('k1', 's1', 4, 1700000000000)`)
+          .run();
+        // The column does not exist yet — this is what makes the row below a real "old" row.
+        expect(() => before.sqlite.prepare(`select reason from skipped_hands`).all()).toThrow(
+          /no such column/u,
+        );
+      } finally {
+        before.close();
+      }
+
+      const after = openDatabase({ url });
+      try {
+        // The pre-existing row survived, and its reason is NULL — never backfilled.
+        expect(after.sqlite.prepare(`select * from skipped_hands`).all()).toEqual([
+          {
+            id: 'k1',
+            session_id: 's1',
+            hand_number: 4,
+            skipped_at: 1_700_000_000_000,
+            reason: null,
+          },
+        ]);
+        expect(after.sqlite.pragma('integrity_check')).toEqual([{ integrity_check: 'ok' }]);
+        expect(after.sqlite.pragma('foreign_key_check')).toEqual([]);
+        // No table rewrite happened: the 12-step dance leaves this behind on failure.
+        expect(
+          after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
+        ).toEqual([]);
+        // ... and the index the table was created with is still the original one.
+        expect(
+          after.sqlite
+            .prepare(
+              `select name from sqlite_master where type = 'index' and tbl_name = 'skipped_hands'`,
+            )
+            .all(),
+        ).toContainEqual({ name: 'skipped_hands_session_idx' });
+
+        // Both members are accepted on the UPGRADED file...
+        after.sqlite
+          .prepare(`insert into skipped_hands values ('k2', 's1', 5, 1700000010000, 'QUICK_SKIP')`)
+          .run();
+        after.sqlite
+          .prepare(
+            `insert into skipped_hands values ('k3', 's1', 6, 1700000020000, 'HERO_FOLDED_UNOBSERVED')`,
+          )
+          .run();
+        expect(after.sqlite.prepare(`select reason from skipped_hands order by id`).all()).toEqual([
+          { reason: null },
+          { reason: 'QUICK_SKIP' },
+          { reason: 'HERO_FOLDED_UNOBSERVED' },
+        ]);
+
+        // ... and anything else is refused BY THE CHECK, not merely by the TypeScript union.
+        expect(() =>
+          after.sqlite
+            .prepare(
+              `insert into skipped_hands values ('k4', 's1', 7, 1700000030000, 'HERO_SAT_OUT')`,
+            )
+            .run(),
+        ).toThrow(/CHECK constraint failed: skipped_hands_reason/u);
+        expect(() =>
+          after.sqlite
+            .prepare(`insert into skipped_hands values ('k5', 's1', 8, 1700000040000, '')`)
+            .run(),
+        ).toThrow(/CHECK constraint failed: skipped_hands_reason/u);
+
+        // The insert-only triggers SURVIVED the migration — nothing dropped the table.
+        expect(
+          after.sqlite
+            .prepare(
+              `select name from sqlite_master where type = 'trigger' and tbl_name = 'skipped_hands' order by name`,
+            )
+            .all(),
+        ).toEqual([{ name: 'skipped_hands_no_delete' }, { name: 'skipped_hands_no_update' }]);
+        expect(() =>
+          after.sqlite
+            .prepare(`update skipped_hands set reason = 'QUICK_SKIP' where id = 'k1'`)
+            .run(),
+        ).toThrow(/is insert-only/u);
+        expect(() => after.sqlite.prepare(`delete from skipped_hands`).run()).toThrow(
+          /is insert-only/u,
+        );
+        // The old row is STILL unrecorded after both refusals.
+        expect(
+          after.sqlite.prepare(`select reason from skipped_hands where id = 'k1'`).get(),
+        ).toEqual({ reason: null });
+      } finally {
+        after.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * 0010 adds ONE column to `session_seats` and claims to be purely additive (ADR-0078b).
+   * `session_seats` is not insert-only, but it carries TWO foreign keys, EIGHT CHECK
+   * constraints and `session_seats_player_idx`, and the 12-step table recreate
+   * `drizzle-kit generate` emitted for this diff would `DROP TABLE session_seats` with
+   * foreign keys ENFORCED (its `PRAGMA foreign_keys=OFF` is a no-op inside the migrator's
+   * transaction — ADR-0046). Every seat row of every existing session would be gone.
+   *
+   * So this upgrades a file that already holds real seat state and asserts the three things
+   * that would be false if the generated form ever came back:
+   *
+   *   1. Every pre-existing seat keeps its stack, its player, its occupancy and BOTH auto
+   *      top-up columns — byte for byte.
+   *   2. The new column defaults to `0` on those rows: "confirmed", which is the safe and
+   *      the true reading, since the unverified mark did not exist before this migration.
+   *   3. Nothing was rewritten: no `__new%` leftover, the index and both foreign keys are
+   *      still there, and the new CHECK actually refuses a non-boolean.
+   */
+  it('applies 0010 to a populated database that already has 0000..0009', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gto-self-migrate-0010-'));
+    try {
+      const older = freezeMigrations(dir, 9);
+      const url = join(dir, 'upgrade.db');
+      const before = openDatabase({ url, migrationsFolder: older });
+      try {
+        before.sqlite
+          .prepare(
+            `insert into players values ('p1', 'Dan', 'dan', null, 1700000000000, 1700000000000, 0)`,
+          )
+          .run();
+        before.sqlite
+          .prepare(
+            `insert into sessions values ('s1', 'grind', null, '{}', 0, 0, 3, 1700000000000, 1700000000000, null, 1, 100000)`,
+          )
+          .run();
+        // Seven columns: at 0009 `session_seats` has no `stack_unverified`. An occupied seat
+        // with a per-seat auto top-up policy, and an EMPTY one, so both shapes are exercised.
+        before.sqlite
+          .prepare(`insert into session_seats values ('s1', 0, 'ACTIVE', 'p1', 93701, 1, 250000)`)
+          .run();
+        before.sqlite
+          .prepare(`insert into session_seats values ('s1', 5, 'EMPTY', null, 0, null, null)`)
+          .run();
+        // The column does not exist yet — this is what makes the two rows above real "old" rows.
+        expect(() =>
+          before.sqlite.prepare(`select stack_unverified from session_seats`).all(),
+        ).toThrow(/no such column/u);
+      } finally {
+        before.close();
+      }
+
+      const after = openDatabase({ url });
+      try {
+        // Both pre-existing seats survived WHOLE — stack, player, occupancy and the auto
+        // top-up pair — and the new column defaulted to 0 rather than being backfilled.
+        expect(after.sqlite.prepare(`select * from session_seats order by seat`).all()).toEqual([
+          {
+            session_id: 's1',
+            seat: 0,
+            occupancy: 'ACTIVE',
+            player_id: 'p1',
+            stack: 93_701,
+            auto_top_up_enabled: 1,
+            auto_top_up_target_stack: 250_000,
+            stack_unverified: 0,
+          },
+          {
+            session_id: 's1',
+            seat: 5,
+            occupancy: 'EMPTY',
+            player_id: null,
+            stack: 0,
+            auto_top_up_enabled: null,
+            auto_top_up_target_stack: null,
+            stack_unverified: 0,
+          },
+        ]);
+        // The stack is still an INTEGER, not a REAL the rewrite round-tripped.
+        expect(
+          after.sqlite.prepare(`select typeof(stack) as t from session_seats where seat = 0`).get(),
+        ).toEqual({ t: 'integer' });
+        expect(after.sqlite.pragma('integrity_check')).toEqual([{ integrity_check: 'ok' }]);
+        expect(after.sqlite.pragma('foreign_key_check')).toEqual([]);
+        // No table rewrite happened: the 12-step dance leaves this behind on failure.
+        expect(
+          after.sqlite.prepare(`select name from sqlite_master where name like '__new%'`).all(),
+        ).toEqual([]);
+        // ... the index the table was created with is still the original one ...
+        expect(
+          after.sqlite
+            .prepare(
+              `select name from sqlite_master where type = 'index' and tbl_name = 'session_seats'`,
+            )
+            .all(),
+        ).toContainEqual({ name: 'session_seats_player_idx' });
+        // ... and BOTH foreign keys survived, which a `DROP TABLE` would have taken with them.
+        expect(
+          (
+            after.sqlite.pragma('foreign_key_list(session_seats)') as readonly {
+              readonly table: string;
+              readonly from: string;
+              readonly to: string;
+            }[]
+          )
+            .map((fk) => [fk.table, fk.from, fk.to])
+            .sort(),
+        ).toEqual(
+          [
+            ['players', 'player_id', 'id'],
+            ['sessions', 'session_id', 'id'],
+          ].sort(),
+        );
+        // The FK is still ENFORCED, not merely still declared.
+        expect(() =>
+          after.sqlite
+            .prepare(
+              `insert into session_seats values ('ghost', 1, 'EMPTY', null, 0, null, null, 0)`,
+            )
+            .run(),
+        ).toThrow(/FOREIGN KEY constraint failed/u);
+
+        // The flag round-trips on the UPGRADED file, both ways.
+        after.sqlite.prepare(`update session_seats set stack_unverified = 1 where seat = 0`).run();
+        expect(
+          after.sqlite
+            .prepare(`select seat, stack_unverified from session_seats order by seat`)
+            .all(),
+        ).toEqual([
+          { seat: 0, stack_unverified: 1 },
+          { seat: 5, stack_unverified: 0 },
+        ]);
+        // Marking a stack unverified does not disturb the stack itself.
+        expect(
+          after.sqlite.prepare(`select stack from session_seats where seat = 0`).get(),
+        ).toEqual({ stack: 93_701 });
+
+        // Anything but 0/1 is refused BY THE CHECK, not merely by the TypeScript boolean...
+        for (const bad of [2, -1, 'yes']) {
+          expect(() =>
+            after.sqlite
+              .prepare(`update session_seats set stack_unverified = ? where seat = 5`)
+              .run(bad),
+          ).toThrow(/CHECK constraint failed: session_seats_stack_unverified_boolean/u);
+        }
+        // A fractional value stays a REAL under INTEGER affinity and is caught by the
+        // `typeof(...) = 'integer'` half of the CHECK, exactly as on `stack`. (`1.0` is NOT
+        // tested: SQLite's INTEGER affinity converts a losslessly-integral REAL to INTEGER
+        // before the constraint ever sees it, which is `auto_top_up_enabled`'s behaviour too.)
+        expect(() =>
+          after.sqlite
+            .prepare(`update session_seats set stack_unverified = 0.5 where seat = 5`)
+            .run(),
+        ).toThrow(/CHECK constraint failed: session_seats_stack_unverified_boolean/u);
+        // ... and NULL is refused by NOT NULL: "unknown" is not a third state for this column.
+        expect(() =>
+          after.sqlite
+            .prepare(`update session_seats set stack_unverified = null where seat = 5`)
+            .run(),
+        ).toThrow(/NOT NULL constraint failed/u);
+        // Every refusal above left seat 5 exactly as it was.
+        expect(after.sqlite.prepare(`select * from session_seats where seat = 5`).get()).toEqual({
+          session_id: 's1',
+          seat: 5,
+          occupancy: 'EMPTY',
+          player_id: null,
+          stack: 0,
+          auto_top_up_enabled: null,
+          auto_top_up_target_stack: null,
+          stack_unverified: 0,
+        });
       } finally {
         after.close();
       }

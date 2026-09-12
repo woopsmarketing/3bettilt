@@ -1,0 +1,3434 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "aa07a9dd-b7a7-4c3e-8ae2-340b9c3c1e54",
+  "prevId": "b91c34be-2ba0-4d2f-b4d2-01716f261ec1",
+  "tables": {
+    "adaptive_strategy_traces": {
+      "name": "adaptive_strategy_traces",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_id": {
+          "name": "hand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "command_seq": {
+          "name": "command_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reference_trace_id": {
+          "name": "reference_trace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "street": {
+          "name": "street",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hero_seat": {
+          "name": "hero_seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "adaptive_policy_version": {
+          "name": "adaptive_policy_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "primary_villain_player_id": {
+          "name": "primary_villain_player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "opponent_count": {
+          "name": "opponent_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "baseline_actions_json": {
+          "name": "baseline_actions_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "adaptive_actions_json": {
+          "name": "adaptive_actions_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "frequency_delta_json": {
+          "name": "frequency_delta_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "baseline_primary_action": {
+          "name": "baseline_primary_action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "adaptive_primary_action": {
+          "name": "adaptive_primary_action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "baseline_to_amount_mbb": {
+          "name": "baseline_to_amount_mbb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "adaptive_to_amount_mbb": {
+          "name": "adaptive_to_amount_mbb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "baseline_sizing_bucket": {
+          "name": "baseline_sizing_bucket",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "adaptive_sizing_bucket": {
+          "name": "adaptive_sizing_bucket",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_shift_bps": {
+          "name": "total_shift_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cap_applied": {
+          "name": "cap_applied",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "adjustments_json": {
+          "name": "adjustments_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "manual_hud_snapshot_ids_json": {
+          "name": "manual_hud_snapshot_ids_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_model_snapshot_ids_json": {
+          "name": "player_model_snapshot_ids_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_model_version": {
+          "name": "player_model_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "adaptive_strategy_traces_hand_command_unique": {
+          "name": "adaptive_strategy_traces_hand_command_unique",
+          "columns": [
+            "hand_id",
+            "command_seq"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "adaptive_strategy_traces_hand_id_hands_id_fk": {
+          "name": "adaptive_strategy_traces_hand_id_hands_id_fk",
+          "tableFrom": "adaptive_strategy_traces",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "adaptive_strategy_traces_reference_trace_id_strategy_decision_traces_id_fk": {
+          "name": "adaptive_strategy_traces_reference_trace_id_strategy_decision_traces_id_fk",
+          "tableFrom": "adaptive_strategy_traces",
+          "tableTo": "strategy_decision_traces",
+          "columnsFrom": [
+            "reference_trace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "adaptive_strategy_traces_primary_villain_player_id_players_id_fk": {
+          "name": "adaptive_strategy_traces_primary_villain_player_id_players_id_fk",
+          "tableFrom": "adaptive_strategy_traces",
+          "tableTo": "players",
+          "columnsFrom": [
+            "primary_villain_player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "adaptive_strategy_traces_id_not_empty": {
+          "name": "adaptive_strategy_traces_id_not_empty",
+          "value": "length(\"adaptive_strategy_traces\".\"id\") > 0"
+        },
+        "adaptive_strategy_traces_command_seq_non_negative": {
+          "name": "adaptive_strategy_traces_command_seq_non_negative",
+          "value": "typeof(\"adaptive_strategy_traces\".\"command_seq\") = 'integer' and \"adaptive_strategy_traces\".\"command_seq\" >= 0"
+        },
+        "adaptive_strategy_traces_reference_trace_id_not_empty": {
+          "name": "adaptive_strategy_traces_reference_trace_id_not_empty",
+          "value": "\"adaptive_strategy_traces\".\"reference_trace_id\" is null or length(\"adaptive_strategy_traces\".\"reference_trace_id\") > 0"
+        },
+        "adaptive_strategy_traces_street": {
+          "name": "adaptive_strategy_traces_street",
+          "value": "\"adaptive_strategy_traces\".\"street\" in ('PREFLOP', 'FLOP', 'TURN', 'RIVER')"
+        },
+        "adaptive_strategy_traces_hero_seat_range": {
+          "name": "adaptive_strategy_traces_hero_seat_range",
+          "value": "typeof(\"adaptive_strategy_traces\".\"hero_seat\") = 'integer' and \"adaptive_strategy_traces\".\"hero_seat\" >= 0 and \"adaptive_strategy_traces\".\"hero_seat\" <= 5"
+        },
+        "adaptive_strategy_traces_status": {
+          "name": "adaptive_strategy_traces_status",
+          "value": "\"adaptive_strategy_traces\".\"status\" in ('ADAPTED', 'INSUFFICIENT_DATA')"
+        },
+        "adaptive_strategy_traces_policy_version_not_empty": {
+          "name": "adaptive_strategy_traces_policy_version_not_empty",
+          "value": "length(\"adaptive_strategy_traces\".\"adaptive_policy_version\") > 0"
+        },
+        "adaptive_strategy_traces_primary_villain_not_empty": {
+          "name": "adaptive_strategy_traces_primary_villain_not_empty",
+          "value": "\"adaptive_strategy_traces\".\"primary_villain_player_id\" is null or length(\"adaptive_strategy_traces\".\"primary_villain_player_id\") > 0"
+        },
+        "adaptive_strategy_traces_opponent_count_range": {
+          "name": "adaptive_strategy_traces_opponent_count_range",
+          "value": "typeof(\"adaptive_strategy_traces\".\"opponent_count\") = 'integer' and \"adaptive_strategy_traces\".\"opponent_count\" >= 0 and \"adaptive_strategy_traces\".\"opponent_count\" <= 100000000"
+        },
+        "adaptive_strategy_traces_baseline_actions_json_not_empty": {
+          "name": "adaptive_strategy_traces_baseline_actions_json_not_empty",
+          "value": "length(\"adaptive_strategy_traces\".\"baseline_actions_json\") > 0"
+        },
+        "adaptive_strategy_traces_adaptive_actions_json_not_empty": {
+          "name": "adaptive_strategy_traces_adaptive_actions_json_not_empty",
+          "value": "length(\"adaptive_strategy_traces\".\"adaptive_actions_json\") > 0"
+        },
+        "adaptive_strategy_traces_frequency_delta_json_not_empty": {
+          "name": "adaptive_strategy_traces_frequency_delta_json_not_empty",
+          "value": "length(\"adaptive_strategy_traces\".\"frequency_delta_json\") > 0"
+        },
+        "adaptive_strategy_traces_baseline_primary_action": {
+          "name": "adaptive_strategy_traces_baseline_primary_action",
+          "value": "\"adaptive_strategy_traces\".\"baseline_primary_action\" in ('FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN')"
+        },
+        "adaptive_strategy_traces_adaptive_primary_action": {
+          "name": "adaptive_strategy_traces_adaptive_primary_action",
+          "value": "\"adaptive_strategy_traces\".\"adaptive_primary_action\" in ('FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN')"
+        },
+        "adaptive_strategy_traces_baseline_to_amount_range": {
+          "name": "adaptive_strategy_traces_baseline_to_amount_range",
+          "value": "\"adaptive_strategy_traces\".\"baseline_to_amount_mbb\" is null or (typeof(\"adaptive_strategy_traces\".\"baseline_to_amount_mbb\") = 'integer' and \"adaptive_strategy_traces\".\"baseline_to_amount_mbb\" >= -1000000000 and \"adaptive_strategy_traces\".\"baseline_to_amount_mbb\" <= 1000000000 and \"adaptive_strategy_traces\".\"baseline_to_amount_mbb\" >= 0)"
+        },
+        "adaptive_strategy_traces_adaptive_to_amount_range": {
+          "name": "adaptive_strategy_traces_adaptive_to_amount_range",
+          "value": "\"adaptive_strategy_traces\".\"adaptive_to_amount_mbb\" is null or (typeof(\"adaptive_strategy_traces\".\"adaptive_to_amount_mbb\") = 'integer' and \"adaptive_strategy_traces\".\"adaptive_to_amount_mbb\" >= -1000000000 and \"adaptive_strategy_traces\".\"adaptive_to_amount_mbb\" <= 1000000000 and \"adaptive_strategy_traces\".\"adaptive_to_amount_mbb\" >= 0)"
+        },
+        "adaptive_strategy_traces_baseline_sizing_bucket_range": {
+          "name": "adaptive_strategy_traces_baseline_sizing_bucket_range",
+          "value": "\"adaptive_strategy_traces\".\"baseline_sizing_bucket\" is null or (typeof(\"adaptive_strategy_traces\".\"baseline_sizing_bucket\") = 'integer' and \"adaptive_strategy_traces\".\"baseline_sizing_bucket\" >= -1 and \"adaptive_strategy_traces\".\"baseline_sizing_bucket\" <= 7)"
+        },
+        "adaptive_strategy_traces_adaptive_sizing_bucket_range": {
+          "name": "adaptive_strategy_traces_adaptive_sizing_bucket_range",
+          "value": "\"adaptive_strategy_traces\".\"adaptive_sizing_bucket\" is null or (typeof(\"adaptive_strategy_traces\".\"adaptive_sizing_bucket\") = 'integer' and \"adaptive_strategy_traces\".\"adaptive_sizing_bucket\" >= -1 and \"adaptive_strategy_traces\".\"adaptive_sizing_bucket\" <= 7)"
+        },
+        "adaptive_strategy_traces_total_shift_bps_range": {
+          "name": "adaptive_strategy_traces_total_shift_bps_range",
+          "value": "typeof(\"adaptive_strategy_traces\".\"total_shift_bps\") = 'integer' and \"adaptive_strategy_traces\".\"total_shift_bps\" >= 0 and \"adaptive_strategy_traces\".\"total_shift_bps\" <= 10000"
+        },
+        "adaptive_strategy_traces_cap_applied_boolean": {
+          "name": "adaptive_strategy_traces_cap_applied_boolean",
+          "value": "typeof(\"adaptive_strategy_traces\".\"cap_applied\") = 'integer' and \"adaptive_strategy_traces\".\"cap_applied\" in (0, 1)"
+        },
+        "adaptive_strategy_traces_adjustments_json_not_empty": {
+          "name": "adaptive_strategy_traces_adjustments_json_not_empty",
+          "value": "length(\"adaptive_strategy_traces\".\"adjustments_json\") > 0"
+        },
+        "adaptive_strategy_traces_manual_hud_ids_json_not_empty": {
+          "name": "adaptive_strategy_traces_manual_hud_ids_json_not_empty",
+          "value": "length(\"adaptive_strategy_traces\".\"manual_hud_snapshot_ids_json\") > 0"
+        },
+        "adaptive_strategy_traces_model_snapshot_ids_json_not_empty": {
+          "name": "adaptive_strategy_traces_model_snapshot_ids_json_not_empty",
+          "value": "length(\"adaptive_strategy_traces\".\"player_model_snapshot_ids_json\") > 0"
+        },
+        "adaptive_strategy_traces_player_model_version_positive": {
+          "name": "adaptive_strategy_traces_player_model_version_positive",
+          "value": "\"adaptive_strategy_traces\".\"player_model_version\" is null or (typeof(\"adaptive_strategy_traces\".\"player_model_version\") = 'integer' and \"adaptive_strategy_traces\".\"player_model_version\" >= 1)"
+        },
+        "adaptive_strategy_traces_computed_at_range": {
+          "name": "adaptive_strategy_traces_computed_at_range",
+          "value": "typeof(\"adaptive_strategy_traces\".\"computed_at\") = 'integer' and \"adaptive_strategy_traces\".\"computed_at\" >= 0 and \"adaptive_strategy_traces\".\"computed_at\" <= 32503680000000"
+        },
+        "adaptive_strategy_traces_source": {
+          "name": "adaptive_strategy_traces_source",
+          "value": "\"adaptive_strategy_traces\".\"source\" in ('LIVE', 'BACKFILL')"
+        }
+      }
+    },
+    "analysis_run_players": {
+      "name": "analysis_run_players",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error_json": {
+          "name": "error_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "analysis_run_players_player_idx": {
+          "name": "analysis_run_players_player_idx",
+          "columns": [
+            "player_id",
+            "run_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "analysis_run_players_run_id_analysis_runs_id_fk": {
+          "name": "analysis_run_players_run_id_analysis_runs_id_fk",
+          "tableFrom": "analysis_run_players",
+          "tableTo": "analysis_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "analysis_run_players_player_id_players_id_fk": {
+          "name": "analysis_run_players_player_id_players_id_fk",
+          "tableFrom": "analysis_run_players",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "analysis_run_players_snapshot_id_player_model_snapshots_id_fk": {
+          "name": "analysis_run_players_snapshot_id_player_model_snapshots_id_fk",
+          "tableFrom": "analysis_run_players",
+          "tableTo": "player_model_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "analysis_run_players_pk": {
+          "columns": [
+            "run_id",
+            "player_id"
+          ],
+          "name": "analysis_run_players_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "analysis_run_players_outcome": {
+          "name": "analysis_run_players_outcome",
+          "value": "\"analysis_run_players\".\"outcome\" in ('SNAPSHOT_CREATED', 'NO_CHANGES', 'FAILED')"
+        },
+        "analysis_run_players_snapshot_iff_created": {
+          "name": "analysis_run_players_snapshot_iff_created",
+          "value": "(\"analysis_run_players\".\"outcome\" = 'SNAPSHOT_CREATED' and \"analysis_run_players\".\"snapshot_id\" is not null) or (\"analysis_run_players\".\"outcome\" <> 'SNAPSHOT_CREATED' and \"analysis_run_players\".\"snapshot_id\" is null)"
+        },
+        "analysis_run_players_error_only_when_failed": {
+          "name": "analysis_run_players_error_only_when_failed",
+          "value": "\"analysis_run_players\".\"error_json\" is null or (\"analysis_run_players\".\"outcome\" = 'FAILED' and length(\"analysis_run_players\".\"error_json\") > 0)"
+        }
+      }
+    },
+    "analysis_runs": {
+      "name": "analysis_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "algorithm_version": {
+          "name": "algorithm_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_count": {
+          "name": "hand_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_count": {
+          "name": "player_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "observation_count": {
+          "name": "observation_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "show_count": {
+          "name": "show_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error_json": {
+          "name": "error_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "analysis_runs_session_started_idx": {
+          "name": "analysis_runs_session_started_idx",
+          "columns": [
+            "session_id",
+            "started_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "analysis_runs_session_id_sessions_id_fk": {
+          "name": "analysis_runs_session_id_sessions_id_fk",
+          "tableFrom": "analysis_runs",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "analysis_runs_id_not_empty": {
+          "name": "analysis_runs_id_not_empty",
+          "value": "length(\"analysis_runs\".\"id\") > 0"
+        },
+        "analysis_runs_started_at_range": {
+          "name": "analysis_runs_started_at_range",
+          "value": "typeof(\"analysis_runs\".\"started_at\") = 'integer' and \"analysis_runs\".\"started_at\" >= 0 and \"analysis_runs\".\"started_at\" <= 32503680000000"
+        },
+        "analysis_runs_finished_at_range": {
+          "name": "analysis_runs_finished_at_range",
+          "value": "typeof(\"analysis_runs\".\"finished_at\") = 'integer' and \"analysis_runs\".\"finished_at\" >= \"analysis_runs\".\"started_at\" and \"analysis_runs\".\"finished_at\" <= 32503680000000"
+        },
+        "analysis_runs_algorithm_version_positive": {
+          "name": "analysis_runs_algorithm_version_positive",
+          "value": "typeof(\"analysis_runs\".\"algorithm_version\") = 'integer' and \"analysis_runs\".\"algorithm_version\" >= 1"
+        },
+        "analysis_runs_status": {
+          "name": "analysis_runs_status",
+          "value": "\"analysis_runs\".\"status\" in ('SUCCESS', 'PARTIAL', 'FAILED')"
+        },
+        "analysis_runs_hand_count_range": {
+          "name": "analysis_runs_hand_count_range",
+          "value": "typeof(\"analysis_runs\".\"hand_count\") = 'integer' and \"analysis_runs\".\"hand_count\" >= 0 and \"analysis_runs\".\"hand_count\" <= 100000000"
+        },
+        "analysis_runs_player_count_range": {
+          "name": "analysis_runs_player_count_range",
+          "value": "typeof(\"analysis_runs\".\"player_count\") = 'integer' and \"analysis_runs\".\"player_count\" >= 0 and \"analysis_runs\".\"player_count\" <= 100000000"
+        },
+        "analysis_runs_observation_count_range": {
+          "name": "analysis_runs_observation_count_range",
+          "value": "typeof(\"analysis_runs\".\"observation_count\") = 'integer' and \"analysis_runs\".\"observation_count\" >= 0 and \"analysis_runs\".\"observation_count\" <= 100000000"
+        },
+        "analysis_runs_show_count_range": {
+          "name": "analysis_runs_show_count_range",
+          "value": "typeof(\"analysis_runs\".\"show_count\") = 'integer' and \"analysis_runs\".\"show_count\" >= 0 and \"analysis_runs\".\"show_count\" <= 100000000"
+        },
+        "analysis_runs_error_json_not_empty": {
+          "name": "analysis_runs_error_json_not_empty",
+          "value": "\"analysis_runs\".\"error_json\" is null or length(\"analysis_runs\".\"error_json\") > 0"
+        }
+      }
+    },
+    "game_presets": {
+      "name": "game_presets",
+      "columns": {
+        "preset_id": {
+          "name": "preset_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "config_json": {
+          "name": "config_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "game_presets_preset_id_not_empty": {
+          "name": "game_presets_preset_id_not_empty",
+          "value": "length(\"game_presets\".\"preset_id\") > 0"
+        },
+        "game_presets_created_at_range": {
+          "name": "game_presets_created_at_range",
+          "value": "typeof(\"game_presets\".\"created_at\") = 'integer' and \"game_presets\".\"created_at\" >= 0 and \"game_presets\".\"created_at\" <= 32503680000000"
+        },
+        "game_presets_updated_at_range": {
+          "name": "game_presets_updated_at_range",
+          "value": "typeof(\"game_presets\".\"updated_at\") = 'integer' and \"game_presets\".\"updated_at\" >= 0 and \"game_presets\".\"updated_at\" <= 32503680000000"
+        },
+        "game_presets_updated_not_before_created": {
+          "name": "game_presets_updated_not_before_created",
+          "value": "\"game_presets\".\"updated_at\" >= \"game_presets\".\"created_at\""
+        }
+      }
+    },
+    "hand_events": {
+      "name": "hand_events",
+      "columns": {
+        "hand_id": {
+          "name": "hand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "command_seq": {
+          "name": "command_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_json": {
+          "name": "payload_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "hand_events_hand_event_id_unique": {
+          "name": "hand_events_hand_event_id_unique",
+          "columns": [
+            "hand_id",
+            "event_id"
+          ],
+          "isUnique": true
+        },
+        "hand_events_command_idx": {
+          "name": "hand_events_command_idx",
+          "columns": [
+            "hand_id",
+            "command_seq",
+            "seq"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "hand_events_hand_id_hands_id_fk": {
+          "name": "hand_events_hand_id_hands_id_fk",
+          "tableFrom": "hand_events",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "hand_events_pk": {
+          "columns": [
+            "hand_id",
+            "seq"
+          ],
+          "name": "hand_events_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "hand_events_seq_non_negative": {
+          "name": "hand_events_seq_non_negative",
+          "value": "\"hand_events\".\"seq\" >= 0"
+        },
+        "hand_events_command_seq_non_negative": {
+          "name": "hand_events_command_seq_non_negative",
+          "value": "\"hand_events\".\"command_seq\" >= 0"
+        },
+        "hand_events_origin": {
+          "name": "hand_events_origin",
+          "value": "\"hand_events\".\"origin\" in ('USER', 'ENGINE')"
+        },
+        "hand_events_kind_not_empty": {
+          "name": "hand_events_kind_not_empty",
+          "value": "length(\"hand_events\".\"kind\") > 0"
+        },
+        "hand_events_event_id_not_empty": {
+          "name": "hand_events_event_id_not_empty",
+          "value": "length(\"hand_events\".\"event_id\") > 0"
+        }
+      }
+    },
+    "hand_players": {
+      "name": "hand_players",
+      "columns": {
+        "hand_id": {
+          "name": "hand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seat": {
+          "name": "seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "starting_stack": {
+          "name": "starting_stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "hand_players_player_idx": {
+          "name": "hand_players_player_idx",
+          "columns": [
+            "player_id",
+            "hand_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "hand_players_hand_id_hands_id_fk": {
+          "name": "hand_players_hand_id_hands_id_fk",
+          "tableFrom": "hand_players",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        },
+        "hand_players_player_id_players_id_fk": {
+          "name": "hand_players_player_id_players_id_fk",
+          "tableFrom": "hand_players",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "hand_players_pk": {
+          "columns": [
+            "hand_id",
+            "seat"
+          ],
+          "name": "hand_players_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "hand_players_seat_range": {
+          "name": "hand_players_seat_range",
+          "value": "\"hand_players\".\"seat\" >= 0 and \"hand_players\".\"seat\" <= 5"
+        },
+        "hand_players_starting_stack_positive": {
+          "name": "hand_players_starting_stack_positive",
+          "value": "\"hand_players\".\"starting_stack\" > 0"
+        },
+        "hand_players_starting_stack_range": {
+          "name": "hand_players_starting_stack_range",
+          "value": "typeof(\"hand_players\".\"starting_stack\") = 'integer' and \"hand_players\".\"starting_stack\" >= -1000000000 and \"hand_players\".\"starting_stack\" <= 1000000000"
+        }
+      }
+    },
+    "hands": {
+      "name": "hands",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_number": {
+          "name": "hand_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'MANUAL_PRACTICE'"
+        },
+        "schema_version": {
+          "name": "schema_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "hands_session_hand_number_unique": {
+          "name": "hands_session_hand_number_unique",
+          "columns": [
+            "session_id",
+            "hand_number"
+          ],
+          "isUnique": true
+        },
+        "hands_session_started_idx": {
+          "name": "hands_session_started_idx",
+          "columns": [
+            "session_id",
+            "started_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "hands_session_id_sessions_id_fk": {
+          "name": "hands_session_id_sessions_id_fk",
+          "tableFrom": "hands",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "hands_hand_number_non_negative": {
+          "name": "hands_hand_number_non_negative",
+          "value": "\"hands\".\"hand_number\" >= 0"
+        },
+        "hands_started_at_range": {
+          "name": "hands_started_at_range",
+          "value": "typeof(\"hands\".\"started_at\") = 'integer' and \"hands\".\"started_at\" >= 0 and \"hands\".\"started_at\" <= 32503680000000"
+        },
+        "hands_finished_at_range": {
+          "name": "hands_finished_at_range",
+          "value": "\"hands\".\"finished_at\" is null or (typeof(\"hands\".\"finished_at\") = 'integer' and \"hands\".\"finished_at\" >= \"hands\".\"started_at\" and \"hands\".\"finished_at\" <= 32503680000000)"
+        },
+        "hands_source": {
+          "name": "hands_source",
+          "value": "\"hands\".\"source\" in ('MANUAL_PRACTICE', 'MANUAL_REVIEW')"
+        },
+        "hands_schema_version_positive": {
+          "name": "hands_schema_version_positive",
+          "value": "typeof(\"hands\".\"schema_version\") = 'integer' and \"hands\".\"schema_version\" >= 1"
+        }
+      }
+    },
+    "player_external_hud_snapshot_stats": {
+      "name": "player_external_hud_snapshot_stats",
+      "columns": {
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stat_key": {
+          "name": "stat_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entered_text": {
+          "name": "entered_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value_centipercent": {
+          "name": "value_centipercent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_external_hud_snapshot_stats_ordinal_unique": {
+          "name": "player_external_hud_snapshot_stats_ordinal_unique",
+          "columns": [
+            "snapshot_id",
+            "ordinal"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "player_external_hud_snapshot_stats_snapshot_id_player_external_hud_snapshots_id_fk": {
+          "name": "player_external_hud_snapshot_stats_snapshot_id_player_external_hud_snapshots_id_fk",
+          "tableFrom": "player_external_hud_snapshot_stats",
+          "tableTo": "player_external_hud_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_external_hud_snapshot_stats_pk": {
+          "columns": [
+            "snapshot_id",
+            "stat_key"
+          ],
+          "name": "player_external_hud_snapshot_stats_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_external_hud_snapshot_stats_key": {
+          "name": "player_external_hud_snapshot_stats_key",
+          "value": "\"player_external_hud_snapshot_stats\".\"stat_key\" in ('VPIP', 'PFR', 'THREE_BET', 'FOLD_TO_THREE_BET', 'STEAL', 'CBET_ANY_STREET', 'FOLD_TO_CBET_ANY_STREET', 'CHECK_RAISE_ANY_STREET', 'WTSD', 'WSD')"
+        },
+        "player_external_hud_snapshot_stats_entered_text_not_empty": {
+          "name": "player_external_hud_snapshot_stats_entered_text_not_empty",
+          "value": "length(\"player_external_hud_snapshot_stats\".\"entered_text\") > 0"
+        },
+        "player_external_hud_snapshot_stats_value_range": {
+          "name": "player_external_hud_snapshot_stats_value_range",
+          "value": "typeof(\"player_external_hud_snapshot_stats\".\"value_centipercent\") = 'integer' and \"player_external_hud_snapshot_stats\".\"value_centipercent\" >= 0 and \"player_external_hud_snapshot_stats\".\"value_centipercent\" <= 10000"
+        },
+        "player_external_hud_snapshot_stats_ordinal_non_negative": {
+          "name": "player_external_hud_snapshot_stats_ordinal_non_negative",
+          "value": "\"player_external_hud_snapshot_stats\".\"ordinal\" >= 0"
+        }
+      }
+    },
+    "player_external_hud_snapshots": {
+      "name": "player_external_hud_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reliability": {
+          "name": "reliability",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sample_n": {
+          "name": "sample_n",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "import_batch_id": {
+          "name": "import_batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_external_hud_snapshots_player_recorded_idx": {
+          "name": "player_external_hud_snapshots_player_recorded_idx",
+          "columns": [
+            "player_id",
+            "recorded_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "player_external_hud_snapshots_batch_idx": {
+          "name": "player_external_hud_snapshots_batch_idx",
+          "columns": [
+            "import_batch_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "player_external_hud_snapshots_player_id_players_id_fk": {
+          "name": "player_external_hud_snapshots_player_id_players_id_fk",
+          "tableFrom": "player_external_hud_snapshots",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_external_hud_snapshots_source": {
+          "name": "player_external_hud_snapshots_source",
+          "value": "\"player_external_hud_snapshots\".\"source\" = 'EXTERNAL_HUD'"
+        },
+        "player_external_hud_snapshots_scope": {
+          "name": "player_external_hud_snapshots_scope",
+          "value": "\"player_external_hud_snapshots\".\"scope\" = 'LIFETIME'"
+        },
+        "player_external_hud_snapshots_reliability": {
+          "name": "player_external_hud_snapshots_reliability",
+          "value": "\"player_external_hud_snapshots\".\"reliability\" = 'ESTABLISHED'"
+        },
+        "player_external_hud_snapshots_recorded_at_range": {
+          "name": "player_external_hud_snapshots_recorded_at_range",
+          "value": "typeof(\"player_external_hud_snapshots\".\"recorded_at\") = 'integer' and \"player_external_hud_snapshots\".\"recorded_at\" >= 0 and \"player_external_hud_snapshots\".\"recorded_at\" <= 32503680000000"
+        },
+        "player_external_hud_snapshots_sample_n_range": {
+          "name": "player_external_hud_snapshots_sample_n_range",
+          "value": "\"player_external_hud_snapshots\".\"sample_n\" is null or (typeof(\"player_external_hud_snapshots\".\"sample_n\") = 'integer' and \"player_external_hud_snapshots\".\"sample_n\" >= 0 and \"player_external_hud_snapshots\".\"sample_n\" <= 100000000)"
+        },
+        "player_external_hud_snapshots_import_batch_not_empty": {
+          "name": "player_external_hud_snapshots_import_batch_not_empty",
+          "value": "length(\"player_external_hud_snapshots\".\"import_batch_id\") > 0"
+        }
+      }
+    },
+    "player_hud_snapshot_stats": {
+      "name": "player_hud_snapshot_stats",
+      "columns": {
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stat_key": {
+          "name": "stat_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entered_text": {
+          "name": "entered_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value_centipercent": {
+          "name": "value_centipercent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_hud_snapshot_stats_ordinal_unique": {
+          "name": "player_hud_snapshot_stats_ordinal_unique",
+          "columns": [
+            "snapshot_id",
+            "ordinal"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "player_hud_snapshot_stats_snapshot_id_player_hud_snapshots_id_fk": {
+          "name": "player_hud_snapshot_stats_snapshot_id_player_hud_snapshots_id_fk",
+          "tableFrom": "player_hud_snapshot_stats",
+          "tableTo": "player_hud_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_hud_snapshot_stats_pk": {
+          "columns": [
+            "snapshot_id",
+            "stat_key"
+          ],
+          "name": "player_hud_snapshot_stats_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_hud_snapshot_stats_key": {
+          "name": "player_hud_snapshot_stats_key",
+          "value": "\"player_hud_snapshot_stats\".\"stat_key\" in ('VPIP', 'PFR', 'THREE_BET', 'FOLD_TO_THREE_BET', 'CBET_FLOP', 'FOLD_TO_CBET_FLOP', 'WTSD', 'WON_AT_SHOWDOWN')"
+        },
+        "player_hud_snapshot_stats_entered_text_not_empty": {
+          "name": "player_hud_snapshot_stats_entered_text_not_empty",
+          "value": "length(\"player_hud_snapshot_stats\".\"entered_text\") > 0"
+        },
+        "player_hud_snapshot_stats_value_range": {
+          "name": "player_hud_snapshot_stats_value_range",
+          "value": "typeof(\"player_hud_snapshot_stats\".\"value_centipercent\") = 'integer' and \"player_hud_snapshot_stats\".\"value_centipercent\" >= 0 and \"player_hud_snapshot_stats\".\"value_centipercent\" <= 10000"
+        },
+        "player_hud_snapshot_stats_ordinal_non_negative": {
+          "name": "player_hud_snapshot_stats_ordinal_non_negative",
+          "value": "\"player_hud_snapshot_stats\".\"ordinal\" >= 0"
+        }
+      }
+    },
+    "player_hud_snapshots": {
+      "name": "player_hud_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_sample": {
+          "name": "hand_sample",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_hud_snapshots_player_recorded_idx": {
+          "name": "player_hud_snapshots_player_recorded_idx",
+          "columns": [
+            "player_id",
+            "recorded_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "player_hud_snapshots_player_id_players_id_fk": {
+          "name": "player_hud_snapshots_player_id_players_id_fk",
+          "tableFrom": "player_hud_snapshots",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_hud_snapshots_source": {
+          "name": "player_hud_snapshots_source",
+          "value": "\"player_hud_snapshots\".\"source\" = 'MANUAL_HUD_ENTRY'"
+        },
+        "player_hud_snapshots_recorded_at_range": {
+          "name": "player_hud_snapshots_recorded_at_range",
+          "value": "typeof(\"player_hud_snapshots\".\"recorded_at\") = 'integer' and \"player_hud_snapshots\".\"recorded_at\" >= 0 and \"player_hud_snapshots\".\"recorded_at\" <= 32503680000000"
+        },
+        "player_hud_snapshots_hand_sample_range": {
+          "name": "player_hud_snapshots_hand_sample_range",
+          "value": "\"player_hud_snapshots\".\"hand_sample\" is null or (typeof(\"player_hud_snapshots\".\"hand_sample\") = 'integer' and \"player_hud_snapshots\".\"hand_sample\" >= 0 and \"player_hud_snapshots\".\"hand_sample\" <= 100000000)"
+        }
+      }
+    },
+    "player_model_bet_sizes": {
+      "name": "player_model_bet_sizes",
+      "columns": {
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_id": {
+          "name": "hand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "spot_key": {
+          "name": "spot_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "to_amount": {
+          "name": "to_amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount": {
+          "name": "amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pot_before": {
+          "name": "pot_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "current_bet_before": {
+          "name": "current_bet_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "big_blind": {
+          "name": "big_blind",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "bucket": {
+          "name": "bucket",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_model_bet_sizes_hand_idx": {
+          "name": "player_model_bet_sizes_hand_idx",
+          "columns": [
+            "hand_id"
+          ],
+          "isUnique": false
+        },
+        "player_model_bet_sizes_snapshot_kind_idx": {
+          "name": "player_model_bet_sizes_snapshot_kind_idx",
+          "columns": [
+            "snapshot_id",
+            "kind"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "player_model_bet_sizes_snapshot_id_player_model_snapshots_id_fk": {
+          "name": "player_model_bet_sizes_snapshot_id_player_model_snapshots_id_fk",
+          "tableFrom": "player_model_bet_sizes",
+          "tableTo": "player_model_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_model_bet_sizes_hand_id_hands_id_fk": {
+          "name": "player_model_bet_sizes_hand_id_hands_id_fk",
+          "tableFrom": "player_model_bet_sizes",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_model_bet_sizes_player_id_players_id_fk": {
+          "name": "player_model_bet_sizes_player_id_players_id_fk",
+          "tableFrom": "player_model_bet_sizes",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_model_bet_sizes_pk": {
+          "columns": [
+            "snapshot_id",
+            "ordinal"
+          ],
+          "name": "player_model_bet_sizes_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_model_bet_sizes_ordinal_non_negative": {
+          "name": "player_model_bet_sizes_ordinal_non_negative",
+          "value": "\"player_model_bet_sizes\".\"ordinal\" >= 0"
+        },
+        "player_model_bet_sizes_kind": {
+          "name": "player_model_bet_sizes_kind",
+          "value": "\"player_model_bet_sizes\".\"kind\" in ('PREFLOP_OPEN', 'PREFLOP_THREE_BET', 'PREFLOP_FOUR_BET_PLUS', 'POSTFLOP_BET', 'POSTFLOP_RAISE')"
+        },
+        "player_model_bet_sizes_spot_key_not_empty": {
+          "name": "player_model_bet_sizes_spot_key_not_empty",
+          "value": "length(\"player_model_bet_sizes\".\"spot_key\") > 0"
+        },
+        "player_model_bet_sizes_to_amount_range": {
+          "name": "player_model_bet_sizes_to_amount_range",
+          "value": "typeof(\"player_model_bet_sizes\".\"to_amount\") = 'integer' and \"player_model_bet_sizes\".\"to_amount\" >= -1000000000 and \"player_model_bet_sizes\".\"to_amount\" <= 1000000000"
+        },
+        "player_model_bet_sizes_amount_range": {
+          "name": "player_model_bet_sizes_amount_range",
+          "value": "typeof(\"player_model_bet_sizes\".\"amount\") = 'integer' and \"player_model_bet_sizes\".\"amount\" >= -1000000000 and \"player_model_bet_sizes\".\"amount\" <= 1000000000"
+        },
+        "player_model_bet_sizes_pot_before_range": {
+          "name": "player_model_bet_sizes_pot_before_range",
+          "value": "typeof(\"player_model_bet_sizes\".\"pot_before\") = 'integer' and \"player_model_bet_sizes\".\"pot_before\" >= -1000000000 and \"player_model_bet_sizes\".\"pot_before\" <= 1000000000"
+        },
+        "player_model_bet_sizes_current_bet_before_range": {
+          "name": "player_model_bet_sizes_current_bet_before_range",
+          "value": "typeof(\"player_model_bet_sizes\".\"current_bet_before\") = 'integer' and \"player_model_bet_sizes\".\"current_bet_before\" >= -1000000000 and \"player_model_bet_sizes\".\"current_bet_before\" <= 1000000000"
+        },
+        "player_model_bet_sizes_big_blind_range": {
+          "name": "player_model_bet_sizes_big_blind_range",
+          "value": "typeof(\"player_model_bet_sizes\".\"big_blind\") = 'integer' and \"player_model_bet_sizes\".\"big_blind\" >= -1000000000 and \"player_model_bet_sizes\".\"big_blind\" <= 1000000000"
+        },
+        "player_model_bet_sizes_bucket": {
+          "name": "player_model_bet_sizes_bucket",
+          "value": "\"player_model_bet_sizes\".\"bucket\" in ('NONE', 'TINY', 'SMALL', 'MEDIUM', 'LARGE', 'POT', 'OVERBET', 'LIMP', 'MIN', 'STANDARD', 'HUGE')"
+        }
+      }
+    },
+    "player_model_show_evidence": {
+      "name": "player_model_show_evidence",
+      "columns": {
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_id": {
+          "name": "hand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cards_text": {
+          "name": "cards_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "board_text": {
+          "name": "board_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_street": {
+          "name": "last_street",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "spot_keys_json": {
+          "name": "spot_keys_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "won_gross": {
+          "name": "won_gross",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_model_show_evidence_hand_unique": {
+          "name": "player_model_show_evidence_hand_unique",
+          "columns": [
+            "snapshot_id",
+            "hand_id"
+          ],
+          "isUnique": true
+        },
+        "player_model_show_evidence_hand_idx": {
+          "name": "player_model_show_evidence_hand_idx",
+          "columns": [
+            "hand_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "player_model_show_evidence_snapshot_id_player_model_snapshots_id_fk": {
+          "name": "player_model_show_evidence_snapshot_id_player_model_snapshots_id_fk",
+          "tableFrom": "player_model_show_evidence",
+          "tableTo": "player_model_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_model_show_evidence_hand_id_hands_id_fk": {
+          "name": "player_model_show_evidence_hand_id_hands_id_fk",
+          "tableFrom": "player_model_show_evidence",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_model_show_evidence_player_id_players_id_fk": {
+          "name": "player_model_show_evidence_player_id_players_id_fk",
+          "tableFrom": "player_model_show_evidence",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_model_show_evidence_pk": {
+          "columns": [
+            "snapshot_id",
+            "ordinal"
+          ],
+          "name": "player_model_show_evidence_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_model_show_evidence_ordinal_non_negative": {
+          "name": "player_model_show_evidence_ordinal_non_negative",
+          "value": "\"player_model_show_evidence\".\"ordinal\" >= 0"
+        },
+        "player_model_show_evidence_position": {
+          "name": "player_model_show_evidence_position",
+          "value": "\"player_model_show_evidence\".\"position\" in ('UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB')"
+        },
+        "player_model_show_evidence_cards_length": {
+          "name": "player_model_show_evidence_cards_length",
+          "value": "length(\"player_model_show_evidence\".\"cards_text\") in (2, 5)"
+        },
+        "player_model_show_evidence_board_length": {
+          "name": "player_model_show_evidence_board_length",
+          "value": "length(\"player_model_show_evidence\".\"board_text\") in (0, 8, 11, 14)"
+        },
+        "player_model_show_evidence_last_street": {
+          "name": "player_model_show_evidence_last_street",
+          "value": "\"player_model_show_evidence\".\"last_street\" in ('PREFLOP', 'FLOP', 'TURN', 'RIVER')"
+        },
+        "player_model_show_evidence_spot_keys_not_empty": {
+          "name": "player_model_show_evidence_spot_keys_not_empty",
+          "value": "length(\"player_model_show_evidence\".\"spot_keys_json\") > 0"
+        },
+        "player_model_show_evidence_outcome": {
+          "name": "player_model_show_evidence_outcome",
+          "value": "\"player_model_show_evidence\".\"outcome\" in ('WON', 'LOST', 'UNKNOWN')"
+        },
+        "player_model_show_evidence_won_gross_range": {
+          "name": "player_model_show_evidence_won_gross_range",
+          "value": "typeof(\"player_model_show_evidence\".\"won_gross\") = 'integer' and \"player_model_show_evidence\".\"won_gross\" >= -1000000000 and \"player_model_show_evidence\".\"won_gross\" <= 1000000000"
+        },
+        "player_model_show_evidence_won_gross_non_negative": {
+          "name": "player_model_show_evidence_won_gross_non_negative",
+          "value": "\"player_model_show_evidence\".\"won_gross\" >= 0"
+        }
+      }
+    },
+    "player_model_snapshots": {
+      "name": "player_model_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model_version": {
+          "name": "model_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "analysis_run_id": {
+          "name": "analysis_run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "algorithm_version": {
+          "name": "algorithm_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "input_hash": {
+          "name": "input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_hand_count": {
+          "name": "source_hand_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_observation_count": {
+          "name": "source_observation_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_show_count": {
+          "name": "source_show_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_k": {
+          "name": "confidence_k",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_learning_threshold": {
+          "name": "confidence_learning_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_known_threshold": {
+          "name": "confidence_known_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_overall_opportunities": {
+          "name": "confidence_overall_opportunities",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_model_snapshots_player_version_unique": {
+          "name": "player_model_snapshots_player_version_unique",
+          "columns": [
+            "player_id",
+            "model_version"
+          ],
+          "isUnique": true
+        },
+        "player_model_snapshots_player_created_idx": {
+          "name": "player_model_snapshots_player_created_idx",
+          "columns": [
+            "player_id",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "player_model_snapshots_run_idx": {
+          "name": "player_model_snapshots_run_idx",
+          "columns": [
+            "analysis_run_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "player_model_snapshots_player_id_players_id_fk": {
+          "name": "player_model_snapshots_player_id_players_id_fk",
+          "tableFrom": "player_model_snapshots",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_model_snapshots_analysis_run_id_analysis_runs_id_fk": {
+          "name": "player_model_snapshots_analysis_run_id_analysis_runs_id_fk",
+          "tableFrom": "player_model_snapshots",
+          "tableTo": "analysis_runs",
+          "columnsFrom": [
+            "analysis_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_model_snapshots_id_not_empty": {
+          "name": "player_model_snapshots_id_not_empty",
+          "value": "length(\"player_model_snapshots\".\"id\") > 0"
+        },
+        "player_model_snapshots_model_version_positive": {
+          "name": "player_model_snapshots_model_version_positive",
+          "value": "typeof(\"player_model_snapshots\".\"model_version\") = 'integer' and \"player_model_snapshots\".\"model_version\" >= 1"
+        },
+        "player_model_snapshots_algorithm_version_positive": {
+          "name": "player_model_snapshots_algorithm_version_positive",
+          "value": "typeof(\"player_model_snapshots\".\"algorithm_version\") = 'integer' and \"player_model_snapshots\".\"algorithm_version\" >= 1"
+        },
+        "player_model_snapshots_input_hash_not_empty": {
+          "name": "player_model_snapshots_input_hash_not_empty",
+          "value": "length(\"player_model_snapshots\".\"input_hash\") > 0"
+        },
+        "player_model_snapshots_source_hand_count_range": {
+          "name": "player_model_snapshots_source_hand_count_range",
+          "value": "typeof(\"player_model_snapshots\".\"source_hand_count\") = 'integer' and \"player_model_snapshots\".\"source_hand_count\" >= 0 and \"player_model_snapshots\".\"source_hand_count\" <= 100000000"
+        },
+        "player_model_snapshots_source_observation_count_range": {
+          "name": "player_model_snapshots_source_observation_count_range",
+          "value": "typeof(\"player_model_snapshots\".\"source_observation_count\") = 'integer' and \"player_model_snapshots\".\"source_observation_count\" >= 0 and \"player_model_snapshots\".\"source_observation_count\" <= 100000000"
+        },
+        "player_model_snapshots_source_show_count_range": {
+          "name": "player_model_snapshots_source_show_count_range",
+          "value": "typeof(\"player_model_snapshots\".\"source_show_count\") = 'integer' and \"player_model_snapshots\".\"source_show_count\" >= 0 and \"player_model_snapshots\".\"source_show_count\" <= 100000000"
+        },
+        "player_model_snapshots_created_at_range": {
+          "name": "player_model_snapshots_created_at_range",
+          "value": "typeof(\"player_model_snapshots\".\"created_at\") = 'integer' and \"player_model_snapshots\".\"created_at\" >= 0 and \"player_model_snapshots\".\"created_at\" <= 32503680000000"
+        },
+        "player_model_snapshots_confidence_k_positive": {
+          "name": "player_model_snapshots_confidence_k_positive",
+          "value": "typeof(\"player_model_snapshots\".\"confidence_k\") = 'integer' and \"player_model_snapshots\".\"confidence_k\" >= 1"
+        },
+        "player_model_snapshots_confidence_thresholds": {
+          "name": "player_model_snapshots_confidence_thresholds",
+          "value": "typeof(\"player_model_snapshots\".\"confidence_learning_threshold\") = 'integer' and \"player_model_snapshots\".\"confidence_learning_threshold\" >= 1 and typeof(\"player_model_snapshots\".\"confidence_known_threshold\") = 'integer' and \"player_model_snapshots\".\"confidence_learning_threshold\" < \"player_model_snapshots\".\"confidence_known_threshold\""
+        },
+        "player_model_snapshots_confidence_overall_range": {
+          "name": "player_model_snapshots_confidence_overall_range",
+          "value": "typeof(\"player_model_snapshots\".\"confidence_overall_opportunities\") = 'integer' and \"player_model_snapshots\".\"confidence_overall_opportunities\" >= 0 and \"player_model_snapshots\".\"confidence_overall_opportunities\" <= 100000000"
+        }
+      }
+    },
+    "player_model_stats": {
+      "name": "player_model_stats",
+      "columns": {
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stat_key": {
+          "name": "stat_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "opportunities": {
+          "name": "opportunities",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actions": {
+          "name": "actions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_opportunities": {
+          "name": "confidence_opportunities",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_model_stats_context_unique": {
+          "name": "player_model_stats_context_unique",
+          "columns": [
+            "snapshot_id",
+            "stat_key",
+            "position"
+          ],
+          "isUnique": true,
+          "where": "\"player_model_stats\".\"position\" is not null"
+        },
+        "player_model_stats_context_null_position_unique": {
+          "name": "player_model_stats_context_null_position_unique",
+          "columns": [
+            "snapshot_id",
+            "stat_key"
+          ],
+          "isUnique": true,
+          "where": "\"player_model_stats\".\"position\" is null"
+        }
+      },
+      "foreignKeys": {
+        "player_model_stats_snapshot_id_player_model_snapshots_id_fk": {
+          "name": "player_model_stats_snapshot_id_player_model_snapshots_id_fk",
+          "tableFrom": "player_model_stats",
+          "tableTo": "player_model_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_model_stats_pk": {
+          "columns": [
+            "snapshot_id",
+            "ordinal"
+          ],
+          "name": "player_model_stats_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_model_stats_ordinal_non_negative": {
+          "name": "player_model_stats_ordinal_non_negative",
+          "value": "\"player_model_stats\".\"ordinal\" >= 0"
+        },
+        "player_model_stats_key": {
+          "name": "player_model_stats_key",
+          "value": "\"player_model_stats\".\"stat_key\" in ('VPIP', 'PFR', 'RFI', 'STEAL_ATTEMPT', 'FOLD_TO_STEAL', 'THREE_BET', 'FOLD_TO_THREE_BET', 'FOUR_BET', 'CBET_FLOP', 'CBET_TURN', 'CBET_RIVER', 'FOLD_TO_CBET_FLOP', 'FOLD_TO_CBET_TURN', 'FOLD_TO_CBET_RIVER', 'CHECK_RAISE_FLOP', 'CHECK_RAISE_TURN', 'CHECK_RAISE_RIVER', 'TURN_BARREL', 'RIVER_BARREL', 'WTSD', 'WSD')"
+        },
+        "player_model_stats_position": {
+          "name": "player_model_stats_position",
+          "value": "\"player_model_stats\".\"position\" is null or \"player_model_stats\".\"position\" in ('UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB')"
+        },
+        "player_model_stats_opportunities_range": {
+          "name": "player_model_stats_opportunities_range",
+          "value": "typeof(\"player_model_stats\".\"opportunities\") = 'integer' and \"player_model_stats\".\"opportunities\" >= 0 and \"player_model_stats\".\"opportunities\" <= 100000000"
+        },
+        "player_model_stats_actions_range": {
+          "name": "player_model_stats_actions_range",
+          "value": "typeof(\"player_model_stats\".\"actions\") = 'integer' and \"player_model_stats\".\"actions\" >= 0 and \"player_model_stats\".\"actions\" <= 100000000"
+        },
+        "player_model_stats_actions_within_opportunities": {
+          "name": "player_model_stats_actions_within_opportunities",
+          "value": "\"player_model_stats\".\"actions\" <= \"player_model_stats\".\"opportunities\""
+        },
+        "player_model_stats_confidence_range": {
+          "name": "player_model_stats_confidence_range",
+          "value": "typeof(\"player_model_stats\".\"confidence_opportunities\") = 'integer' and \"player_model_stats\".\"confidence_opportunities\" >= 0 and \"player_model_stats\".\"confidence_opportunities\" <= 100000000"
+        }
+      }
+    },
+    "player_notes": {
+      "name": "player_notes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "root_id": {
+          "name": "root_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "supersedes_id": {
+          "name": "supersedes_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_notes_player_created_idx": {
+          "name": "player_notes_player_created_idx",
+          "columns": [
+            "player_id",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "player_notes_root_created_idx": {
+          "name": "player_notes_root_created_idx",
+          "columns": [
+            "root_id",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "player_notes_supersedes_unique": {
+          "name": "player_notes_supersedes_unique",
+          "columns": [
+            "supersedes_id"
+          ],
+          "isUnique": true,
+          "where": "\"player_notes\".\"supersedes_id\" is not null"
+        }
+      },
+      "foreignKeys": {
+        "player_notes_player_id_players_id_fk": {
+          "name": "player_notes_player_id_players_id_fk",
+          "tableFrom": "player_notes",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_notes_root_id_player_notes_id_fk": {
+          "name": "player_notes_root_id_player_notes_id_fk",
+          "tableFrom": "player_notes",
+          "tableTo": "player_notes",
+          "columnsFrom": [
+            "root_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "player_notes_supersedes_id_player_notes_id_fk": {
+          "name": "player_notes_supersedes_id_player_notes_id_fk",
+          "tableFrom": "player_notes",
+          "tableTo": "player_notes",
+          "columnsFrom": [
+            "supersedes_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_notes_body_not_empty": {
+          "name": "player_notes_body_not_empty",
+          "value": "length(\"player_notes\".\"body\") > 0"
+        },
+        "player_notes_body_max_length": {
+          "name": "player_notes_body_max_length",
+          "value": "length(\"player_notes\".\"body\") <= 4000"
+        },
+        "player_notes_created_at_range": {
+          "name": "player_notes_created_at_range",
+          "value": "typeof(\"player_notes\".\"created_at\") = 'integer' and \"player_notes\".\"created_at\" >= 0 and \"player_notes\".\"created_at\" <= 32503680000000"
+        },
+        "player_notes_root_chain": {
+          "name": "player_notes_root_chain",
+          "value": "(\"player_notes\".\"supersedes_id\" is null and \"player_notes\".\"root_id\" = \"player_notes\".\"id\") or (\"player_notes\".\"supersedes_id\" is not null and \"player_notes\".\"root_id\" <> \"player_notes\".\"id\")"
+        },
+        "player_notes_no_self_supersede": {
+          "name": "player_notes_no_self_supersede",
+          "value": "\"player_notes\".\"supersedes_id\" is null or \"player_notes\".\"supersedes_id\" <> \"player_notes\".\"id\""
+        }
+      }
+    },
+    "player_observations": {
+      "name": "player_observations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "metric": {
+          "name": "metric",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "opportunities": {
+          "name": "opportunities",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actions": {
+          "name": "actions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "first_observed_at": {
+          "name": "first_observed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_observed_at": {
+          "name": "last_observed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_observations_context_unique": {
+          "name": "player_observations_context_unique",
+          "columns": [
+            "player_id",
+            "metric",
+            "position"
+          ],
+          "isUnique": true,
+          "where": "\"player_observations\".\"position\" is not null"
+        },
+        "player_observations_context_null_position_unique": {
+          "name": "player_observations_context_null_position_unique",
+          "columns": [
+            "player_id",
+            "metric"
+          ],
+          "isUnique": true,
+          "where": "\"player_observations\".\"position\" is null"
+        }
+      },
+      "foreignKeys": {
+        "player_observations_player_id_players_id_fk": {
+          "name": "player_observations_player_id_players_id_fk",
+          "tableFrom": "player_observations",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_observations_metric": {
+          "name": "player_observations_metric",
+          "value": "\"player_observations\".\"metric\" in ('VPIP', 'PFR', 'THREE_BET', 'FOLD_TO_THREE_BET')"
+        },
+        "player_observations_position": {
+          "name": "player_observations_position",
+          "value": "\"player_observations\".\"position\" is null or \"player_observations\".\"position\" in ('UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB')"
+        },
+        "player_observations_opportunities_range": {
+          "name": "player_observations_opportunities_range",
+          "value": "typeof(\"player_observations\".\"opportunities\") = 'integer' and \"player_observations\".\"opportunities\" >= 0 and \"player_observations\".\"opportunities\" <= 100000000"
+        },
+        "player_observations_actions_range": {
+          "name": "player_observations_actions_range",
+          "value": "typeof(\"player_observations\".\"actions\") = 'integer' and \"player_observations\".\"actions\" >= 0 and \"player_observations\".\"actions\" <= 100000000"
+        },
+        "player_observations_actions_within_opportunities": {
+          "name": "player_observations_actions_within_opportunities",
+          "value": "\"player_observations\".\"actions\" <= \"player_observations\".\"opportunities\""
+        },
+        "player_observations_first_observed_range": {
+          "name": "player_observations_first_observed_range",
+          "value": "typeof(\"player_observations\".\"first_observed_at\") = 'integer' and \"player_observations\".\"first_observed_at\" >= 0 and \"player_observations\".\"first_observed_at\" <= 32503680000000"
+        },
+        "player_observations_last_observed_range": {
+          "name": "player_observations_last_observed_range",
+          "value": "typeof(\"player_observations\".\"last_observed_at\") = 'integer' and \"player_observations\".\"last_observed_at\" >= 0 and \"player_observations\".\"last_observed_at\" <= 32503680000000"
+        },
+        "player_observations_last_not_before_first": {
+          "name": "player_observations_last_not_before_first",
+          "value": "\"player_observations\".\"last_observed_at\" >= \"player_observations\".\"first_observed_at\""
+        }
+      }
+    },
+    "player_spot_stats": {
+      "name": "player_spot_stats",
+      "columns": {
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "spot_key": {
+          "name": "spot_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "family": {
+          "name": "family",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "opponent_position": {
+          "name": "opponent_position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lineup": {
+          "name": "lineup",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "street": {
+          "name": "street",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "relation": {
+          "name": "relation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pot_type": {
+          "name": "pot_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "facing_size": {
+          "name": "facing_size",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "opportunities": {
+          "name": "opportunities",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effect_fold": {
+          "name": "effect_fold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effect_check": {
+          "name": "effect_check",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effect_call": {
+          "name": "effect_call",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effect_bet": {
+          "name": "effect_bet",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effect_raise": {
+          "name": "effect_raise",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verb_fold": {
+          "name": "verb_fold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verb_check": {
+          "name": "verb_check",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verb_call": {
+          "name": "verb_call",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verb_bet": {
+          "name": "verb_bet",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verb_raise": {
+          "name": "verb_raise",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verb_all_in": {
+          "name": "verb_all_in",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_opportunities": {
+          "name": "confidence_opportunities",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "player_spot_stats_spot_unique": {
+          "name": "player_spot_stats_spot_unique",
+          "columns": [
+            "snapshot_id",
+            "spot_key"
+          ],
+          "isUnique": true
+        },
+        "player_spot_stats_spot_key_idx": {
+          "name": "player_spot_stats_spot_key_idx",
+          "columns": [
+            "spot_key"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "player_spot_stats_snapshot_id_player_model_snapshots_id_fk": {
+          "name": "player_spot_stats_snapshot_id_player_model_snapshots_id_fk",
+          "tableFrom": "player_spot_stats",
+          "tableTo": "player_model_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "player_spot_stats_pk": {
+          "columns": [
+            "snapshot_id",
+            "ordinal"
+          ],
+          "name": "player_spot_stats_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_spot_stats_ordinal_non_negative": {
+          "name": "player_spot_stats_ordinal_non_negative",
+          "value": "\"player_spot_stats\".\"ordinal\" >= 0"
+        },
+        "player_spot_stats_spot_key_not_empty": {
+          "name": "player_spot_stats_spot_key_not_empty",
+          "value": "length(\"player_spot_stats\".\"spot_key\") > 0"
+        },
+        "player_spot_stats_phase": {
+          "name": "player_spot_stats_phase",
+          "value": "\"player_spot_stats\".\"phase\" in ('PREFLOP', 'POSTFLOP')"
+        },
+        "player_spot_stats_family": {
+          "name": "player_spot_stats_family",
+          "value": "(\"player_spot_stats\".\"phase\" = 'PREFLOP' and \"player_spot_stats\".\"family\" in ('RFI', 'VS_LIMP', 'BB_OPTION', 'VS_OPEN', 'SQUEEZE', 'VS_THREE_BET', 'VS_FOUR_BET', 'VS_MULTI_RAISE')) or (\"player_spot_stats\".\"phase\" = 'POSTFLOP' and \"player_spot_stats\".\"family\" in ('CBET', 'FACING_CBET', 'DONK_LEAD', 'CHECKED_TO', 'FACING_BET', 'FACING_RAISE'))"
+        },
+        "player_spot_stats_position": {
+          "name": "player_spot_stats_position",
+          "value": "\"player_spot_stats\".\"position\" in ('UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB')"
+        },
+        "player_spot_stats_lineup": {
+          "name": "player_spot_stats_lineup",
+          "value": "\"player_spot_stats\".\"lineup\" in ('HEADS_UP', 'MULTIWAY')"
+        },
+        "player_spot_stats_preflop_dimensions": {
+          "name": "player_spot_stats_preflop_dimensions",
+          "value": "\"player_spot_stats\".\"phase\" <> 'PREFLOP' or (\"player_spot_stats\".\"street\" is null and \"player_spot_stats\".\"relation\" is null and \"player_spot_stats\".\"pot_type\" is null and \"player_spot_stats\".\"facing_size\" is null and (\"player_spot_stats\".\"opponent_position\" is null or \"player_spot_stats\".\"opponent_position\" in ('UTG', 'HJ', 'CO', 'BTN', 'SB', 'BB')))"
+        },
+        "player_spot_stats_postflop_dimensions": {
+          "name": "player_spot_stats_postflop_dimensions",
+          "value": "\"player_spot_stats\".\"phase\" <> 'POSTFLOP' or (\"player_spot_stats\".\"opponent_position\" is null and \"player_spot_stats\".\"street\" in ('FLOP', 'TURN', 'RIVER') and \"player_spot_stats\".\"relation\" in ('IP', 'OOP') and \"player_spot_stats\".\"pot_type\" in ('LIMPED', 'SINGLE_RAISED', 'THREE_BET', 'FOUR_BET_PLUS') and \"player_spot_stats\".\"facing_size\" in ('NONE', 'TINY', 'SMALL', 'MEDIUM', 'LARGE', 'POT', 'OVERBET'))"
+        },
+        "player_spot_stats_opportunities_range": {
+          "name": "player_spot_stats_opportunities_range",
+          "value": "typeof(\"player_spot_stats\".\"opportunities\") = 'integer' and \"player_spot_stats\".\"opportunities\" >= 0 and \"player_spot_stats\".\"opportunities\" <= 100000000"
+        },
+        "player_spot_stats_effect_fold_range": {
+          "name": "player_spot_stats_effect_fold_range",
+          "value": "typeof(\"player_spot_stats\".\"effect_fold\") = 'integer' and \"player_spot_stats\".\"effect_fold\" >= 0 and \"player_spot_stats\".\"effect_fold\" <= 100000000"
+        },
+        "player_spot_stats_effect_check_range": {
+          "name": "player_spot_stats_effect_check_range",
+          "value": "typeof(\"player_spot_stats\".\"effect_check\") = 'integer' and \"player_spot_stats\".\"effect_check\" >= 0 and \"player_spot_stats\".\"effect_check\" <= 100000000"
+        },
+        "player_spot_stats_effect_call_range": {
+          "name": "player_spot_stats_effect_call_range",
+          "value": "typeof(\"player_spot_stats\".\"effect_call\") = 'integer' and \"player_spot_stats\".\"effect_call\" >= 0 and \"player_spot_stats\".\"effect_call\" <= 100000000"
+        },
+        "player_spot_stats_effect_bet_range": {
+          "name": "player_spot_stats_effect_bet_range",
+          "value": "typeof(\"player_spot_stats\".\"effect_bet\") = 'integer' and \"player_spot_stats\".\"effect_bet\" >= 0 and \"player_spot_stats\".\"effect_bet\" <= 100000000"
+        },
+        "player_spot_stats_effect_raise_range": {
+          "name": "player_spot_stats_effect_raise_range",
+          "value": "typeof(\"player_spot_stats\".\"effect_raise\") = 'integer' and \"player_spot_stats\".\"effect_raise\" >= 0 and \"player_spot_stats\".\"effect_raise\" <= 100000000"
+        },
+        "player_spot_stats_verb_fold_range": {
+          "name": "player_spot_stats_verb_fold_range",
+          "value": "typeof(\"player_spot_stats\".\"verb_fold\") = 'integer' and \"player_spot_stats\".\"verb_fold\" >= 0 and \"player_spot_stats\".\"verb_fold\" <= 100000000"
+        },
+        "player_spot_stats_verb_check_range": {
+          "name": "player_spot_stats_verb_check_range",
+          "value": "typeof(\"player_spot_stats\".\"verb_check\") = 'integer' and \"player_spot_stats\".\"verb_check\" >= 0 and \"player_spot_stats\".\"verb_check\" <= 100000000"
+        },
+        "player_spot_stats_verb_call_range": {
+          "name": "player_spot_stats_verb_call_range",
+          "value": "typeof(\"player_spot_stats\".\"verb_call\") = 'integer' and \"player_spot_stats\".\"verb_call\" >= 0 and \"player_spot_stats\".\"verb_call\" <= 100000000"
+        },
+        "player_spot_stats_verb_bet_range": {
+          "name": "player_spot_stats_verb_bet_range",
+          "value": "typeof(\"player_spot_stats\".\"verb_bet\") = 'integer' and \"player_spot_stats\".\"verb_bet\" >= 0 and \"player_spot_stats\".\"verb_bet\" <= 100000000"
+        },
+        "player_spot_stats_verb_raise_range": {
+          "name": "player_spot_stats_verb_raise_range",
+          "value": "typeof(\"player_spot_stats\".\"verb_raise\") = 'integer' and \"player_spot_stats\".\"verb_raise\" >= 0 and \"player_spot_stats\".\"verb_raise\" <= 100000000"
+        },
+        "player_spot_stats_verb_all_in_range": {
+          "name": "player_spot_stats_verb_all_in_range",
+          "value": "typeof(\"player_spot_stats\".\"verb_all_in\") = 'integer' and \"player_spot_stats\".\"verb_all_in\" >= 0 and \"player_spot_stats\".\"verb_all_in\" <= 100000000"
+        },
+        "player_spot_stats_effects_sum": {
+          "name": "player_spot_stats_effects_sum",
+          "value": "\"player_spot_stats\".\"effect_fold\" + \"player_spot_stats\".\"effect_check\" + \"player_spot_stats\".\"effect_call\" + \"player_spot_stats\".\"effect_bet\" + \"player_spot_stats\".\"effect_raise\" = \"player_spot_stats\".\"opportunities\""
+        },
+        "player_spot_stats_verbs_sum": {
+          "name": "player_spot_stats_verbs_sum",
+          "value": "\"player_spot_stats\".\"verb_fold\" + \"player_spot_stats\".\"verb_check\" + \"player_spot_stats\".\"verb_call\" + \"player_spot_stats\".\"verb_bet\" + \"player_spot_stats\".\"verb_raise\" + \"player_spot_stats\".\"verb_all_in\" = \"player_spot_stats\".\"opportunities\""
+        },
+        "player_spot_stats_confidence_range": {
+          "name": "player_spot_stats_confidence_range",
+          "value": "typeof(\"player_spot_stats\".\"confidence_opportunities\") = 'integer' and \"player_spot_stats\".\"confidence_opportunities\" >= 0 and \"player_spot_stats\".\"confidence_opportunities\" <= 100000000"
+        }
+      }
+    },
+    "players": {
+      "name": "players",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "nickname": {
+          "name": "nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "normalized_nickname": {
+          "name": "normalized_nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_alias": {
+          "name": "display_alias",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived": {
+          "name": "archived",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "players_normalized_nickname_unique": {
+          "name": "players_normalized_nickname_unique",
+          "columns": [
+            "normalized_nickname"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "players_id_not_empty": {
+          "name": "players_id_not_empty",
+          "value": "length(\"players\".\"id\") > 0"
+        },
+        "players_nickname_not_empty": {
+          "name": "players_nickname_not_empty",
+          "value": "length(\"players\".\"nickname\") > 0"
+        },
+        "players_normalized_not_empty": {
+          "name": "players_normalized_not_empty",
+          "value": "length(\"players\".\"normalized_nickname\") > 0"
+        },
+        "players_display_alias_not_empty": {
+          "name": "players_display_alias_not_empty",
+          "value": "\"players\".\"display_alias\" is null or length(\"players\".\"display_alias\") > 0"
+        },
+        "players_archived_boolean": {
+          "name": "players_archived_boolean",
+          "value": "\"players\".\"archived\" in (0, 1)"
+        },
+        "players_created_at_range": {
+          "name": "players_created_at_range",
+          "value": "typeof(\"players\".\"created_at\") = 'integer' and \"players\".\"created_at\" >= 0 and \"players\".\"created_at\" <= 32503680000000"
+        },
+        "players_updated_at_range": {
+          "name": "players_updated_at_range",
+          "value": "typeof(\"players\".\"updated_at\") = 'integer' and \"players\".\"updated_at\" >= 0 and \"players\".\"updated_at\" <= 32503680000000"
+        },
+        "players_updated_not_before_created": {
+          "name": "players_updated_not_before_created",
+          "value": "\"players\".\"updated_at\" >= \"players\".\"created_at\""
+        }
+      }
+    },
+    "session_seats": {
+      "name": "session_seats",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seat": {
+          "name": "seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occupancy": {
+          "name": "occupancy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "stack": {
+          "name": "stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "auto_top_up_enabled": {
+          "name": "auto_top_up_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_top_up_target_stack": {
+          "name": "auto_top_up_target_stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "session_seats_player_idx": {
+          "name": "session_seats_player_idx",
+          "columns": [
+            "player_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "session_seats_session_id_sessions_id_fk": {
+          "name": "session_seats_session_id_sessions_id_fk",
+          "tableFrom": "session_seats",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "restrict"
+        },
+        "session_seats_player_id_players_id_fk": {
+          "name": "session_seats_player_id_players_id_fk",
+          "tableFrom": "session_seats",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "session_seats_pk": {
+          "columns": [
+            "session_id",
+            "seat"
+          ],
+          "name": "session_seats_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "session_seats_seat_range": {
+          "name": "session_seats_seat_range",
+          "value": "\"session_seats\".\"seat\" >= 0 and \"session_seats\".\"seat\" <= 5"
+        },
+        "session_seats_occupancy": {
+          "name": "session_seats_occupancy",
+          "value": "\"session_seats\".\"occupancy\" in ('ACTIVE', 'SITTING_OUT', 'EMPTY')"
+        },
+        "session_seats_empty_iff_no_player": {
+          "name": "session_seats_empty_iff_no_player",
+          "value": "(\"session_seats\".\"occupancy\" = 'EMPTY' and \"session_seats\".\"player_id\" is null) or (\"session_seats\".\"occupancy\" <> 'EMPTY' and \"session_seats\".\"player_id\" is not null)"
+        },
+        "session_seats_empty_stack_zero": {
+          "name": "session_seats_empty_stack_zero",
+          "value": "\"session_seats\".\"occupancy\" <> 'EMPTY' or \"session_seats\".\"stack\" = 0"
+        },
+        "session_seats_stack_non_negative": {
+          "name": "session_seats_stack_non_negative",
+          "value": "\"session_seats\".\"stack\" >= 0"
+        },
+        "session_seats_stack_range": {
+          "name": "session_seats_stack_range",
+          "value": "typeof(\"session_seats\".\"stack\") = 'integer' and \"session_seats\".\"stack\" >= -1000000000 and \"session_seats\".\"stack\" <= 1000000000"
+        },
+        "session_seats_auto_top_up_enabled_boolean": {
+          "name": "session_seats_auto_top_up_enabled_boolean",
+          "value": "\"session_seats\".\"auto_top_up_enabled\" is null or (typeof(\"session_seats\".\"auto_top_up_enabled\") = 'integer' and \"session_seats\".\"auto_top_up_enabled\" in (0, 1))"
+        },
+        "session_seats_auto_top_up_target_stack_range": {
+          "name": "session_seats_auto_top_up_target_stack_range",
+          "value": "\"session_seats\".\"auto_top_up_target_stack\" is null or (typeof(\"session_seats\".\"auto_top_up_target_stack\") = 'integer' and \"session_seats\".\"auto_top_up_target_stack\" >= -1000000000 and \"session_seats\".\"auto_top_up_target_stack\" <= 1000000000 and \"session_seats\".\"auto_top_up_target_stack\" > 0)"
+        },
+        "session_seats_auto_top_up_pair": {
+          "name": "session_seats_auto_top_up_pair",
+          "value": "(\"session_seats\".\"auto_top_up_enabled\" is null and \"session_seats\".\"auto_top_up_target_stack\" is null) or (\"session_seats\".\"auto_top_up_enabled\" is not null and \"session_seats\".\"auto_top_up_target_stack\" is not null)"
+        }
+      }
+    },
+    "sessions": {
+      "name": "sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "preset_id": {
+          "name": "preset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "config_json": {
+          "name": "config_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "button_seat": {
+          "name": "button_seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hero_seat": {
+          "name": "hero_seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hand_number": {
+          "name": "hand_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_top_up_enabled": {
+          "name": "auto_top_up_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_top_up_target_stack": {
+          "name": "auto_top_up_target_stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sessions_created_idx": {
+          "name": "sessions_created_idx",
+          "columns": [
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "sessions_preset_id_game_presets_preset_id_fk": {
+          "name": "sessions_preset_id_game_presets_preset_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "game_presets",
+          "columnsFrom": [
+            "preset_id"
+          ],
+          "columnsTo": [
+            "preset_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sessions_label_not_empty": {
+          "name": "sessions_label_not_empty",
+          "value": "\"sessions\".\"label\" is null or length(\"sessions\".\"label\") > 0"
+        },
+        "sessions_button_seat_range": {
+          "name": "sessions_button_seat_range",
+          "value": "\"sessions\".\"button_seat\" is null or (\"sessions\".\"button_seat\" >= 0 and \"sessions\".\"button_seat\" <= 5)"
+        },
+        "sessions_hero_seat_range": {
+          "name": "sessions_hero_seat_range",
+          "value": "\"sessions\".\"hero_seat\" is null or (\"sessions\".\"hero_seat\" >= 0 and \"sessions\".\"hero_seat\" <= 5)"
+        },
+        "sessions_hand_number_non_negative": {
+          "name": "sessions_hand_number_non_negative",
+          "value": "\"sessions\".\"hand_number\" >= 0"
+        },
+        "sessions_created_at_range": {
+          "name": "sessions_created_at_range",
+          "value": "typeof(\"sessions\".\"created_at\") = 'integer' and \"sessions\".\"created_at\" >= 0 and \"sessions\".\"created_at\" <= 32503680000000"
+        },
+        "sessions_updated_at_range": {
+          "name": "sessions_updated_at_range",
+          "value": "typeof(\"sessions\".\"updated_at\") = 'integer' and \"sessions\".\"updated_at\" >= 0 and \"sessions\".\"updated_at\" <= 32503680000000"
+        },
+        "sessions_updated_not_before_created": {
+          "name": "sessions_updated_not_before_created",
+          "value": "\"sessions\".\"updated_at\" >= \"sessions\".\"created_at\""
+        },
+        "sessions_closed_at_range": {
+          "name": "sessions_closed_at_range",
+          "value": "\"sessions\".\"closed_at\" is null or (typeof(\"sessions\".\"closed_at\") = 'integer' and \"sessions\".\"closed_at\" >= \"sessions\".\"created_at\" and \"sessions\".\"closed_at\" <= 32503680000000)"
+        },
+        "sessions_auto_top_up_enabled_boolean": {
+          "name": "sessions_auto_top_up_enabled_boolean",
+          "value": "\"sessions\".\"auto_top_up_enabled\" is null or (typeof(\"sessions\".\"auto_top_up_enabled\") = 'integer' and \"sessions\".\"auto_top_up_enabled\" in (0, 1))"
+        },
+        "sessions_auto_top_up_target_stack_range": {
+          "name": "sessions_auto_top_up_target_stack_range",
+          "value": "\"sessions\".\"auto_top_up_target_stack\" is null or (typeof(\"sessions\".\"auto_top_up_target_stack\") = 'integer' and \"sessions\".\"auto_top_up_target_stack\" >= -1000000000 and \"sessions\".\"auto_top_up_target_stack\" <= 1000000000 and \"sessions\".\"auto_top_up_target_stack\" > 0)"
+        },
+        "sessions_auto_top_up_pair": {
+          "name": "sessions_auto_top_up_pair",
+          "value": "(\"sessions\".\"auto_top_up_enabled\" is null and \"sessions\".\"auto_top_up_target_stack\" is null) or (\"sessions\".\"auto_top_up_enabled\" is not null and \"sessions\".\"auto_top_up_target_stack\" is not null)"
+        }
+      }
+    },
+    "skipped_hands": {
+      "name": "skipped_hands",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_number": {
+          "name": "hand_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "skipped_at": {
+          "name": "skipped_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "skipped_hands_session_idx": {
+          "name": "skipped_hands_session_idx",
+          "columns": [
+            "session_id",
+            "skipped_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "skipped_hands_session_id_sessions_id_fk": {
+          "name": "skipped_hands_session_id_sessions_id_fk",
+          "tableFrom": "skipped_hands",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "skipped_hands_id_not_empty": {
+          "name": "skipped_hands_id_not_empty",
+          "value": "length(\"skipped_hands\".\"id\") > 0"
+        },
+        "skipped_hands_hand_number_non_negative": {
+          "name": "skipped_hands_hand_number_non_negative",
+          "value": "\"skipped_hands\".\"hand_number\" >= 0"
+        },
+        "skipped_hands_skipped_at_range": {
+          "name": "skipped_hands_skipped_at_range",
+          "value": "typeof(\"skipped_hands\".\"skipped_at\") = 'integer' and \"skipped_hands\".\"skipped_at\" >= 0 and \"skipped_hands\".\"skipped_at\" <= 32503680000000"
+        }
+      }
+    },
+    "strategy_decision_traces": {
+      "name": "strategy_decision_traces",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hand_id": {
+          "name": "hand_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "command_seq": {
+          "name": "command_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "street": {
+          "name": "street",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hero_seat": {
+          "name": "hero_seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "strategy_mode": {
+          "name": "strategy_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "strategy_version": {
+          "name": "strategy_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "family": {
+          "name": "family",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actions_json": {
+          "name": "actions_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "primary_action": {
+          "name": "primary_action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recommended_to_amount_mbb": {
+          "name": "recommended_to_amount_mbb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hero_equity_bps": {
+          "name": "hero_equity_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pot_odds_bps": {
+          "name": "pot_odds_bps",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "spr": {
+          "name": "spr",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provenance_quality": {
+          "name": "provenance_quality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "environment_status": {
+          "name": "environment_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actual_hero_action": {
+          "name": "actual_hero_action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "strategy_decision_traces_hand_command_unique": {
+          "name": "strategy_decision_traces_hand_command_unique",
+          "columns": [
+            "hand_id",
+            "command_seq"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "strategy_decision_traces_hand_id_hands_id_fk": {
+          "name": "strategy_decision_traces_hand_id_hands_id_fk",
+          "tableFrom": "strategy_decision_traces",
+          "tableTo": "hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "strategy_decision_traces_id_not_empty": {
+          "name": "strategy_decision_traces_id_not_empty",
+          "value": "length(\"strategy_decision_traces\".\"id\") > 0"
+        },
+        "strategy_decision_traces_command_seq_non_negative": {
+          "name": "strategy_decision_traces_command_seq_non_negative",
+          "value": "\"strategy_decision_traces\".\"command_seq\" >= 0"
+        },
+        "strategy_decision_traces_street": {
+          "name": "strategy_decision_traces_street",
+          "value": "\"strategy_decision_traces\".\"street\" in ('PREFLOP', 'FLOP', 'TURN', 'RIVER')"
+        },
+        "strategy_decision_traces_hero_seat_range": {
+          "name": "strategy_decision_traces_hero_seat_range",
+          "value": "\"strategy_decision_traces\".\"hero_seat\" >= 0 and \"strategy_decision_traces\".\"hero_seat\" <= 5"
+        },
+        "strategy_decision_traces_strategy_mode": {
+          "name": "strategy_decision_traces_strategy_mode",
+          "value": "\"strategy_decision_traces\".\"strategy_mode\" in ('REFERENCE')"
+        },
+        "strategy_decision_traces_strategy_version_not_empty": {
+          "name": "strategy_decision_traces_strategy_version_not_empty",
+          "value": "length(\"strategy_decision_traces\".\"strategy_version\") > 0"
+        },
+        "strategy_decision_traces_family_not_empty": {
+          "name": "strategy_decision_traces_family_not_empty",
+          "value": "length(\"strategy_decision_traces\".\"family\") > 0"
+        },
+        "strategy_decision_traces_actions_json_not_empty": {
+          "name": "strategy_decision_traces_actions_json_not_empty",
+          "value": "length(\"strategy_decision_traces\".\"actions_json\") > 0"
+        },
+        "strategy_decision_traces_primary_action": {
+          "name": "strategy_decision_traces_primary_action",
+          "value": "\"strategy_decision_traces\".\"primary_action\" in ('FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN')"
+        },
+        "strategy_decision_traces_recommended_to_amount_range": {
+          "name": "strategy_decision_traces_recommended_to_amount_range",
+          "value": "\"strategy_decision_traces\".\"recommended_to_amount_mbb\" is null or (typeof(\"strategy_decision_traces\".\"recommended_to_amount_mbb\") = 'integer' and \"strategy_decision_traces\".\"recommended_to_amount_mbb\" >= -1000000000 and \"strategy_decision_traces\".\"recommended_to_amount_mbb\" <= 1000000000 and \"strategy_decision_traces\".\"recommended_to_amount_mbb\" >= 0)"
+        },
+        "strategy_decision_traces_hero_equity_range": {
+          "name": "strategy_decision_traces_hero_equity_range",
+          "value": "\"strategy_decision_traces\".\"hero_equity_bps\" is null or (typeof(\"strategy_decision_traces\".\"hero_equity_bps\") = 'integer' and \"strategy_decision_traces\".\"hero_equity_bps\" >= 0 and \"strategy_decision_traces\".\"hero_equity_bps\" <= 10000)"
+        },
+        "strategy_decision_traces_pot_odds_range": {
+          "name": "strategy_decision_traces_pot_odds_range",
+          "value": "\"strategy_decision_traces\".\"pot_odds_bps\" is null or (typeof(\"strategy_decision_traces\".\"pot_odds_bps\") = 'integer' and \"strategy_decision_traces\".\"pot_odds_bps\" >= 0 and \"strategy_decision_traces\".\"pot_odds_bps\" <= 10000)"
+        },
+        "strategy_decision_traces_spr_range": {
+          "name": "strategy_decision_traces_spr_range",
+          "value": "\"strategy_decision_traces\".\"spr\" is null or (typeof(\"strategy_decision_traces\".\"spr\") = 'integer' and \"strategy_decision_traces\".\"spr\" >= 0)"
+        },
+        "strategy_decision_traces_provenance_quality": {
+          "name": "strategy_decision_traces_provenance_quality",
+          "value": "\"strategy_decision_traces\".\"provenance_quality\" in ('SOURCE', 'DERIVED', 'HEURISTIC')"
+        },
+        "strategy_decision_traces_environment_status_not_empty": {
+          "name": "strategy_decision_traces_environment_status_not_empty",
+          "value": "length(\"strategy_decision_traces\".\"environment_status\") > 0"
+        },
+        "strategy_decision_traces_actual_hero_action": {
+          "name": "strategy_decision_traces_actual_hero_action",
+          "value": "\"strategy_decision_traces\".\"actual_hero_action\" in ('FOLD', 'CHECK', 'CALL', 'BET', 'RAISE', 'ALL_IN')"
+        },
+        "strategy_decision_traces_computed_at_range": {
+          "name": "strategy_decision_traces_computed_at_range",
+          "value": "typeof(\"strategy_decision_traces\".\"computed_at\") = 'integer' and \"strategy_decision_traces\".\"computed_at\" >= 0 and \"strategy_decision_traces\".\"computed_at\" <= 32503680000000"
+        },
+        "strategy_decision_traces_source": {
+          "name": "strategy_decision_traces_source",
+          "value": "\"strategy_decision_traces\".\"source\" in ('ONLINE', 'BACKFILL')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

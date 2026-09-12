@@ -58,8 +58,10 @@ export {
 export {
   selectSizing,
   sizingRequestFor,
+  potFractionToAmount,
   clampPostflopSizing,
   type PostflopSizingRequest,
+  type PotFractionAmountInput,
   type SizingModifier,
   type SizingSelection,
 } from './sizing.js';

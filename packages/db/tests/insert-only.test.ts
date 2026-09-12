@@ -92,6 +92,9 @@ describe('insert-only tables', () => {
       .prepare(`select name from sqlite_master where type = 'trigger' order by name`)
       .all() as readonly { readonly name: string }[];
     expect(triggers.map((row) => row.name)).toEqual([
+      // 0007 — derived ADAPTIVE strategy traces.
+      'adaptive_strategy_traces_no_delete',
+      'adaptive_strategy_traces_no_update',
       // 0005 — the derived player-learning layer (ADR-0062a).
       'analysis_run_players_no_delete',
       'analysis_run_players_no_update',
@@ -104,6 +107,11 @@ describe('insert-only tables', () => {
       'hand_players_no_update',
       'hands_no_delete',
       'hands_no_update_once_finished',
+      // 0008 — external (third-party) HUD lifetime profiles (WP-K).
+      'player_external_hud_snapshot_stats_no_delete',
+      'player_external_hud_snapshot_stats_no_update',
+      'player_external_hud_snapshots_no_delete',
+      'player_external_hud_snapshots_no_update',
       // 0001 — the manually entered tables (ADR-0037).
       'player_hud_snapshot_stats_no_delete',
       'player_hud_snapshot_stats_no_update',
@@ -124,6 +132,12 @@ describe('insert-only tables', () => {
       // 0005 — the derived player-learning layer, continued (ADR-0062a).
       'player_spot_stats_no_delete',
       'player_spot_stats_no_update',
+      // 0006 — the skip audit table.
+      'skipped_hands_no_delete',
+      'skipped_hands_no_update',
+      // 0006 — REFERENCE strategy decision traces.
+      'strategy_decision_traces_no_delete',
+      'strategy_decision_traces_no_update',
     ]);
   });
 
