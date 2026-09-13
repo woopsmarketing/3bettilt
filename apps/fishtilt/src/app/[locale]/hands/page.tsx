@@ -29,6 +29,7 @@ import {
 import { Breadcrumbs } from '../../../components/Breadcrumbs.js';
 import { CtaBand } from '../../../components/CtaBand.js';
 import { EditorialHero } from '../../../components/EditorialHero.js';
+import { PageHeroVisual } from '../../../components/visual/PageHeroVisual.js';
 import { HandHubGroups } from '../../../components/hands/HandHubGroups.js';
 import { HandIndexMatrix } from '../../../components/hands/HandIndexMatrix.js';
 import { hubListedHands } from '../../../components/hands/handGraph.js';
@@ -117,6 +118,7 @@ export default function HandsIndexPage() {
       <Section width="shell" padded="none" className="pt-10 sm:pt-14">
         <Breadcrumbs className="mb-8" trail={routeBreadcrumbs('hands')} />
         <EditorialHero
+          visual={<PageHeroVisual slot="handsHub" theme="starting-hands" />}
           eyebrow="핸드"
           title="홀덤 시작 핸드 목록"
           lead="시작 패 하나에 페이지 하나. 그 패가 169개 중 몇 위인지, 조합이 몇 가지인지, 13×13 표의 어디에 있는지, 무작위 상대와 끝까지 갔을 때 얼마를 기대할 수 있는지를 계산된 값으로 보여줍니다. 왜 그런 순서가 되는지는 레슨이, 169개 전부는 순위표 도구가 맡습니다."

@@ -1,0 +1,260 @@
+{
+  "$comment": "Source PNG -> production JPEG mapping for public/visuals/. Read by scripts/process-editorial-images.mjs and by src/content/visualAssets.test.ts. crop.focus is the crop centre as a 0-1 fraction of the source; crop.zoom >= 1 tightens the crop around it. Change a row and re-run the script to replace a picture; the registry (src/content/visuals.ts) must list the same file and output size.",
+  "sourceDir": "../../visual-source-temp",
+  "outputDir": "public/visuals",
+  "jpeg": { "quality": 78, "mozjpeg": true, "progressive": true, "chromaSubsampling": "4:4:4" },
+  "entries": [
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 06_49_34.png",
+      "group": "brand",
+      "file": "home-hero.jpg",
+      "role": "Home hero (4:5, five code-drawn cards overlaid in the bottom band)",
+      "assignment": "/ — EditorialHero visual (HomeHeroVisual)",
+      "crop": { "ratio": [4, 5], "focus": [0.5, 0.5] },
+      "output": [1120, 1400]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 06_49_53.png",
+      "group": "brand",
+      "file": "brand-hands.jpg",
+      "role": "Hands hub hero visual",
+      "assignment": "/hands — EditorialHero visual",
+      "crop": { "ratio": [3, 2], "focus": [0.5, 0.36] },
+      "output": [1200, 800]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 06_50_02 (1).png",
+      "group": "brand",
+      "file": "brand-blog.jpg",
+      "role": "Blog hub hero visual",
+      "assignment": "/blog — EditorialHero visual",
+      "crop": { "ratio": [3, 2], "focus": [0.5, 0.35] },
+      "output": [1200, 800]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 06_50_03 (2).png",
+      "group": "brand",
+      "file": "brand-practice.jpg",
+      "role": "Practice (quiz) hub hero visual",
+      "assignment": "/practice — EditorialHero visual",
+      "crop": { "ratio": [3, 2], "focus": [0.5, 0.38] },
+      "output": [1200, 800]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 06_50_03 (3).png",
+      "group": "brand",
+      "file": "brand-about.jpg",
+      "role": "About hero visual",
+      "assignment": "/about — PageHero visual",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.29] },
+      "output": [1280, 720]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 06_50_04 (4).png",
+      "group": "brand",
+      "file": "brand-tools.jpg",
+      "role": "Tools hub hero visual (desktop only)",
+      "assignment": "/tools — PageHero visual",
+      "crop": { "ratio": [3, 2], "focus": [0.5, 0.3] },
+      "output": [1200, 800]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_10_08 (1).png",
+      "group": "brand",
+      "file": "home-breathing.jpg",
+      "role": "Home breathing band (21:9, statement over a side scrim)",
+      "assignment": "/ — HomeBreathing",
+      "crop": { "ratio": [21, 9], "focus": [0.5, 0.6] },
+      "output": [2400, 1028]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_10_09 (2).png",
+      "group": "brand",
+      "file": "home-stage-rules.jpg",
+      "role": "Home roadmap — stage 1 picture",
+      "assignment": "/ — HomeRoadmap stage-rules",
+      "crop": { "ratio": [21, 9], "focus": [0.5, 0.55] },
+      "output": [1680, 720]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_10_09 (3).png",
+      "group": "brand",
+      "file": "brand-learn.jpg",
+      "role": "Learn hub hero visual",
+      "assignment": "/learn — PageHero visual",
+      "crop": { "ratio": [3, 2], "focus": [0.58, 0.5] },
+      "output": [1200, 800]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_10_09 (4).png",
+      "group": "brand",
+      "file": "home-stage-postflop-math.jpg",
+      "role": "Home roadmap — stage 3 picture",
+      "assignment": "/ — HomeRoadmap stage-postflop-math",
+      "crop": { "ratio": [21, 9], "focus": [0.5, 0.55] },
+      "output": [1680, 720]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_10_10 (5).png",
+      "group": "brand",
+      "file": "home-stage-range-position.jpg",
+      "role": "Home roadmap — stage 2 picture",
+      "assignment": "/ — HomeRoadmap stage-range-position",
+      "crop": { "ratio": [21, 9], "focus": [0.5, 0.5] },
+      "output": [1680, 720]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_10_11 (8).png",
+      "group": "brand",
+      "file": "brand-about-table.jpg",
+      "role": "About — editorial figure between sections",
+      "assignment": "/about — figure before “숫자는 어떻게 계산하는가?”",
+      "crop": { "ratio": [21, 9], "focus": [0.5, 0.5] },
+      "output": [1680, 720]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_10_10 (7).png",
+      "group": "brand",
+      "file": "brand-glossary.jpg",
+      "role": "Glossary hub hero visual",
+      "assignment": "/glossary — PageHero visual",
+      "crop": { "ratio": [3, 2], "focus": [0.6, 0.5] },
+      "output": [1200, 800]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_10_10 (6).png",
+      "group": "brand",
+      "file": "brand-feature.jpg",
+      "role": "Home closing call-to-action band backdrop",
+      "assignment": "/ — CtaBand backdrop",
+      "crop": { "ratio": [21, 9], "focus": [0.5, 0.5] },
+      "output": [2400, 1028]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_41_38 (1).png",
+      "group": "category",
+      "file": "theme-basics.jpg",
+      "role": "Theme — basics (empty table before the game)",
+      "assignment": "theme basics: lessons game-start, glossary game, topic rules",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_41_38 (2).png",
+      "group": "category",
+      "file": "theme-rankings.jpg",
+      "role": "Theme — rankings (deck macro)",
+      "assignment": "theme rankings: lessons hand-rankings, glossary hand-rankings, topic hand-strength",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_41_38 (3).png",
+      "group": "category",
+      "file": "theme-starting-hands.jpg",
+      "role": "Theme — starting hands (two hole cards under a hand)",
+      "assignment": "theme starting-hands: lessons/glossary starting-hands, all /hands pages",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_41_39 (4).png",
+      "group": "category",
+      "file": "theme-range.jpg",
+      "role": "Theme — range (notebook, study desk)",
+      "assignment": "theme range: lessons range, topic range",
+      "crop": { "ratio": [16, 9], "focus": [0.44, 0.42], "zoom": 1.25 },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_41_39 (5).png",
+      "group": "category",
+      "file": "theme-position.jpg",
+      "role": "Theme — position (top-down table and seats)",
+      "assignment": "theme position: lessons/glossary position, topic position",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_41_39 (6).png",
+      "group": "category",
+      "file": "theme-betting.jpg",
+      "role": "Theme — betting (hand pushing chips)",
+      "assignment": "theme betting: lessons/glossary betting, topic betting",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_41_40 (7).png",
+      "group": "category",
+      "file": "theme-math.jpg",
+      "role": "Theme — math (player thinking, abstract charts)",
+      "assignment": "theme math: lessons/glossary math, topics odds and equity",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 07_41_40 (8).png",
+      "group": "category",
+      "file": "theme-story.jpg",
+      "role": "Theme — story (two players, late-night room)",
+      "assignment": "theme story: hand-story fallback behind each story's own picture",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 11_53_15 (1).png",
+      "group": "story",
+      "file": "story-qq-vs-72o-flop-227.jpg",
+      "role": "Hand story — unexpected flop, hand over mouth",
+      "assignment": "blog-qq-vs-72o-flop-227",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 11_53_15 (2).png",
+      "group": "story",
+      "file": "story-full-house-loses.jpg",
+      "role": "Hand story — slumped back after the loss",
+      "assignment": "blog-full-house-loses",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 11_53_15 (3).png",
+      "group": "story",
+      "file": "story-qq-three-bet-frustration.jpg",
+      "role": "Hand story — arms crossed, glaring at the opponent",
+      "assignment": "blog-qq-three-bet-frustration",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 11_53_15 (4).png",
+      "group": "story",
+      "file": "story-river-changes-everything.jpg",
+      "role": "Hand story — the dealer lays the last card",
+      "assignment": "blog-river-changes-everything",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 11_53_15 (5).png",
+      "group": "story",
+      "file": "story-aa-loses.jpg",
+      "role": "Hand story — eyes closed, pushing the cards away",
+      "assignment": "blog-aa-loses",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    },
+    {
+      "source": "ChatGPT Image 2026년 9월 13일 오후 11_53_15 (6).png",
+      "group": "story",
+      "file": "story-ak-flop-miss.jpg",
+      "role": "Hand story — head in hand, fingering chips after the flop",
+      "assignment": "blog-ak-flop-miss",
+      "crop": { "ratio": [16, 9], "focus": [0.5, 0.5] },
+      "output": [1920, 1080]
+    }
+  ]
+}

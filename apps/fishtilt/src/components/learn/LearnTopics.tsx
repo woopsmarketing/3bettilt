@@ -11,6 +11,8 @@
  */
 import type { LearnCategory } from '../../content/registry/learn/categories.js';
 import { contentMeta } from '../../content/graph.js';
+import { LEARN_CATEGORY_THEME, themeVisual } from '../../content/visuals.js';
+import { EditorialVisual } from '../visual/EditorialVisual.js';
 import type { RoadmapEntry } from './LearnRoadmap.js';
 
 export interface TopicGroup {
@@ -89,6 +91,14 @@ export function LearnTopics({ groups, className = '' }: LearnTopicsProps) {
               className="grid scroll-mt-24 gap-4 py-10 lg:grid-cols-12 lg:gap-12"
             >
               <div className="min-w-0 lg:col-span-4">
+                {/* The category's shared picture — the same one its lessons open with, so a
+                    reader recognises the topic again on the lesson page. Decorative. */}
+                <EditorialVisual
+                  visual={themeVisual(LEARN_CATEGORY_THEME[category.id], category.id)}
+                  aspect="21/9"
+                  sizes="(min-width: 1024px) 340px, 100vw"
+                  className="mb-5 max-w-figure"
+                />
                 <h3 id={headingId} className="prose-ko text-xl font-semibold text-text-100">
                   {category.label}
                 </h3>

@@ -46,6 +46,11 @@ import { Breadcrumbs } from '../../../../components/Breadcrumbs.js';
 import { LessonHeader } from '../../../../components/learn/LessonHeader.js';
 import { LessonNav } from '../../../../components/learn/LessonNav.js';
 import { RelatedContent } from '../../../../components/RelatedContent.js';
+import { TableOfContents } from '../../../../components/TableOfContents.js';
+import { MIN_TOC_HEADINGS } from '../../../../components/blog/articleHeadings.js';
+import { readArticleHeadings } from '../../../../components/blog/articleSource.js';
+import { EditorialVisual } from '../../../../components/visual/EditorialVisual.js';
+import { visualOf } from '../../../../content/visuals.js';
 import {
   contentBySlug,
   contentMeta,
@@ -107,6 +112,7 @@ export default async function LessonPage({
   const practice = routeById('practice');
   const { prev, next } = neighboursOf(lesson);
   const prerequisites = relationsOf(lesson, ['prerequisites']).flatMap((r) => r.links);
+  const headings = readArticleHeadings('learn', lesson.slug);
 
   return (
     <main className="mx-auto max-w-reading px-6 py-16">
@@ -142,7 +148,25 @@ export default async function LessonPage({
         The first paragraph is the lead (§27's "한 줄 답"), drawn one step larger and in the
         brighter ink so the answer is legible before the reader has decided to read on.
       */}
-      <article className="mt-12 [&>p:first-child]:text-xl [&>p:first-child]:leading-[1.75] [&>p:first-child]:text-text-100 [&>figure]:lg:-mx-28 [&>[data-breakout]]:lg:-mx-28">
+      {/* The category's shared picture (`LEARN_CATEGORY_THEME`), breaking out of the reading
+          column by the same 7rem a side a figure does. Decorative: the header names the lesson. */}
+      <EditorialVisual
+        className="mt-10 lg:-mx-28 lg:w-auto"
+        visual={visualOf(lesson)}
+        aspect="21/9"
+        scrim="soft"
+        priority
+        sizes="(min-width: 1024px) 960px, 100vw"
+      />
+
+      {headings.length >= MIN_TOC_HEADINGS ? (
+        <TableOfContents className="mt-10" headings={headings} numbered collapsible />
+      ) : null}
+
+      <article
+        data-numbered
+        className="editorial-body mt-12 [&>p:first-child]:text-xl [&>p:first-child]:leading-[1.75] [&>p:first-child]:text-text-100 [&>figure]:lg:-mx-28 [&>[data-breakout]]:lg:-mx-28"
+      >
         <Content />
       </article>
 
@@ -159,7 +183,12 @@ export default async function LessonPage({
         next={
           next === undefined
             ? undefined
-            : { href: hrefOfContent(next), title: next.title, meta: contentMeta(next) }
+            : {
+                href: hrefOfContent(next),
+                title: next.title,
+                meta: contentMeta(next),
+                visual: visualOf(next),
+              }
         }
         end={{
           practiceHref: practice.available ? practice.path : null,

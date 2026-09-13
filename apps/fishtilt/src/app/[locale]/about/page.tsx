@@ -27,6 +27,9 @@ import type { Metadata } from 'next';
 import { pageMetadata, routeBreadcrumbs } from '../../../lib/seo/index.js';
 import { Breadcrumbs } from '../../../components/Breadcrumbs.js';
 import { PageHero } from '../../../components/PageHero.js';
+import { EditorialVisual } from '../../../components/visual/EditorialVisual.js';
+import { PageHeroVisual } from '../../../components/visual/PageHeroVisual.js';
+import { PAGE_VISUALS, pageVisual } from '../../../content/visuals.js';
 import { TableOfContents, type TocHeading } from '../../../components/TableOfContents.js';
 import { HAND_STORY_DISCLOSURE } from '../../../content/stories/types.js';
 import { RANGE_LABEL, RANGE_PROVENANCE_SENTENCE } from '../../../features/range/index.js';
@@ -96,6 +99,14 @@ export default function AboutPage() {
     <main className="mx-auto max-w-reading px-6 py-16">
       <Breadcrumbs className="mb-8" trail={routeBreadcrumbs('about')} />
       <PageHero
+        visual={
+          <PageHeroVisual
+            slot="aboutHero"
+            theme="basics"
+            aspect="16/9"
+            sizes="(min-width: 768px) 720px, 100vw"
+          />
+        }
         eyebrow="소개"
         title="3BetTilt는 무엇인가요"
         description="텍사스 홀덤을 처음 배우는 사람을 위한 무료 학습 사이트입니다. 읽고, 보고, 직접 눌러보고, 계산까지 해보는 순서로 만들어졌습니다. 이 페이지는 이 사이트가 무엇을 근거로 무엇을 말하는지, 그리고 무엇을 하지 않는지를 적어둔 곳입니다."
@@ -160,6 +171,17 @@ export default function AboutPage() {
           </li>
         </ul>
       </section>
+
+      {/* A pause before the methodology: a brand picture, decorative, no caption — the
+          section heading below says what comes next. */}
+      <div data-page-visual="aboutTable" className="mt-14">
+        <EditorialVisual
+          visual={pageVisual(PAGE_VISUALS.aboutTable, 'betting')}
+          aspect="21/9"
+          scrim="hero"
+          sizes="(min-width: 768px) 720px, 100vw"
+        />
+      </div>
 
       <section className={SECTION} aria-labelledby="numbers">
         <Heading id="numbers" />

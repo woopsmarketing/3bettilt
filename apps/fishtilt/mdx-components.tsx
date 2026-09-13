@@ -6,6 +6,7 @@ import { Callout } from './src/components/Callout.js';
 import { ComparisonTable } from './src/components/ComparisonTable.js';
 import { DataTable } from './src/components/DataTable.js';
 import { EditorialImage } from './src/components/EditorialImage.js';
+import { EditorialH2, EditorialH3 } from './src/components/EditorialHeadings.js';
 import { FAQ } from './src/components/FAQ.js';
 import { Fact } from './src/components/Fact.js';
 import { Figure } from './src/components/Figure.js';
@@ -67,9 +68,9 @@ import { ToolCTA } from './src/components/ToolCTA.js';
  * `ground-900` is 18.29:1 per `globals.css`'s audit, so this stays well past the 4.5:1
  * threshold). `text-300` is reserved for captions and secondary lines, where it is 7.24:1.
  *
- * Headings reuse `SectionHeading`'s scale — `text-lg font-semibold text-text-100` for the
- * section level — so a heading inside prose and a heading rendered by a page component are
- * the same object to a reader. `h3` steps down one size for the nested level; `h1` is mapped
+ * Headings are EDITORIAL, not UI: `h2` opens a chapter (brand rule, optional section number,
+ * a deterministic `id` for the table of contents) and `h3` is a marked step inside it — see
+ * `src/components/EditorialHeadings.tsx`. `h1` is mapped
  * for completeness but never appears in a file, because the page template owns the page's
  * single `<h1>` (enforced by `content.test.ts`).
  */
@@ -109,18 +110,10 @@ export const MDX_ALLOWED_COMPONENTS = ALLOWED;
 
 const TYPOGRAPHY: MDXComponents = {
   h1: (props) => <h1 className="text-3xl font-semibold text-text-100" {...props} />,
-  h2: (props) => (
-    <h2
-      className="mt-14 mb-5 scroll-mt-24 prose-ko text-h2 font-semibold text-text-100"
-      {...props}
-    />
-  ),
-  h3: (props) => (
-    <h3
-      className="mt-10 mb-3 scroll-mt-24 prose-ko text-lg font-semibold text-text-100"
-      {...props}
-    />
-  ),
+  // Chapter headings with deterministic ids (`EditorialHeadings.tsx`); the visual treatment
+  // is `.ed-h2`/`.ed-h3` in `globals.css`, numbered only inside `.editorial-body[data-numbered]`.
+  h2: EditorialH2,
+  h3: EditorialH3,
   h4: (props) => (
     <h4 className="mt-8 mb-2 prose-ko text-base font-medium text-text-100" {...props} />
   ),

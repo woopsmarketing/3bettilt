@@ -118,6 +118,9 @@ test.describe('WP-O1 — 모바일에서 손가락으로 누를 수 있는 크�
    *    holds it to this very 44px, which is the only state a pointer could ever reach it in;
    *  - a control wrapped in a `<label>` is tapped through that label, so the label's box is
    *    the target (the pot-odds all-in checkbox is a 20px box inside a 44px label);
+   *  - a `.stretched-link` (a card's title link) is tapped through its card: its `::after`
+   *    covers the nearest positioned ancestor (`globals.css`), so that ancestor's box is the
+   *    target, exactly as a label's is;
    *  - a control that SHARES ITS LINE with ordinary text is inline-in-a-sentence — a
    *    `<Term>` trigger, a prose link. WCAG carries an explicit inline exception for exactly
    *    these: their height is the line box of the surrounding paragraph, and forcing 44px
@@ -180,7 +183,18 @@ test.describe('WP-O1 — 모바일에서 손가락으로 누를 수 있는 크�
             const box = el.getBoundingClientRect();
             if (box.width === 0 || box.height === 0) continue;
             const label = el.closest('label');
-            const height = Math.max(box.height, label?.getBoundingClientRect().height ?? 0);
+            let stretched: HTMLElement | null = null;
+            if (el.classList.contains('stretched-link')) {
+              stretched = el.parentElement;
+              while (stretched !== null && getComputedStyle(stretched).position === 'static') {
+                stretched = stretched.parentElement;
+              }
+            }
+            const height = Math.max(
+              box.height,
+              label?.getBoundingClientRect().height ?? 0,
+              stretched?.getBoundingClientRect().height ?? 0,
+            );
             if (height + 0.5 >= min) continue;
             if (isInlineInText(el)) continue;
             out.push({

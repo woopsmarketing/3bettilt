@@ -5,6 +5,7 @@ import type { BlogRecord } from '../../../content/types.js';
 import { BLOG_CONTENT_TYPE_LABEL, blogRecords } from '../../../content/graph.js';
 import { BLOG_CONTENT_TYPES } from '../../../content/types.js';
 import { buildBlogHub } from '../../../components/blog/blogHubModel.js';
+import { PAGE_VISUALS, THEME_VISUALS, visualOf } from '../../../content/visuals.js';
 import BlogIndexPage from './page.js';
 import { DEFAULT_LOCALE, localePath } from '../../../lib/locale.js';
 
@@ -167,9 +168,29 @@ describe('/blog hub', () => {
     expect(text).toContain('순서는 순위가 아닙니다');
   });
 
-  it('draws no image files', () => {
+  it('draws pictures only through registered visual slots, each a decorative production asset', () => {
     const { container } = render(<BlogIndexPage />);
-    expect(container.querySelector('img')).toBeNull();
+    const images = Array.from(container.querySelectorAll('img'));
+    expect(images.length).toBeGreaterThan(0);
+    const registered = new Set([
+      ...Object.values(PAGE_VISUALS).map((asset) => asset.file),
+      ...Object.values(THEME_VISUALS).map((theme) => theme.asset.file),
+      ...blogRecords().flatMap((record) => visualOf(record).candidates.map((asset) => asset.file)),
+    ]);
+    for (const img of images) {
+      // Every <img> is inside a slot that resolved to a file, and says nothing to a reader.
+      expect(img.closest('[data-visual-source="asset"]'), img.outerHTML).not.toBeNull();
+      expect(img.getAttribute('alt')).toBe('');
+      const file = /\/visuals\/([a-z0-9-]+\.jpg)/u.exec(
+        decodeURIComponent(img.getAttribute('src') ?? ''),
+      )?.[1];
+      expect(file !== undefined && registered.has(file), img.getAttribute('src') ?? '').toBe(true);
+    }
+    // The hub's own brand picture opens the page.
+    expect(
+      container.querySelector(`[data-page-visual="blogHub"] [data-visual-source="asset"] img`),
+    ).not.toBeNull();
+    // No picture sneaks in as a CSS background.
     expect(container.innerHTML).not.toContain('url(');
   });
 });

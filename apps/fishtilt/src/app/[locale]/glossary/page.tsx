@@ -28,6 +28,7 @@ import {
 import { Breadcrumbs } from '../../../components/Breadcrumbs.js';
 import { Divider } from '../../../components/Divider.js';
 import { PageHero } from '../../../components/PageHero.js';
+import { PageHeroVisual } from '../../../components/visual/PageHeroVisual.js';
 import { SectionHeading } from '../../../components/SectionHeading.js';
 import { GlossaryCategoryMap } from '../../../components/glossary/GlossaryCategoryMap.js';
 import { GlossaryIndex } from '../../../components/glossary/GlossaryIndex.js';
@@ -105,6 +106,8 @@ export default function GlossaryIndexPage() {
         ]}
       />
       <PageHero
+        layout="split"
+        visual={<PageHeroVisual slot="glossaryHub" theme="basics" />}
         eyebrow="용어"
         title="포커 용어 사전"
         description="모르는 말이 나오면 여기서 찾아보세요. 한국어 이름을 먼저 쓰고, 영어 이름과 줄임말을 옆에 둡니다. 한 줄 정의로 충분하지 않으면 용어를 눌러 쉬운 설명과 예를 봅니다."

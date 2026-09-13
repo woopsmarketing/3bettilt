@@ -58,6 +58,9 @@ import { HandRfiSeats } from '../../../../components/hands/HandRfiSeats.js';
 import { HandRangeHighlight } from '../../../../components/HandRangeHighlight.js';
 import { PageHero } from '../../../../components/PageHero.js';
 import { PokerCards } from '../../../../components/PokerCards.js';
+import { EditorialH2 } from '../../../../components/EditorialHeadings.js';
+import { VisualBackdrop } from '../../../../components/visual/VisualBackdrop.js';
+import { visualOf } from '../../../../content/visuals.js';
 import { RelatedContent } from '../../../../components/RelatedContent.js';
 import { SectionHeading } from '../../../../components/SectionHeading.js';
 import { ToolCTA } from '../../../../components/ToolCTA.js';
@@ -164,14 +167,17 @@ export default async function HandPage({
       {/* Section 1 — the reference-sheet header: real cards resolved from the hand-class
           model, and the four numbers the page is for. A recessed well, breaking out of the
           column, so the sheet reads as a sheet before the first sentence. */}
-      <section
+      <VisualBackdrop
+        as="section"
         aria-label={`${record.handKey} 핵심 숫자`}
         data-breakout
-        className={`mt-10 rounded-xl bg-ground-800 px-6 py-7 sm:px-8 ${BREAKOUT}`}
+        visual={visualOf(record)}
+        sizes="(min-width: 1024px) 960px, 100vw"
+        className={`mt-10 px-6 py-7 sm:px-8 sm:py-9 ${BREAKOUT}`}
       >
         <PokerCards className="my-0" hand={record.handKey} size="lg" />
         <HandFactStrip className="mt-7" handKey={record.handKey} />
-      </section>
+      </VisualBackdrop>
 
       {/* Section 2 — the MDX file's own lead paragraph, and nothing else: the rest of the
           author's prose is section 6.5 below, after the computed sections. */}
@@ -181,7 +187,7 @@ export default async function HandPage({
 
       {/* Section 3 — what this class of hand is. */}
       <section className="mt-14">
-        <SectionHeading title="이 패는 어떤 패인가요" />
+        <EditorialH2 className="mt-0 mb-0">이 패는 어떤 패인가요</EditorialH2>
         <p className={PROSE}>
           {describeHandClassKorean(handClass)}입니다. 무늬까지 구별한 조합은{' '}
           <Fact name="HAND_COMBOS" arg={record.handKey} />
@@ -195,7 +201,7 @@ export default async function HandPage({
       {/* Section 4 — 13x13 position (ruling 17: `RangeMatrix`'s own `selectedKey`, not a
           `RangeMatrixMini` highlight prop). */}
       <section className="mt-14">
-        <SectionHeading title="13×13 표에서는 여기입니다" />
+        <EditorialH2 className="mt-0 mb-0">13×13 표에서는 여기입니다</EditorialH2>
         <p className={PROSE}>
           아래 표에서 칠해진 칸이 <span className="font-mono font-semibold">{record.handKey}</span>
           의 자리입니다. 대각선·위쪽·아래쪽이 각각 무엇을 뜻하는지는{' '}
@@ -217,7 +223,7 @@ export default async function HandPage({
           and links the lesson that defines it, so the ties-split rule is reachable here.
           The comparison table that follows is the same dataset, for the neighbours. */}
       <section className="mt-14">
-        <SectionHeading title="얼마나 강한가요" />
+        <EditorialH2 className="mt-0 mb-0">얼마나 강한가요</EditorialH2>
         <p className={PROSE}>
           전체 <Fact name="HAND_CLASS_COUNT" />개 시작 패 중{' '}
           <Fact name="HAND_RANK" arg={record.handKey} />
@@ -251,7 +257,7 @@ export default async function HandPage({
       {/* Section 6 — where this class is used in the one shipped range dataset, on the
           6-max diagram, with the unsupported situations named as unsupported. */}
       <section className="mt-14">
-        <SectionHeading title="어느 자리에서 처음 레이즈에 쓰이나요" />
+        <EditorialH2 className="mt-0 mb-0">어느 자리에서 처음 레이즈에 쓰이나요</EditorialH2>
         <HandRfiSeats className={`mt-6 ${BREAKOUT}`} handClass={handClass} />
       </section>
 
@@ -260,7 +266,9 @@ export default async function HandPage({
           stated before any paragraph that compares it to another hand. A `## 자주 묻는 것`
           with `### 질문` sub-headings renders here, by MDX, and is what the `FAQPage` block
           above describes. */}
-      {article.rest.length > 0 ? <article className="mt-14">{article.rest}</article> : null}
+      {article.rest.length > 0 ? (
+        <article className="editorial-body mt-14">{article.rest}</article>
+      ) : null}
 
       {/* Section 7 — the tool CTA §37 requires. */}
       <ToolCTA tool="range" title="13×13 표에서 다른 패와 나란히 비교해보세요">

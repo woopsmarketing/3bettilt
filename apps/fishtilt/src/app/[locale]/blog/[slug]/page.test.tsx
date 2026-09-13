@@ -12,6 +12,7 @@ import {
 import { resolveStory } from '../../../../content/stories/resolve.js';
 import { HAND_CATEGORY_LABEL, handReading } from '../../../../features/tools/handRank.js';
 import { TOPIC_LABEL } from '../../../../features/content/index.js';
+import { THEME_VISUALS, visualOf } from '../../../../content/visuals.js';
 import type { BlogRecord } from '../../../../content/types.js';
 import { readArticleHeadings } from '../../../../components/blog/articleSource.js';
 
@@ -113,16 +114,26 @@ describe('/blog/[slug] — search guide layout', () => {
     );
   });
 
-  it('shows the generated hero visual at 16:9, decorative, spanning the band, with no image file', async () => {
+  it('shows the featured visual at 16:9 spanning the band — its theme’s production asset', async () => {
     const { container } = await renderArticle(ARTICLE.slug);
-    const slot = container.querySelector('[data-source="fallback"]');
-    expect(slot?.getAttribute('data-aspect')).toBe('16/9');
-    expect(slot?.getAttribute('aria-hidden')).toBe('true');
+    const slot = container.querySelector('[data-visual]');
+    expect(slot?.className).toContain('aspect-video');
     expect(slot?.className).toContain('col-span-full');
-    const visual = slot?.querySelector('[data-topic]');
-    expect(visual?.getAttribute('data-topic')).toBe(ARTICLE.topic);
-    expect(visual?.getAttribute('data-kind')).toBe('blog');
-    expect(container.querySelector('img')).toBeNull();
+    // The theme comes from the registry, not from a string in the template.
+    expect(slot?.getAttribute('data-visual')).toBe(visualOf(ARTICLE).theme);
+    expect(slot?.getAttribute('data-visual-source')).toBe('asset');
+    // The file is the theme's registered asset; decorative — the title is above it.
+    const img = slot?.querySelector('img');
+    expect(decodeURIComponent(img?.getAttribute('src') ?? '')).toContain(
+      `/visuals/${visualOf(ARTICLE).candidates.at(-1)?.file}`,
+    );
+    expect(img?.getAttribute('alt')).toBe('');
+    expect(slot?.querySelectorAll('img')).toHaveLength(1);
+    // Every other picture (related reads) is also a decorative slot asset; none is a CSS background.
+    for (const other of Array.from(container.querySelectorAll('img'))) {
+      expect(other.closest('[data-visual-source="asset"]')).not.toBeNull();
+      expect(other.getAttribute('alt')).toBe('');
+    }
     expect(container.innerHTML).not.toContain('url(');
   });
 
@@ -252,9 +263,20 @@ describe('/blog/[slug] — hand story layout (test fixture, never published)', (
     expect(container.querySelector('aside')?.textContent).toContain('비슷한 핸드');
   });
 
-  it('draws no image file for the editorial visual', async () => {
+  it('draws the editorial visual as a decorative asset — the story theme when it has no picture of its own', async () => {
     const { container } = await renderArticle(FIXTURE_STORY_SLUG);
-    expect(container.querySelector('img')).toBeNull();
-    expect(container.querySelector('[data-source="fallback"][data-aspect="16/9"]')).not.toBeNull();
+    const slot = container.querySelector('[data-visual]');
+    expect(slot?.getAttribute('data-visual-source')).toBe('asset');
+    const images = Array.from(slot?.querySelectorAll('img') ?? []);
+    expect(images).toHaveLength(1);
+    expect(images[0]?.getAttribute('alt')).toBe('');
+    for (const other of Array.from(container.querySelectorAll('img'))) {
+      expect(other.closest('[data-visual-source="asset"]')).not.toBeNull();
+    }
+    expect(decodeURIComponent(images[0]?.getAttribute('src') ?? '')).toContain(
+      `/visuals/${THEME_VISUALS.story.asset.file}`,
+    );
+    expect(slot?.className).toContain('aspect-video');
+    expect(slot?.getAttribute('data-visual')).toBe('story');
   });
 });

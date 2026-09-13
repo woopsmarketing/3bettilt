@@ -15,7 +15,16 @@
  * Full-bleed when placed directly in a page; inside a `Section` it fills the section's
  * inner box. Either way it is rounded only when `rounded` is set, because a full-bleed
  * band with rounded corners looks like a very large card.
+ *
+ * `backdrop` (optional) lays the band over a picture instead of the tint — the home page's
+ * closing band passes its `EditorialVisual` here. The band then becomes a `.cover-stage`
+ * (ink and brand tokens re-pointed to their dark values, as on any cover) under the
+ * strongest overlay tier, `.cover-scrim-band`, so the text and both actions read at either
+ * end in both themes. A slot, not a visual prop: this component stays free of the
+ * server-only asset resolver.
  */
+import type { ReactNode } from 'react';
+
 export interface CtaBandAction {
   readonly href: string | null;
   readonly label: string;
@@ -28,6 +37,8 @@ export interface CtaBandProps {
   readonly secondary?: CtaBandAction;
   readonly rounded?: boolean;
   readonly className?: string;
+  /** A decorative picture filling the band behind a dense scrim (`EditorialVisual aspect="fill"`). */
+  readonly backdrop?: ReactNode;
 }
 
 const PRIMARY_CLASS =
@@ -39,7 +50,13 @@ const SECONDARY_CLASS =
 const PLANNED_CLASS =
   'inline-flex min-h-11 items-center gap-2 rounded-md px-5 py-2.5 text-text-300 outline outline-1 outline-text-300';
 
-function Action({ action, kind }: { readonly action: CtaBandAction; readonly kind: 'primary' | 'secondary' }) {
+function Action({
+  action,
+  kind,
+}: {
+  readonly action: CtaBandAction;
+  readonly kind: 'primary' | 'secondary';
+}) {
   if (action.href === null) {
     return (
       <span className={PLANNED_CLASS}>
@@ -64,11 +81,21 @@ export function CtaBand({
   secondary,
   rounded = false,
   className = '',
+  backdrop,
 }: CtaBandProps) {
+  const surface =
+    backdrop === undefined ? 'bg-brand-950' : 'cover-stage relative isolate overflow-hidden';
   return (
     <div
-      className={`bg-brand-950 px-6 py-10 sm:px-10 sm:py-12 ${rounded ? 'rounded-xl' : ''} ${className}`}
+      data-cta-backdrop={backdrop === undefined ? undefined : 'picture'}
+      className={`${surface} px-6 py-10 sm:px-10 sm:py-12 ${rounded ? 'rounded-xl' : ''} ${className}`}
     >
+      {backdrop === undefined ? null : (
+        <span aria-hidden="true" className="absolute inset-0 -z-10">
+          {backdrop}
+          <span className="cover-scrim-band absolute inset-0" />
+        </span>
+      )}
       <div className="mx-auto flex max-w-breakout flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="prose-ko text-2xl font-semibold text-text-100">{title}</p>

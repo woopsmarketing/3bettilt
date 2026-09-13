@@ -23,6 +23,7 @@ import {
 import { Breadcrumbs } from '../../../components/Breadcrumbs.js';
 import { CtaBand } from '../../../components/CtaBand.js';
 import { EditorialHero } from '../../../components/EditorialHero.js';
+import { PageHeroVisual } from '../../../components/visual/PageHeroVisual.js';
 import { PokerCards } from '../../../components/PokerCards.js';
 import { PositionDiagram } from '../../../components/PositionDiagram.js';
 import { Section } from '../../../components/Section.js';
@@ -174,6 +175,7 @@ export default function PracticeHubPage() {
       >
         <Breadcrumbs className="mb-6" trail={routeBreadcrumbs('practice')} />
         <EditorialHero
+          visual={<PageHeroVisual slot="practiceHub" theme="range" />}
           eyebrow="퀴즈"
           title="배운 내용을 직접 풀어보세요"
           lead="읽었으면 직접 풀어보세요. 정답을 고르면 그 자리에서 바로 채점되고, 틀린 문제만 골라 다시 풀 수 있습니다."

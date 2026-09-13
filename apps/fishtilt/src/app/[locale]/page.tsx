@@ -46,9 +46,13 @@
 import type { Metadata } from 'next';
 import { CtaBand } from '../../components/CtaBand.js';
 import { EditorialHero } from '../../components/EditorialHero.js';
+import { EditorialVisual } from '../../components/visual/EditorialVisual.js';
 import { FaqSection, type FaqEntry } from '../../components/FaqSection.js';
 import { HomeCallToAction } from '../../components/HomeCallToAction.js';
 import { HomeHeroVisual } from '../../components/HomeHeroVisual.js';
+import { HomeBreathing } from '../../components/home/HomeBreathing.js';
+import { resolveAsset } from '../../components/visual/assetSource.js';
+import { PAGE_VISUALS, pageVisual } from '../../content/visuals.js';
 import { HomeRangePreview } from '../../components/HomeRangePreview.js';
 import { Section } from '../../components/Section.js';
 import { HomeFeaturedTools } from '../../components/home/HomeFeaturedTools.js';
@@ -117,6 +121,12 @@ const ID = {
   quiz: 'home-quiz',
   glossary: 'home-glossary',
 } as const;
+
+/** The VA-01 photo when `public/visuals/home-hero.jpg` exists; the drawn scene otherwise. */
+function heroPhotoProps(): { photo?: { src: string } } {
+  const asset = resolveAsset(pageVisual(PAGE_VISUALS.homeHero, 'story'));
+  return asset === null ? {} : { photo: { src: asset.src } };
+}
 
 export default function HomePage() {
   /* ---------------------------------------------------------------- content graph reads */
@@ -251,7 +261,7 @@ export default function HomePage() {
           eyebrow="무료 텍사스 홀덤 학습"
           title={HOME_HEADLINE}
           lead="규칙과 족보부터 레인지와 확률까지. 표를 직접 눌러보고, 숫자를 그 자리에서 계산하고, 한 판을 끝까지 따라가면서 배웁니다."
-          visual={<HomeHeroVisual />}
+          visual={<HomeHeroVisual {...heroPhotoProps()} />}
           facts={[
             { label: '대상', value: '처음 배우는 사람' },
             { label: '레슨', value: `${readableLessons.length}편` },
@@ -346,6 +356,11 @@ export default function HomePage() {
         />
       </Section>
 
+      {/* The one visual pause (§16): picture, one sentence, one link into the curriculum. */}
+      <Section width="shell" padded="compact" aria-label="3BetTilt가 가르치는 방식">
+        <HomeBreathing href={learnHref} />
+      </Section>
+
       {/* 06 --------------------------------------------------------------------- STORIES */}
       <Section width="shell" tone="panel" labelledBy={ID.stories}>
         <HomeSectionHeader
@@ -428,6 +443,15 @@ export default function HomePage() {
           }
           primary={{ href: start, label: '첫 레슨 읽기' }}
           secondary={{ href: toolsHref, label: '무료 도구 보기' }}
+          backdrop={
+            <EditorialVisual
+              visual={pageVisual(PAGE_VISUALS.homeFeature, 'story')}
+              aspect="fill"
+              rounded={false}
+              motif={false}
+              sizes="100vw"
+            />
+          }
         />
       </Section>
     </main>

@@ -11,7 +11,8 @@ import { hrefOfContent } from '../../content/graph.js';
 import type { BlogRecord } from '../../content/types.js';
 import { TOPIC_LABEL } from '../../features/content/index.js';
 import { HAND_STORY_DISCLOSURE } from '../../content/stories/types.js';
-import { EditorialImage } from '../EditorialImage.js';
+import { visualOf } from '../../content/visuals.js';
+import { EditorialCard } from '../visual/EditorialCard.js';
 import { SectionHeading } from '../SectionHeading.js';
 import { SplitLayout } from '../SplitLayout.js';
 import {
@@ -106,26 +107,24 @@ export function BlogFeatured({
 }) {
   const isStory = featured.contentType === 'hand-story';
   const primary = (
-    <article data-featured={featured.id} className="min-w-0">
-      <EditorialImage
-        alt=""
-        decorative
+    // The one large piece on the hub: its picture fills the card, the category and title sit on
+    // it in live HTML, and the whole card is the link (`EditorialCard`, `.stretched-link`).
+    <div data-featured={featured.id} className="min-w-0">
+      <EditorialCard
+        shape="overlay"
+        size="lg"
+        headingAs="h2"
+        href={hrefOfContent(featured)}
+        title={featured.title}
+        eyebrow={`이 글부터 · ${BLOG_CONTENT_TYPE_LABEL[featured.contentType]}`}
+        description={featured.description}
+        meta={`${hubMeta(featured, { type: false })}${isStory ? ` · ${HAND_STORY_DISCLOSURE}` : ''}`}
+        visual={visualOf(featured)}
         aspect="16/9"
+        priority
         sizes="(min-width: 1024px) 720px, 100vw"
-        fallback={{ kind: featured.kind, topic: featured.topic, variant: featured.id }}
       />
-      <p className="mt-6 text-sm font-medium tracking-[0.06em] text-brand-500">
-        이 글부터 · {BLOG_CONTENT_TYPE_LABEL[featured.contentType]}
-      </p>
-      <h2 className="mt-2 text-h2 font-semibold text-text-100">
-        <ArticleTitle article={featured} />
-      </h2>
-      <p className="mt-3 max-w-lead prose-ko text-prose text-text-300">{featured.description}</p>
-      <p className="mt-3 text-sm text-text-300">
-        {hubMeta(featured, { type: false })}
-        {isStory ? ` · ${HAND_STORY_DISCLOSURE}` : ''}
-      </p>
-    </article>
+    </div>
   );
 
   const list = (
@@ -163,27 +162,78 @@ export function BlogFeatured({
 /* ------------------------------------------------------------------------------------- */
 
 /** Divided rows in two columns from `lg`: title, description, small print. Search guides. */
+/** Compact rows with a small thumbnail — a series that should scan quickly. */
 function HubRows({ articles }: { readonly articles: readonly BlogRecord[] }) {
   return (
     <ol className="mt-8 grid gap-x-12 lg:grid-cols-2">
       {articles.map((article) => (
-        <li key={article.id} className="border-t border-line-500 py-5">
-          <span className="block text-xs text-text-300">
-            {TOPIC_LABEL[article.topic]}
-            {article.readMinutes !== null ? ` · 약 ${article.readMinutes}분` : ''}
-          </span>
-          <ArticleTitle
-            article={article}
-            className="mt-1.5 block text-lg font-semibold text-text-100"
+        <li key={article.id} className="border-t border-line-500">
+          <EditorialCard
+            shape="row"
+            size="sm"
+            href={hrefOfContent(article)}
+            title={article.title}
+            eyebrow={TOPIC_LABEL[article.topic]}
+            description={article.description}
+            meta={article.readMinutes !== null ? `약 ${article.readMinutes}분` : null}
+            visual={visualOf(article)}
+            sizes="160px"
           />
-          <span className="mt-1.5 block prose-ko text-sm text-text-300">{article.description}</span>
         </li>
       ))}
     </ol>
   );
 }
 
-/** A numbered strip in mono: index · title · topic · time. Data & probability. */
+/**
+ * Search Guides — the medium tier: the first three as picture cards, the rest as compact
+ * thumbnail rows, so the section has a lead and a list instead of one repeated card.
+ */
+const GUIDE_CARDS = 3;
+
+function HubGuides({ articles }: { readonly articles: readonly BlogRecord[] }) {
+  const lead = articles.slice(0, GUIDE_CARDS);
+  const rest = articles.slice(GUIDE_CARDS);
+  return (
+    <>
+      <ol className="mt-8 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+        {lead.map((article) => (
+          <li key={article.id} className="min-w-0">
+            <EditorialCard
+              href={hrefOfContent(article)}
+              title={article.title}
+              eyebrow={TOPIC_LABEL[article.topic]}
+              description={article.description}
+              meta={hubMeta(article, { type: false })}
+              visual={visualOf(article)}
+              aspect="3/2"
+              sizes="(min-width: 1024px) 352px, (min-width: 640px) 50vw, 100vw"
+            />
+          </li>
+        ))}
+      </ol>
+      {rest.length > 0 ? (
+        <ol className="mt-10 grid gap-x-12 sm:grid-cols-2">
+          {rest.map((article) => (
+            <li key={article.id} className="border-t border-line-500">
+              <EditorialCard
+                shape="row"
+                size="sm"
+                href={hrefOfContent(article)}
+                title={article.title}
+                eyebrow={TOPIC_LABEL[article.topic]}
+                meta={hubMeta(article, { type: false })}
+                visual={visualOf(article)}
+                sizes="160px"
+              />
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </>
+  );
+}
+
 function HubDataStrip({ articles }: { readonly articles: readonly BlogRecord[] }) {
   return (
     <ol className="mt-8 divide-y divide-line-500 border-y border-line-500">
@@ -234,24 +284,18 @@ function HubTitles({ articles }: { readonly articles: readonly BlogRecord[] }) {
 /** Stories: picture on top, deck under the title, the disclosure on every one. */
 function HubStories({ articles }: { readonly articles: readonly BlogRecord[] }) {
   return (
-    <ol className="mt-8 grid gap-x-10 gap-y-12 sm:grid-cols-2">
+    <ol className="mt-8 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
       {articles.map((article) => (
         <li key={article.id} className="min-w-0">
-          <EditorialImage
-            alt=""
-            decorative
-            aspect="3/2"
-            sizes="(min-width: 640px) 50vw, 100vw"
-            fallback={{ kind: article.kind, topic: article.topic, variant: article.id }}
+          <EditorialCard
+            href={hrefOfContent(article)}
+            title={article.title}
+            description={article.description}
+            meta={`${hubMeta(article, { type: false })} · ${HAND_STORY_DISCLOSURE}`}
+            visual={visualOf(article)}
+            aspect="16/9"
+            sizes="(min-width: 1024px) 352px, (min-width: 640px) 50vw, 100vw"
           />
-          <ArticleTitle
-            article={article}
-            className="mt-5 block text-xl font-semibold text-text-100"
-          />
-          <span className="mt-2 block prose-ko text-sm text-text-300">{article.description}</span>
-          <span className="mt-2 block text-xs text-text-300">
-            {hubMeta(article, { type: false })} · {HAND_STORY_DISCLOSURE}
-          </span>
         </li>
       ))}
     </ol>
@@ -270,6 +314,7 @@ export function BlogHubSection({ section }: { readonly section: HubSection }) {
         {section.label}
       </span>
       {section.layout === 'stories' ? <HubStories articles={section.articles} /> : null}
+      {section.layout === 'guides' ? <HubGuides articles={section.articles} /> : null}
       {section.layout === 'rows' ? <HubRows articles={section.articles} /> : null}
       {section.layout === 'data' ? <HubDataStrip articles={section.articles} /> : null}
       {section.layout === 'titles' ? <HubTitles articles={section.articles} /> : null}

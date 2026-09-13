@@ -23,6 +23,7 @@ import {
 } from '../../../lib/seo/index.js';
 import { Breadcrumbs } from '../../../components/Breadcrumbs.js';
 import { PageHero } from '../../../components/PageHero.js';
+import { PageHeroVisual } from '../../../components/visual/PageHeroVisual.js';
 import { Section } from '../../../components/Section.js';
 import { SectionHeading } from '../../../components/SectionHeading.js';
 import { ToolRangeFigure } from '../../../components/tools/ToolRangeFigure.js';
@@ -182,7 +183,10 @@ export default function ToolsHubPage() {
             }),
           ]}
         />
+        {/* Desktop only: on a phone the first screen belongs to the tools themselves. */}
         <PageHero
+          layout="split"
+          visual={<PageHeroVisual slot="toolsHub" theme="math" desktopOnly />}
           eyebrow="무료 도구"
           title="무료 포커 도구"
           description="설명을 읽기 전에 먼저 눌러보세요. 화면에 보이는 숫자는 모두 그 자리에서 계산한 값입니다."

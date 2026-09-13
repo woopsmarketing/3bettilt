@@ -135,14 +135,31 @@ describe('RelatedContent', () => {
     expect(list?.getAttribute('data-columns')).toBe('1');
     expect(list?.className).not.toContain('sm:grid-cols-2');
 
-    const two: AnyContentRecord = {
-      ...LESSON,
-      relatedConcepts: LESSON.relatedConcepts.slice(0, 2),
-    };
-    expect(two.relatedConcepts.length).toBe(2);
-    const { container: twoUp } = render(<RelatedContent record={two} only={['relatedConcepts']} />);
+    const two: AnyContentRecord = { ...LESSON, nextLessons: LESSON.nextLessons.slice(0, 2) };
+    expect(two.nextLessons.length).toBe(2);
+    const { container: twoUp } = render(<RelatedContent record={two} only={['nextLessons']} />);
     expect(twoUp.querySelector('ul')?.getAttribute('data-columns')).toBe('2');
     expect(twoUp.querySelector('ul')?.className).toContain('sm:grid-cols-2');
+  });
+
+  it('gives each relation its own presentation: terms as a list, tools as actions, the rest as picture cards', () => {
+    const { container } = render(
+      <RelatedContent record={LESSON} only={['relatedConcepts', 'relatedTools', 'nextLessons']} />,
+    );
+    const layouts = [...container.querySelectorAll('ul[data-layout]')].map((ul) =>
+      ul.getAttribute('data-layout'),
+    );
+    expect(layouts).toEqual(['terms', 'tools', 'cards']);
+    // Terms: one column, no picture — a reference list, not cards.
+    const terms = container.querySelector('ul[data-layout="terms"]');
+    expect(terms?.getAttribute('data-columns')).toBe('1');
+    expect(terms?.querySelector('[data-visual]')).toBeNull();
+    // Cards: every entry carries its featured visual, and exactly one link — no nesting.
+    for (const card of container.querySelectorAll('ul[data-layout="cards"] > li')) {
+      expect(card.querySelector('[data-visual]')).not.toBeNull();
+      expect(card.querySelectorAll('a').length).toBeLessThanOrEqual(1);
+      expect(card.querySelector('a a')).toBeNull();
+    }
   });
 
   it('`dense` sets the group headings at the h3 size without changing their level', () => {

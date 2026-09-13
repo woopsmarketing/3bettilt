@@ -24,7 +24,7 @@
  */
 import type { MDXComponents } from 'mdx/types';
 import type { ReactNode } from 'react';
-import { headingId, textOf } from './articleHeadings.js';
+import { EditorialH2 } from '../EditorialHeadings.js';
 
 /** The editorial column. Apply to any block whose children should sit in the reading track. */
 export const EDITORIAL_GRID =
@@ -45,17 +45,8 @@ export const BREAKOUT = 'col-span-full';
  */
 export const HERO_TITLE_BREAK = '[&_h1]:break-keep [&_h1]:wrap-anywhere';
 
-export function MdxH2({ children, ...rest }: { readonly children?: ReactNode }) {
-  return (
-    <h2
-      id={headingId(textOf(children))}
-      className="mt-14 mb-5 scroll-mt-24 prose-ko text-h2 font-semibold text-text-100"
-      {...rest}
-    >
-      {children}
-    </h2>
-  );
-}
+/** Kept as the blog's name for the shared editorial `h2` (`EditorialHeadings.tsx`). */
+export const MdxH2 = EditorialH2;
 
 /** The MDX component overrides every blog article renders with. */
 export function mdxComponentsFor(extra: MDXComponents = {}): MDXComponents {

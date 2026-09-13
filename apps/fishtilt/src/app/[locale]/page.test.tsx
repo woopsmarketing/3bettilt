@@ -26,6 +26,7 @@ import { formatPercent } from '../../features/tools/format.js';
 import { toolHubEntries } from '../../features/tools/index.js';
 import { ROUTES, routeById } from '../../lib/routes.js';
 import { MIN_FAQ_ITEMS } from '../../lib/seo/faq.js';
+import { PAGE_VISUALS } from '../../content/visuals.js';
 import Home from './page.js';
 
 /*
@@ -38,7 +39,7 @@ import Home from './page.js';
  *
  *   - every link on the page resolves to something that actually exists,
  *   - no `PLANNED` record is ever linked,
- *   - each of the eleven bands is present, in order, with no heading level skipped,
+ *   - each of the twelve bands is present, in order, with no heading level skipped,
  *   - the hero CTAs point where they say they point, and the hero's visual is the exact
  *     five cards named by the evaluator, not a raster and not a placeholder,
  *   - the roadmap is every lesson, in curriculum order, grouped by the learn module's stages,
@@ -76,13 +77,14 @@ function renderedHrefs(container: HTMLElement): readonly string[] {
   );
 }
 
-/** The eleven bands, in the order the page runs them (see `page.tsx`'s module doc). */
+/** The twelve bands, in the order the page runs them (see `page.tsx`'s module doc). */
 const SECTION_NAMES = [
   '3BetTilt 한 줄 소개',
   '어디서 시작할까요?',
   `레슨 ${LEARN_ROADMAP.length}편, ${LEARN_STAGES.length}단계`,
   '자리를 바꾸면 표가 달라집니다',
   '궁금한 숫자를 그 자리에서',
+  '3BetTilt가 가르치는 방식',
   '3BetTilt 스토리',
   '검색창에 치는 질문, 바로 답합니다',
   '읽었으면, 한 번 풀어보세요.',
@@ -103,7 +105,7 @@ describe('3BetTilt homepage', () => {
     expect(HOME_HEADLINE).toBe('홀덤, 외우지 말고 이해하면서 배우세요.');
   });
 
-  it('renders all eleven bands of the front page, in order', () => {
+  it('renders all twelve bands of the front page, in order', () => {
     render(<Home />);
     const regions = screen.getAllByRole('region');
     expect(regions.map((region) => region.getAttribute('aria-label') ?? '')).toHaveLength(
@@ -171,10 +173,17 @@ describe('3BetTilt homepage', () => {
     expect(picture.getAttribute('aria-label')).toContain(heroHand().reading);
     expect(picture.getAttribute('aria-label')).toContain('스페이드 A K Q J 10');
     expect(picture.querySelectorAll('a, button, [tabindex], input')).toHaveLength(0);
+    // The scene is the production photo; the cards stay code. The photo is decorative, so
+    // the one `role="img"` above is still the only picture a reader is told about.
     expect(hero.querySelector('[data-hero-visual]')?.getAttribute('data-hero-visual')).toBe(
-      'scene',
+      'photo',
     );
-    expect(hero.querySelector('img')).toBeNull();
+    const photos = hero.querySelectorAll('img');
+    expect(photos).toHaveLength(1);
+    expect(photos[0]?.getAttribute('alt')).toBe('');
+    expect(decodeURIComponent(photos[0]?.getAttribute('src') ?? '')).toContain(
+      `/visuals/${PAGE_VISUALS.homeHero.file}`,
+    );
   });
 
   it('reaches /about from the hero, the only page that states the numbers’ provenance', () => {
@@ -311,7 +320,7 @@ describe('3BetTilt homepage', () => {
 
   it('indexes the search guides — every published one, as a link to its own page', () => {
     render(<Home />);
-    const list = screen.getByRole('list', { name: SECTION_NAMES[6] });
+    const list = screen.getByRole('list', { name: SECTION_NAMES[7] });
     const guides = blogOfType('search-guide').filter((record) => record.status === 'PUBLISHED');
     const links = Array.from(list.querySelectorAll('a[href]')).map((anchor) =>
       anchor.getAttribute('href'),

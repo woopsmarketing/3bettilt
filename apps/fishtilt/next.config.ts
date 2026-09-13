@@ -17,6 +17,12 @@ const nextConfig: NextConfig = {
     '@gto-self/strategy-core',
     '@gto-self/learn-core',
   ],
+  /*
+   * Featured visuals (`public/visuals/`, editorial upgrade) are served through `next/image`:
+   * AVIF first, WebP as the fallback, resized to the slot's `sizes`. Masters are JPEG so the
+   * OG renderer (`lib/og/renderOg.tsx`, which cannot read AVIF/WebP) shares the same file.
+   */
+  images: { formats: ['image/avif', 'image/webp'] },
   typedRoutes: false,
   // This repository has one set of agent rules at its root and must not grow a second,
   // competing copy inside an app (same reason as `apps/web`).

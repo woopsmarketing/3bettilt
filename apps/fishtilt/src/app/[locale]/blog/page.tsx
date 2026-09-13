@@ -32,6 +32,7 @@ import {
 } from '../../../lib/seo/index.js';
 import { Breadcrumbs } from '../../../components/Breadcrumbs.js';
 import { EditorialHero } from '../../../components/EditorialHero.js';
+import { PageHeroVisual } from '../../../components/visual/PageHeroVisual.js';
 import { Section } from '../../../components/Section.js';
 import {
   BlogCategoryNav,
@@ -67,10 +68,10 @@ export default function BlogIndexPage() {
 
       <Section width="shell" padded="none" className="pt-10 sm:pt-14">
         <Breadcrumbs className="mb-8" trail={routeBreadcrumbs('blog')} />
-        {/* VA-08's fallback is a single-column typographic hero: no visual slot until the
-            asset exists, so the hero stays honest and the type carries the opening. */}
+        {/* VA-08: the hub's brand picture (`PAGE_VISUALS.blogHub`) beside the opening type. */}
         <EditorialHero
           className={HERO_TITLE_BREAK}
+          visual={<PageHeroVisual slot="blogHub" theme="story" />}
           eyebrow="블로그"
           title="포커 이야기와 검색 가이드"
           lead="한 판을 처음부터 끝까지 따라가는 핸드 스토리, 그리고 궁금한 것 하나에 끝까지 답하는 검색 가이드. 어느 쪽이든 숫자는 이 사이트가 직접 계산한 값만 씁니다."

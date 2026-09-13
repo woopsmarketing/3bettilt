@@ -28,6 +28,7 @@ import {
 import { Breadcrumbs } from '../../../components/Breadcrumbs.js';
 import { Divider } from '../../../components/Divider.js';
 import { PageHero } from '../../../components/PageHero.js';
+import { PageHeroVisual } from '../../../components/visual/PageHeroVisual.js';
 import { SectionHeading } from '../../../components/SectionHeading.js';
 import { LearnModeNav } from '../../../components/learn/LearnModeNav.js';
 import { LearnRoadmap, type RoadmapEntry } from '../../../components/learn/LearnRoadmap.js';
@@ -111,6 +112,8 @@ export default function LearnHubPage() {
         ]}
       />
       <PageHero
+        layout="split"
+        visual={<PageHeroVisual slot="learnHub" theme="basics" />}
         eyebrow="배우기"
         title="홀덤 처음 배우기"
         description="포커를 한 번도 해본 적 없어도 괜찮습니다. 처음부터 순서대로 읽거나, 궁금한 주제만 골라 읽으세요. 각 글에는 직접 눌러볼 수 있는 표와 계산기가 들어 있습니다."

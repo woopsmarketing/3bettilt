@@ -49,3 +49,6 @@ artifacts/
 
 # Claude temporary lock
 .claude/scheduled_tasks.lock
+
+# temporary source PNGs for public/visuals (built by apps/fishtilt/scripts/process-editorial-images.mjs)
+/visual-source-temp/

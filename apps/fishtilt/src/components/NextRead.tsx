@@ -20,11 +20,16 @@
  * line under it. Same landmark, same `data-direction` hooks, same 준비 중 rule; only the
  * weight changes, so the templates can place it ABOVE the related groups.
  */
+import type { ContentVisual } from '../content/visuals.js';
+import { EditorialVisual } from './visual/EditorialVisual.js';
+
 export interface NextReadLink {
   readonly href: string | null;
   readonly title: string;
   /** Small print under the title — "레슨 4", "약 3분". */
   readonly meta?: string;
+  /** The next piece's featured visual; shown as a thumbnail on the emphasised next step. */
+  readonly visual?: ContentVisual;
 }
 
 export interface NextReadProps {
@@ -81,9 +86,9 @@ const PLANNED_BADGE =
   'rounded-full border border-line-500 px-1.5 py-0.5 text-[10px] font-medium text-text-300';
 
 function NextStep({ link }: { readonly link: NextReadLink }) {
-  const body = (
-    <>
-      <span className="block text-xs font-medium tracking-[0.06em] text-text-300">다음</span>
+  const text = (
+    <span className="block min-w-0 flex-1">
+      <span className="block text-xs font-semibold tracking-[0.1em] text-brand-500">다음 글</span>
       <span className="mt-2 flex items-start justify-between gap-4">
         <span className="prose-ko block text-xl font-semibold text-text-100 transition-colors group-hover:text-brand-500 sm:text-2xl">
           {link.title}
@@ -100,9 +105,27 @@ function NextStep({ link }: { readonly link: NextReadLink }) {
         )}
       </span>
       {link.meta ? <span className="mt-2 block text-sm text-text-300">{link.meta}</span> : null}
+    </span>
+  );
+  // The strongest panel in the article's tail: a thumbnail of where the reader is going,
+  // then the title. The thumbnail is decorative — the title names the destination.
+  const body = (
+    <>
+      {link.visual !== undefined ? (
+        <span className="hidden w-52 shrink-0 sm:block">
+          <EditorialVisual
+            visual={link.visual}
+            aspect="3/2"
+            sizes="(min-width: 640px) 208px, 100vw"
+            hoverZoom={link.href !== null}
+          />
+        </span>
+      ) : null}
+      {text}
     </>
   );
-  const frame = 'block min-w-0 rounded-xl bg-ground-800 px-6 py-6 sm:px-8 sm:py-7';
+  const frame =
+    'flex min-w-0 items-center gap-6 overflow-hidden rounded-xl border-l-2 border-brand-500 bg-ground-800 px-6 py-6 sm:py-5 sm:pl-5 sm:pr-8';
   if (link.href === null) {
     return (
       <div data-direction="next" className={frame}>

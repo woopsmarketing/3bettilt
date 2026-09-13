@@ -5,11 +5,11 @@
  *
  * VA-01 (`3BETTILT_VISUAL_ASSET_MANIFEST.md`) is a hybrid: an AI-generated *scene* (a
  * player, a table, one warm key light, a red rim) with the one thing that must be exact —
- * five card faces — drawn by code on top of it. This session cannot generate images, so the
- * scene half is a deterministic CSS composition: a dark room that resolves into a charcoal
- * table rail, a pendant light from above, brand-red rim light from the left, a faint suit
- * motif in the dark — all token colours, so the light theme gets a pale, paper-felt version
- * of the same picture rather than a black square in a white page.
+ * five card faces — drawn by code on top of it. The scene is `public/visuals/home-hero.jpg`
+ * (`PAGE_VISUALS.homeHero`); when that file is missing the scene half falls back to
+ * `ThemeArt` (the editorial system's drawn room) with its table object switched off. Either
+ * way it keeps its dark palette in both themes; the frame is a `.cover-stage`, so the card
+ * faces on it measure as they do on the dark site.
  *
  * The exact half is the five `PokerCard`s: `A♠ K♠ Q♠ J♠ 10♠`, fanned on the table. What
  * those five cards make is NOT typed here — `homeModel.heroHand()` asks the evaluator
@@ -17,7 +17,8 @@
  *
  * ## How the VA-01 photo drops in (no layout change)
  *
- * Pass `photo={{ src }}`. The photo replaces the CSS scene as the bottom layer, through
+ * The page passes `photo={{ src }}` when `public/visuals/home-hero.jpg` exists
+ * (`PAGE_VISUALS.homeHero`, resolved by `assetSource.ts`). The photo replaces the CSS scene as the bottom layer, through
  * `EditorialImage` (next/image, `fill`, `priority`, decorative), inside the same 4:5 frame.
  * The card overlay is positioned in the manifest's reserved band — x 8–92 %, y 64–94 % —
  * which the photo's prompt leaves as empty felt, so nothing about the page moves: same
@@ -31,8 +32,8 @@
  */
 import { rankOf, suitOf } from '@gto-self/shared';
 import { EditorialImage } from './EditorialImage.js';
+import { ThemeArt } from './visual/ThemeArt.js';
 import { PokerCard } from './PokerCard.js';
-import { SUIT_PATH } from './ContentThumbnail.js';
 import { heroHand } from './home/homeModel.js';
 
 export interface HomeHeroPhoto {
@@ -58,53 +59,6 @@ const FAN: readonly { readonly rotate: number; readonly lift: number }[] = [
   { rotate: 14, lift: 10 },
 ];
 
-/** The CSS scene — every layer decorative, every colour a token. */
-function Scene() {
-  return (
-    <div aria-hidden="true" className="absolute inset-0">
-      {/* Room: darkest at the top, the table's own ground below. */}
-      <div className="absolute inset-0 bg-linear-to-b from-ground-900 via-ground-800 to-ground-800" />
-      {/* Pendant key light, from above centre. `panel-600` is the raised surface in both
-          themes — lighter than the ground in dark AND in light — so it reads as light. */}
-      <div className="absolute -top-[18%] left-1/2 h-[64%] w-[130%] -translate-x-1/2 rounded-[50%] bg-radial from-panel-600/80 via-panel-700/30 to-transparent" />
-      {/* Brand-red rim light from off-frame left — the one saturated colour, one source. */}
-      <div className="absolute -left-[35%] top-[6%] h-[86%] w-[70%] rounded-[50%] bg-radial from-brand-600/35 via-brand-950/25 to-transparent" />
-      {/* Suit motif, in the dark of the room. Not a flat stamp (WP-S3-17): a CSS mask fades
-          the mark from lit at the top — under the pendant — to nothing at the bottom, and a
-          hairline outline sits a step outside the fill, the way an engraved mark catches
-          light along one edge. One colour token at low alpha, no gradient `id` (the visual
-          must carry no ids — see the test), so the light theme gets the same relief in
-          dark-on-pale. */}
-      <svg
-        viewBox="0 0 100 100"
-        focusable="false"
-        aria-hidden="true"
-        className="absolute -right-[6%] top-[4%] h-[54%] w-auto text-text-100 [mask-image:linear-gradient(to_bottom,black_10%,transparent_100%)]"
-      >
-        <path d={SUIT_PATH.s} fill="currentColor" fillOpacity="0.085" />
-        <path
-          d={SUIT_PATH.s}
-          fill="none"
-          stroke="currentColor"
-          strokeOpacity="0.16"
-          strokeWidth="0.6"
-          transform="translate(50 50) scale(1.06) translate(-50 -50)"
-        />
-      </svg>
-      {/* The table: a charcoal felt ellipse whose top edge is the rail the cards sit
-          behind. A one-pixel `line-500` ring is the rail's highlight, `scrim-900` under it
-          is the drop into the felt. */}
-      <div className="absolute inset-x-[-22%] top-[56%] h-[90%] rounded-[50%] bg-scrim-900" />
-      <div className="absolute inset-x-[-20%] top-[57%] h-[90%] rounded-[50%] bg-radial-[at_50%_18%] from-panel-700 via-ground-800 to-ground-900 ring-1 ring-line-500/50" />
-      {/* Felt texture: a fine dot lattice at 4 % — `text-100` so it is bright-on-dark and
-          dark-on-light, i.e. a texture in both themes. */}
-      <div className="absolute inset-x-[-20%] top-[57%] h-[90%] rounded-[50%] bg-[radial-gradient(var(--color-text-100)_0.6px,transparent_0.7px)] bg-[size:7px_7px] opacity-[0.045]" />
-      {/* The key light's pool on the felt, where the cards are. */}
-      <div className="absolute inset-x-[10%] top-[60%] h-[40%] rounded-[50%] bg-radial from-panel-600/45 to-transparent" />
-    </div>
-  );
-}
-
 export function HomeHeroVisual({ photo, className = '' }: HomeHeroVisualProps) {
   const hand = heroHand();
   const cardNames = hand.cards
@@ -114,10 +68,12 @@ export function HomeHeroVisual({ photo, className = '' }: HomeHeroVisualProps) {
   return (
     <div
       data-hero-visual={photo === undefined ? 'scene' : 'photo'}
-      className={`relative aspect-[4/5] w-full overflow-hidden rounded-xl border border-line-500 bg-ground-800 shadow-raised ${className}`}
+      className={`cover-stage relative aspect-[4/5] w-full overflow-hidden rounded-xl bg-ground-800 shadow-raised ${className}`}
     >
       {photo === undefined ? (
-        <Scene />
+        // The drawn room (`ThemeArt`, story theme) without its table object — the five real
+        // cards below are the object.
+        <ThemeArt theme="story" variant="home-hero" motif={false} />
       ) : (
         <div className="absolute inset-0">
           <EditorialImage
@@ -128,6 +84,9 @@ export function HomeHeroVisual({ photo, className = '' }: HomeHeroVisualProps) {
             priority
             sizes="(min-width: 1024px) 480px, 100vw"
           />
+          {/* The hero tier of the cover overlay (`--ft-cover-hero`): the photo keeps its tone,
+              only the felt under the five cards settles a little. */}
+          <span aria-hidden="true" className="cover-scrim-hero absolute inset-0" />
         </div>
       )}
 

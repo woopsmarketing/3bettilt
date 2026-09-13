@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { blogRecords } from '../../content/graph.js';
 import { BLOG_CONTENT_TYPES, type BlogRecord } from '../../content/types.js';
 import { FIXTURE_STORY } from '../../content/stories/testing/fixtureStory.js';
-import { buildBlogHub, hubListedItems, hubMeta } from './blogHubModel.js';
+import { buildBlogHub, HUB_SECTION_ORDER, hubListedItems, hubMeta } from './blogHubModel.js';
 
 describe('buildBlogHub', () => {
   const real = blogRecords();
@@ -19,12 +19,14 @@ describe('buildBlogHub', () => {
     expect(hub.total).toBe(real.length);
   });
 
-  it('keeps the declared type order and names empty types as coming soon', () => {
+  it('keeps the hub’s editorial type order and names empty types as coming soon', () => {
     const order = hub.sections.map((section) => section.type);
-    const expected = BLOG_CONTENT_TYPES.filter((type) => real.some((a) => a.contentType === type));
+    const expected = HUB_SECTION_ORDER.filter((type) => real.some((a) => a.contentType === type));
     expect(order).toEqual(expected);
-    expect(hub.comingSoon).toEqual(BLOG_CONTENT_TYPES.filter((type) => !expected.includes(type)));
-    expect(hub.nav.map((entry) => entry.type)).toEqual([...BLOG_CONTENT_TYPES]);
+    expect(hub.comingSoon).toEqual(HUB_SECTION_ORDER.filter((type) => !expected.includes(type)));
+    expect(hub.nav.map((entry) => entry.type)).toEqual([...HUB_SECTION_ORDER]);
+    // The hub order is a permutation of the declared types — nothing dropped, nothing added.
+    expect([...HUB_SECTION_ORDER].sort()).toEqual([...BLOG_CONTENT_TYPES].sort());
     for (const entry of hub.nav) {
       expect(entry.href === null, entry.type).toBe(entry.count === 0);
     }
@@ -80,7 +82,7 @@ describe('buildBlogHub', () => {
     const empty = buildBlogHub([]);
     expect(empty.featured).toBeNull();
     expect(empty.sections).toEqual([]);
-    expect(empty.comingSoon).toEqual([...BLOG_CONTENT_TYPES]);
+    expect(empty.comingSoon).toEqual([...HUB_SECTION_ORDER]);
     expect(hubListedItems(empty)).toEqual([]);
   });
 

@@ -1,7 +1,32 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { BLOG_RECORDS } from '../../src/content/registry/blog/index.js';
 import { seoTitleOf } from '../../src/content/graph.js';
+import { THEME_VISUALS } from '../../src/content/visuals.js';
 import { koPath, visibleBodyText } from './helpers.js';
+
+/**
+ * Every picture in `main` is a decorative production asset inside a featured-visual slot,
+ * served from `public/visuals/` and actually decoded — never a stray image or a CSS background.
+ */
+async function expectOnlySlotPictures(page: Page): Promise<number> {
+  const pictures = await page.locator('main img').evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const img = node as HTMLImageElement;
+      return {
+        inSlot: img.closest('[data-visual-source="asset"]') !== null,
+        alt: img.getAttribute('alt'),
+        src: decodeURIComponent(img.getAttribute('src') ?? ''),
+      };
+    }),
+  );
+  for (const picture of pictures) {
+    expect(picture.inSlot, picture.src).toBe(true);
+    expect(picture.alt, picture.src).toBe('');
+    expect(picture.src).toMatch(/\/visuals\/[a-z0-9-]+\.jpg/u);
+  }
+  expect(await page.locator('main [style*="url("]').count()).toBe(0);
+  return pictures.length;
+}
 
 /*
  * `/blog` + `/blog/[slug]` after WP-S3-06: the hub is a magazine (hero · content-type
@@ -86,18 +111,18 @@ test.describe('blog hub', () => {
     }
   });
 
-  test('is a magazine, not a card wall: a featured article, varied sections, no image files', async ({
+  test('is a magazine, not a card wall: a featured article, varied sections, pictures only in visual slots', async ({
     page,
   }) => {
     await page.goto(koPath('/blog'));
-    // One featured article, published, with the generated visual (no asset yet).
+    // One featured article, published, with its production visual.
     const featured = page.locator('[data-featured]');
     await expect(featured).toHaveCount(1);
     await expect(featured.locator('a').first()).toHaveAttribute(
       'href',
       new RegExp(`^${koPath('/blog')}/`),
     );
-    await expect(featured.locator('[data-source="fallback"]')).toHaveCount(1);
+    await expect(featured.locator('[data-visual-source="asset"]')).toHaveCount(1);
 
     // Sections in declared type order, each holding only its own type.
     const sections = page.locator('[data-section]');
@@ -112,10 +137,11 @@ test.describe('blog hub', () => {
     }
     expect(layouts.size, 'sections use more than one layout').toBeGreaterThan(1);
 
-    expect(await page.locator('main img').count()).toBe(0);
-    for (const ext of ['png', 'jpg', 'webp']) {
-      expect(await page.locator(`main [src*=".${ext}"]`).count(), ext).toBe(0);
-    }
+    expect(await expectOnlySlotPictures(page)).toBeGreaterThan(0);
+    // The hub's own brand picture opens it.
+    await expect(
+      page.locator('main [data-page-visual="blogHub"] [data-visual-source="asset"] img'),
+    ).toHaveCount(1);
   });
 
   test('never features an invented story: with no story published, the story section is absent', async ({
@@ -208,7 +234,7 @@ test.describe('blog article', () => {
     expect(await visibleBodyText(page)).not.toContain('GTO');
   });
 
-  test('opens with the content type, the topic, the reading time and the generated 16:9 visual', async ({
+  test('opens with the content type, the topic, the reading time and the 16:9 theme visual', async ({
     page,
   }) => {
     await page.goto(ARTICLE);
@@ -217,14 +243,22 @@ test.describe('blog article', () => {
     await expect(header).toContainText('시작 패');
     await expect(header).toContainText(/약 \d+분/u);
 
-    const slot = page.locator('main [data-source="fallback"]').first();
-    await expect(slot).toHaveAttribute('data-aspect', '16/9');
-    await expect(slot).toHaveAttribute('aria-hidden', 'true');
-    const hero = slot.locator('[data-topic]');
-    await expect(hero).toHaveAttribute('data-topic', 'starting-hands');
-    await expect(hero).toHaveAttribute('data-kind', 'blog');
-    expect(await hero.locator('text').count()).toBe(0);
-    expect(await page.locator('main img').count()).toBe(0);
+    const slot = page.locator('main [data-visual]').first();
+    await expect(slot).toHaveAttribute('data-visual', 'starting-hands');
+    await expect(slot).toHaveAttribute('data-visual-source', 'asset');
+    const box = await slot.boundingBox();
+    expect((box?.width ?? 0) / (box?.height ?? 1)).toBeCloseTo(16 / 9, 1);
+    const photo = slot.locator('img');
+    await expect(photo).toHaveCount(1);
+    await expect(photo).toHaveAttribute('alt', '');
+    expect(decodeURIComponent((await photo.getAttribute('src')) ?? '')).toContain(
+      `/visuals/${THEME_VISUALS['starting-hands'].asset.file}`,
+    );
+    // Decoded, not a broken box.
+    await expect
+      .poll(() => photo.evaluate((img) => (img as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    await expectOnlySlotPictures(page);
   });
 
   test('keeps the prose at the reading measure and lets figures break out', async ({ page }) => {
@@ -324,7 +358,9 @@ test.describe('blog article', () => {
       const figure = page.locator('main figure');
       await expect(figure.first()).toBeVisible();
       await expect(figure.first().locator('figcaption')).toContainText(caption);
-      expect(await page.locator('main img').count()).toBe(0);
+      // The figure's numbers are drawn from data — no picture inside it.
+      expect(await figure.locator('img').count()).toBe(0);
+      await expectOnlySlotPictures(page);
     });
   }
 

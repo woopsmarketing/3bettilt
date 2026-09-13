@@ -269,7 +269,11 @@ test.describe('SEO foundation', () => {
     const { origin, paths } = await readSitemap(request);
     for (const { path, html } of await fetchAll(request, paths)) {
       expect(html, `${path} has no og:title`).toContain('property="og:title"');
-      expect(html, `${path} has no og:image`).toContain(`${origin}/og.png`);
+      // Content pages carry their own card (`/og/<kind>/<slug>.png`); every other page the
+      // shared `/og.png`.
+      const card = /^\/ko\/(learn|blog|glossary|hands)\/([a-z0-9-]+)$/u.exec(path);
+      const image = card === null ? '/og.png' : `/og/${card[1]}/${card[2]}.png`;
+      expect(html, `${path} has no og:image`).toContain(`${origin}${image}`);
       expect(html, `${path} has no og:url`).toContain(`content="${canonicalFor(origin, path)}"`);
     }
   });
@@ -278,6 +282,22 @@ test.describe('SEO foundation', () => {
     const response = await request.get('/og.png');
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toContain('image/png');
+    // A per-page card, one of each kind, is a real PNG too; an unknown slug is a 404.
+    for (const card of [
+      '/og/blog/aks-vs-ako.png',
+      '/og/learn/hand-matrix.png',
+      '/og/glossary/call.png',
+      '/og/hands/aa.png',
+    ]) {
+      const cardResponse = await request.get(card);
+      expect(cardResponse.status(), card).toBe(200);
+      expect(cardResponse.headers()['content-type'], card).toContain('image/png');
+      // 1200×630 (PNG IHDR), drawn over the page's production picture — far heavier than text alone.
+      const png = await cardResponse.body();
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)], card).toEqual([1200, 630]);
+      expect(png.byteLength, card).toBeGreaterThan(150 * 1024);
+    }
+    expect((await request.get('/og/blog/not-a-page.png')).status()).toBe(404);
   });
 
   test('the search page is noindex and is not in the sitemap — §33', async ({ request }) => {

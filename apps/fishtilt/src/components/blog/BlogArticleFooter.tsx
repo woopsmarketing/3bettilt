@@ -9,6 +9,7 @@
 import { blogNeighbours, hrefOfContent, toolHref, toolRoute } from '../../content/graph.js';
 import { BLOG_CONTENT_TYPE_LABEL } from '../../content/graph.js';
 import type { BlogRecord } from '../../content/types.js';
+import { visualOf } from '../../content/visuals.js';
 import { CtaBand } from '../CtaBand.js';
 import { NextRead } from '../NextRead.js';
 import { RelatedContent, type RelatedLabel } from '../RelatedContent.js';
@@ -62,7 +63,14 @@ export function BlogArticleFooter({
             : { prev: { href: hrefOfContent(prev), title: prev.title, meta: metaOf(prev) } })}
           {...(next === null
             ? {}
-            : { next: { href: hrefOfContent(next), title: next.title, meta: metaOf(next) } })}
+            : {
+                next: {
+                  href: hrefOfContent(next),
+                  title: next.title,
+                  meta: metaOf(next),
+                  visual: visualOf(next),
+                },
+              })}
         />
       ) : null}
 

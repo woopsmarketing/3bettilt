@@ -30,4 +30,20 @@ describe('TableOfContents (D-S3-13)', () => {
     const { container } = renderBothThemes(<TableOfContents headings={[]} />);
     expect(container.innerHTML).toBe('');
   });
+
+  it('collapsible: ONE list inside a closed <details> — never a second copy of the links', () => {
+    const { container } = renderBothThemes(
+      <TableOfContents headings={HEADINGS} numbered collapsible />,
+    );
+    const details = container.querySelector('nav details');
+    expect(details).not.toBeNull();
+    expect(details?.hasAttribute('open')).toBe(false);
+    expect(details?.className).toContain('toc-collapsible');
+    expect(container.querySelectorAll('a')).toHaveLength(HEADINGS.length);
+    // Chapter numbers for level-2 entries only, hidden from assistive technology.
+    const numbers = [...container.querySelectorAll('a [aria-hidden="true"]')].map(
+      (n) => n.textContent,
+    );
+    expect(numbers).toEqual(['01', '02']);
+  });
 });

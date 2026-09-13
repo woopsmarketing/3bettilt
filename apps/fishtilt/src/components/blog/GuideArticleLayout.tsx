@@ -20,9 +20,10 @@ import { TOPIC_LABEL } from '../../features/content/index.js';
 import { ArticleHero } from '../ArticleHero.js';
 import { ArticleMeta } from '../ArticleMeta.js';
 import { Breadcrumbs } from '../Breadcrumbs.js';
-import { EditorialImage } from '../EditorialImage.js';
 import { RelatedContent } from '../RelatedContent.js';
 import { Section } from '../Section.js';
+import { EditorialVisual } from '../visual/EditorialVisual.js';
+import { visualOf } from '../../content/visuals.js';
 import { TableOfContents, type TocHeading } from '../TableOfContents.js';
 import { MIN_TOC_HEADINGS } from './articleHeadings.js';
 import {
@@ -61,15 +62,15 @@ export function GuideArticleLayout({ record, trail, headings, Content }: GuideAr
               />
             }
           />
-          {/* The category art (VA-03..07) will sit here at 16:9; until it exists the slot draws
-              the same generated picture the hub card shows, decorative, spanning the band. */}
-          <EditorialImage
+          {/* The featured visual (`content/visuals.ts`): the article's theme picture at 16:9,
+              spanning the band — `ThemeArt` until the file exists. Decorative: the title is above. */}
+          <EditorialVisual
             className={`mt-10 ${BREAKOUT}`}
-            alt=""
-            decorative
+            visual={visualOf(record)}
             aspect="16/9"
+            scrim="soft"
+            priority
             sizes="(min-width: 1024px) 960px, 100vw"
-            fallback={{ kind: record.kind, topic: record.topic, variant: record.id }}
           />
           <RelatedContent
             className="mt-10"
@@ -78,14 +79,15 @@ export function GuideArticleLayout({ record, trail, headings, Content }: GuideAr
             headingAs="h2"
           />
           {headings.length >= MIN_TOC_HEADINGS ? (
-            <TableOfContents className="mt-10" headings={headings} />
+            <TableOfContents className="mt-10" headings={headings} numbered collapsible />
           ) : null}
         </BlogArticleShell>
       </Section>
 
       <Section width="breakout" padded="none" className="pb-section lg:pb-section-lg">
         <article
-          className={`mt-6 ${ARTICLE_BREAKOUT} grid grid-cols-[1fr_min(var(--container-reading),100%)_1fr] [&>*]:col-start-2 [&>*]:min-w-0 [&>p:first-child]:text-xl [&>p:first-child]:leading-[1.75] [&>p:first-child]:text-text-100`}
+          data-numbered
+          className={`editorial-body mt-6 ${ARTICLE_BREAKOUT} grid grid-cols-[1fr_min(var(--container-reading),100%)_1fr] [&>*]:col-start-2 [&>*]:min-w-0 [&>p:first-child]:text-xl [&>p:first-child]:leading-[1.75] [&>p:first-child]:text-text-100`}
         >
           <Content components={mdxComponentsFor()} />
         </article>

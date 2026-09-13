@@ -4,7 +4,7 @@ import { koPath, positionButtonName, visibleBodyText } from './helpers.js';
 /*
  * `/ko` — the front door (WP-S3-05).
  *
- * What a browser proves here that a unit test cannot: the eleven bands survive the trip
+ * What a browser proves here that a unit test cannot: the twelve bands survive the trip
  * through a production build into prerendered HTML, every link the page ships actually
  * resolves on the running server, the chart preview really re-renders under a click, the
  * hero's five cards are prerendered with no client JavaScript, and the hero's primary CTA
@@ -25,6 +25,7 @@ const SECTIONS = [
   '어디서 시작할까요?',
   PREVIEW_SECTION,
   '궁금한 숫자를 그 자리에서',
+  '3BetTilt가 가르치는 방식',
   STORIES_SECTION,
   '검색창에 치는 질문, 바로 답합니다',
   '읽었으면, 한 번 풀어보세요.',
@@ -74,13 +75,13 @@ test.describe('3BetTilt 홈', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
 
-  test('the hero picture is the five exact cards, prerendered, inert, and no raster', async ({
+  test('the hero picture is the five exact cards, prerendered, inert, over one decorative photo', async ({
     page,
   }) => {
     /*
      * Contract Z: card faces are code. The picture is one `role="img"` whose name is the
      * evaluator's reading of the five cards, it has no tab stops in front of the first link
-     * on the page, and — until VA-01 exists — it ships no image file.
+     * on the page. The scene under the cards is the VA-01 photo: one decorative image.
      */
     await page.goto(koPath('/'));
     const hero = page.getByRole('region', { name: HERO, exact: true });
@@ -88,8 +89,13 @@ test.describe('3BetTilt 홈', () => {
     await expect(picture).toBeVisible();
     await expect(picture).toHaveAttribute('aria-label', /스페이드 A K Q J 10$/u);
     expect(await picture.locator('a, button, [tabindex], input').count()).toBe(0);
-    expect(await hero.locator('img').count()).toBe(0);
-    await expect(hero.locator('[data-hero-visual]')).toHaveAttribute('data-hero-visual', 'scene');
+    const photo = hero.locator('[data-hero-visual] img');
+    expect(await hero.locator('img').count()).toBe(1);
+    await expect(photo).toHaveAttribute('alt', '');
+    await expect(hero.locator('[data-hero-visual]')).toHaveAttribute('data-hero-visual', 'photo');
+    await expect
+      .poll(() => photo.evaluate((img) => (img as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
     // The five faces are on screen as text: A K Q J 10 with the spade glyph.
     const faces = await picture.textContent();
     expect((faces ?? '').replace(/\s+/gu, '')).toBe('A♠K♠Q♠J♠10♠');

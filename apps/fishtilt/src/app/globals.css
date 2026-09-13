@@ -618,3 +618,400 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * =========================================================================================
+ * EDITORIAL SYSTEM (Content Editorial Design & Visual Upgrade)
+ * =========================================================================================
+ *
+ * Three pieces, all scoped so the tools, quizzes and UI chrome are untouched:
+ *
+ *   1. COVERS — the featured-picture slot (`EditorialVisual`) and what sits on it. A picture
+ *      does not change with the theme, so its overlay does: the scrim is stronger in dark,
+ *      lighter in light, and the ink ON a cover is always light (`--ft-cover-ink`), audited
+ *      against the scrim, never against the page.
+ *   2. THEME ART — `ThemeArt`'s fixed palette. It stands in for a photograph, so like one it
+ *      keeps its colours in both themes. Private values, not design tokens.
+ *   3. EDITORIAL BODY — `.editorial-body` is the reading-content scope. Headings inside it get
+ *      the chapter treatment (`.ed-h2`: section number + short brand rule; `.ed-h3`: a small
+ *      marker). Nothing outside the scope changes size or spacing.
+ */
+:root {
+  --ft-cover-scrim: 8 9 12;
+  --ft-cover-strength: 0.9;
+  --ft-cover-soft: 0.34;
+  --ft-cover-hero: 0.2;
+  --ft-cover-ink: #ffffff;
+  --ft-cover-ink-soft: rgb(255 255 255 / 0.8);
+  --ft-cover-accent: #ff6b7d;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --ft-cover-strength: 0.78;
+    --ft-cover-soft: 0.12;
+    --ft-cover-hero: 0.06;
+  }
+}
+
+:root[data-theme='light'] {
+  --ft-cover-strength: 0.78;
+  --ft-cover-soft: 0.12;
+  --ft-cover-hero: 0.06;
+}
+
+:root[data-theme='dark'] {
+  --ft-cover-strength: 0.9;
+  --ft-cover-soft: 0.34;
+  --ft-cover-hero: 0.2;
+}
+
+/* Text over a picture: bottom-weighted, so the upper picture stays a picture. The densest
+   stop sits under the title; white on rgb(8 9 12 / 0.78) over any photo stays above 4.5:1. */
+.cover-scrim-bottom {
+  background: linear-gradient(
+    to top,
+    rgb(var(--ft-cover-scrim) / var(--ft-cover-strength)) 0%,
+    rgb(var(--ft-cover-scrim) / calc(var(--ft-cover-strength) * 0.72)) 38%,
+    rgb(var(--ft-cover-scrim) / 0) 78%
+  );
+}
+
+/* Overlay tiers, weakest to strongest — one variable each, never a per-image opacity:
+     hero   (`--ft-cover-hero`)     a page's opening picture beside its title: barely touched
+     soft   (`--ft-cover-soft`)     an article's featured picture: its lower edge settles in
+     bottom / side / band (`--ft-cover-strength`)  live text laid ON the picture
+   The pictures themselves ship at their natural tone (`scripts/process-editorial-images.mjs`). */
+.cover-scrim-hero {
+  background: linear-gradient(
+    to top,
+    rgb(var(--ft-cover-scrim) / var(--ft-cover-hero)),
+    transparent 45%
+  );
+}
+
+/* No text on it: only settles the picture's lower edge into the page. */
+.cover-scrim-soft {
+  background: linear-gradient(
+    to top,
+    rgb(var(--ft-cover-scrim) / var(--ft-cover-soft)),
+    transparent 55%
+  );
+}
+
+.cover-ink {
+  color: var(--ft-cover-ink);
+}
+
+/*
+ * Whole-card links without nesting (`EditorialCard`). The title's `<a>` stretches its
+ * `::after` over the nearest positioned ancestor — the card — so the picture is clickable too.
+ * The focus ring moves to that overlay, so a keyboard user sees the whole card outlined.
+ */
+.stretched-link {
+  outline: none;
+}
+.stretched-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+.stretched-link:focus-visible::after {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 3px;
+  border-radius: var(--radius-lg);
+}
+
+/* ---- Theme art: a drawn photograph. Fixed palette on purpose (see above). ---- */
+.theme-art {
+  --art-light-x: 22%;
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      90% 70% at var(--art-light-x) 0%,
+      rgb(112 20 34 / 0.55) 0%,
+      rgb(58 13 22 / 0.22) 42%,
+      transparent 72%
+    ),
+    linear-gradient(180deg, #181a1f 0%, #0e0f12 58%, #08090b 100%);
+}
+.theme-art[data-light='center'] {
+  --art-light-x: 50%;
+}
+.theme-art[data-light='right'] {
+  --art-light-x: 78%;
+}
+.theme-art__lamp {
+  position: absolute;
+  top: -34%;
+  left: var(--art-light-x);
+  width: 58%;
+  aspect-ratio: 1;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    rgb(255 96 112 / 0.3),
+    rgb(215 30 54 / 0.12) 55%,
+    transparent
+  );
+}
+.theme-art__table {
+  position: absolute;
+  left: -18%;
+  right: -18%;
+  top: 60%;
+  height: 95%;
+  border-radius: 50%;
+  background: radial-gradient(
+    58% 42% at var(--art-light-x) 10%,
+    #2a2d34 0%,
+    #16181c 52%,
+    #0b0c0f 100%
+  );
+  box-shadow:
+    0 -1px 0 rgb(255 92 110 / 0.22),
+    0 -18px 40px rgb(0 0 0 / 0.45);
+}
+.theme-art__motif {
+  position: absolute;
+  inset: 6% 4% 4%;
+  width: 92%;
+  height: 90%;
+  color: #f5f6f7;
+}
+.theme-art__grain {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgb(255 255 255 / 0.9) 0.5px, transparent 0.6px);
+  background-size: 5px 5px;
+  opacity: 0.035;
+}
+.theme-art__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 95% at 50% 40%, transparent 55%, rgb(0 0 0 / 0.55) 100%);
+}
+.theme-art__card {
+  fill: #1c1f25;
+  stroke: rgb(245 246 247 / 0.3);
+  stroke-width: 0.45;
+}
+.theme-art__card-inset {
+  fill: none;
+  stroke: rgb(215 30 54 / 0.55);
+  stroke-width: 0.4;
+}
+.theme-art__accent {
+  fill: rgb(215 30 54 / 0.7);
+}
+.theme-art__chip {
+  fill: #23262d;
+  stroke: rgb(245 246 247 / 0.32);
+  stroke-width: 0.35;
+}
+.theme-art__chip-side {
+  fill: #121418;
+  stroke: rgb(245 246 247 / 0.14);
+  stroke-width: 0.3;
+}
+.theme-art__line {
+  fill: none;
+  stroke: rgb(245 246 247 / 0.3);
+  stroke-width: 0.45;
+}
+.theme-art__line-faint {
+  fill: none;
+  stroke: rgb(245 246 247 / 0.14);
+  stroke-width: 0.35;
+}
+.theme-art__arc {
+  fill: none;
+  stroke: rgb(255 70 90 / 0.75);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+.theme-art__cell {
+  fill: rgb(245 246 247 / 0.07);
+  stroke: rgb(245 246 247 / 0.12);
+  stroke-width: 0.15;
+}
+.theme-art__cell-diagonal {
+  fill: rgb(215 30 54 / 0.38);
+}
+.theme-art__seat {
+  fill: #1c1f25;
+  stroke: rgb(245 246 247 / 0.38);
+  stroke-width: 0.45;
+}
+.theme-art__button {
+  fill: rgb(245 246 247 / 0.8);
+}
+
+/* In `@layer components` so a template can still adjust spacing with a utility (`mt-0`). */
+@layer components {
+  /* ---- Editorial body: chapter headings for long-form reading content ---- */
+  .editorial-body {
+    counter-reset: ed-section;
+  }
+
+  .ed-h2 {
+    margin-top: 4.5rem;
+    margin-bottom: 1.25rem;
+    font-size: clamp(1.5rem, 1.3rem + 0.7vw, 1.875rem);
+    line-height: 1.32;
+    font-weight: 700;
+    letter-spacing: -0.012em;
+    color: var(--color-text-100);
+    scroll-margin-top: 6rem;
+  }
+  .ed-h2::before {
+    content: '';
+    display: block;
+    width: 2.25rem;
+    height: 3px;
+    margin-bottom: 1.1rem;
+    border-radius: 2px;
+    background: var(--color-brand-500);
+  }
+  /* Numbered chapters: `01 ——` above the heading. Only where every section is an `.ed-h2`,
+     so the numbers match the table of contents. */
+  .editorial-body[data-numbered] .ed-h2 {
+    counter-increment: ed-section;
+  }
+  .editorial-body[data-numbered] .ed-h2::before {
+    content: counter(ed-section, decimal-leading-zero);
+    height: auto;
+    padding-right: 3rem;
+    border-radius: 0;
+    background: linear-gradient(var(--color-brand-500), var(--color-brand-500)) no-repeat right
+      center / 2.25rem 2px;
+    color: var(--color-brand-500);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    width: fit-content;
+  }
+  .editorial-body > .ed-h2:first-child {
+    margin-top: 1rem;
+  }
+
+  .ed-h3 {
+    position: relative;
+    margin-top: 2.75rem;
+    margin-bottom: 0.75rem;
+    padding-left: 1.05rem;
+    font-size: 1.25rem;
+    line-height: 1.45;
+    font-weight: 650;
+    color: var(--color-text-100);
+    scroll-margin-top: 6rem;
+  }
+  .ed-h3::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 1px;
+    background: var(--color-brand-500);
+    opacity: 0.85;
+  }
+  /* An h3 right under its h2 does not need a chapter's worth of air. */
+  .ed-h2 + .ed-h3 {
+    margin-top: 1.5rem;
+  }
+}
+
+/*
+ * `.cover-stage` — deterministic content (real cards, fact strips) over a darkened picture
+ * (`VisualBackdrop`). The stage is dark in both themes, so the surface and ink tokens are
+ * re-pointed to their DARK values inside it: a `PokerCard` face, a `text-text-300` label and a
+ * `line-500` border measure exactly as they do on the dark site (audit above). Scoped to the
+ * stage's own subtree; nothing outside it changes.
+ */
+.cover-stage {
+  color-scheme: dark;
+  --color-ground-900: #090a0d;
+  --color-ground-800: #101319;
+  --color-panel-700: #171b21;
+  --color-panel-600: #1b1f26;
+  --color-line-500: #616c7a;
+  --color-text-100: #f5f6f7;
+  --color-text-300: #9aa1ac;
+  --color-text-500: #6b7380;
+  --color-brand-500: #ff334d;
+  --color-suit-red-500: #ff4d63;
+  color: var(--color-text-100);
+}
+.cover-scrim-stage {
+  background:
+    linear-gradient(90deg, rgb(8 9 12 / 0.9) 0%, rgb(8 9 12 / 0.72) 55%, rgb(8 9 12 / 0.5) 100%),
+    linear-gradient(to top, rgb(8 9 12 / 0.6), transparent 60%);
+}
+
+/* A statement laid over the LEFT of a wide picture (`HomeBreathing`): dense under the text,
+   clear on the right so the picture still reads. On a phone the text sits at the bottom. */
+.cover-scrim-side {
+  background: linear-gradient(
+    to top,
+    rgb(var(--ft-cover-scrim) / var(--ft-cover-strength)) 0%,
+    rgb(var(--ft-cover-scrim) / 0) 70%
+  );
+}
+@media (min-width: 40rem) {
+  .cover-scrim-side {
+    background: linear-gradient(
+      90deg,
+      rgb(var(--ft-cover-scrim) / var(--ft-cover-strength)) 0%,
+      rgb(var(--ft-cover-scrim) / calc(var(--ft-cover-strength) * 0.6)) 45%,
+      rgb(var(--ft-cover-scrim) / 0) 80%
+    );
+  }
+}
+
+/*
+ * Shared theme pictures in a list. Eight theme photographs serve ~116 pages, so a list of
+ * guides or related hands would otherwise show the same frame side by side. Inside a list
+ * item, a THEME picture (never a page's own picture) is framed by its position: as is, mirrored,
+ * or a closer crop — neighbours in a row, a column or a grid never share a frame. Framing
+ * only: the file, its tone and the overlay are untouched, and a theme photo carries no text
+ * or card face that a mirror could misstate.
+ */
+li:nth-child(3n + 2) [data-visual-scope='theme'][data-visual-source='asset'] img {
+  transform: scaleX(-1);
+}
+li:nth-child(3n) [data-visual-scope='theme'][data-visual-source='asset'] img {
+  transform: scale(1.3);
+  transform-origin: 38% 58%;
+}
+
+/* A call-to-action band laid over a whole wide picture (`CtaBand` with a visual): the text
+   sits left and the actions right, so both ends stay dense; the middle lets the picture show. */
+.cover-scrim-band {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--ft-cover-scrim) / var(--ft-cover-strength)) 0%,
+    rgb(var(--ft-cover-scrim) / calc(var(--ft-cover-strength) * 0.62)) 50%,
+    rgb(var(--ft-cover-scrim) / calc(var(--ft-cover-strength) * 0.8)) 100%
+  );
+}
+
+/* `TableOfContents collapsible`: a closed `<details>` on a phone, always open from `lg` up. */
+@media (min-width: 64rem) {
+  details.toc-collapsible::details-content {
+    content-visibility: visible;
+    block-size: auto;
+  }
+  details.toc-collapsible > summary {
+    pointer-events: none;
+  }
+}

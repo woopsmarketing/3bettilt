@@ -27,6 +27,7 @@ import type { Metadata } from 'next';
 import { contentPath, seoTitleOf } from '../../content/graph.js';
 import { HREFLANG, localeOfPath, SUPPORTED_LOCALES } from '../locale.js';
 import type { AnyContentRecord } from '../../content/types.js';
+import { OG_CARD_HEIGHT, OG_CARD_WIDTH, ogCardPath } from '../og/ogCard.js';
 import { canonicalUrl } from './canonical.js';
 import { contentIndexDecision } from './policy.js';
 import {
@@ -58,6 +59,8 @@ export interface PageMetadataInput {
   readonly index: boolean;
   /** `'article'` for an authored piece with a body; `'website'` for a hub or a tool. */
   readonly ogType?: 'article' | 'website';
+  /** A page-specific social card (content pages); omitted = the shared `/og.png`. */
+  readonly image?: { readonly path: string; readonly alt: string };
 }
 
 const OG_IMAGE = {
@@ -97,6 +100,15 @@ export function hreflangAlternates(canonical: string, path: string): Record<stri
 export function pageMetadata(input: PageMetadataInput): Metadata {
   const url = canonicalUrl(input.path);
   const title = formatTitle(input.title);
+  const image =
+    input.image === undefined
+      ? OG_IMAGE
+      : {
+          url: absoluteUrl(input.image.path),
+          width: OG_CARD_WIDTH,
+          height: OG_CARD_HEIGHT,
+          alt: input.image.alt,
+        };
   return {
     title,
     description: input.description,
@@ -111,13 +123,13 @@ export function pageMetadata(input: PageMetadataInput): Metadata {
       locale: SITE_LOCALE,
       title,
       description: input.description,
-      images: [OG_IMAGE],
+      images: [image],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description: input.description,
-      images: [OG_IMAGE.url],
+      images: [image.url],
     },
   };
 }
@@ -146,5 +158,6 @@ export function contentMetadata(record: AnyContentRecord): Metadata {
     // `BreadcrumbList`+`Article` pair; `website` for the reference pages (a glossary
     // entry, a hand page) which are documents but not articles. See `jsonLd.ts`.
     ogType: record.kind === 'learn' || record.kind === 'blog' ? 'article' : 'website',
+    image: { path: ogCardPath(record), alt: record.title },
   });
 }

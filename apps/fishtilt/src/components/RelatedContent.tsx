@@ -16,7 +16,11 @@
  * `RouteNavItem` and `ToolCTA` follow, and the reason the "no dead internal link" test can be
  * true by construction.
  */
-import { relationsOf, type ContentLink, type RelationKind } from '../content/graph.js';
+import { contentById, relationsOf, type ContentLink, type RelationKind } from '../content/graph.js';
+import { visualOf } from '../content/visuals.js';
+import { PokerCards } from './PokerCards.js';
+import { EditorialCard } from './visual/EditorialCard.js';
+import { VisualBackdrop } from './visual/VisualBackdrop.js';
 import type { AnyContentRecord } from '../content/types.js';
 import { SectionHeading } from './SectionHeading.js';
 
@@ -108,6 +112,13 @@ const SECTION_VARIANT = {
  * The link is the whole row (a 44px+ target), the hover moves the title to the brand ink
  * and nudges the arrow — a change of colour AND position, never colour alone.
  */
+const PLANNED_BADGE =
+  'shrink-0 rounded-full border border-line-500 px-1.5 py-0.5 text-[10px] font-medium text-text-300';
+
+/**
+ * The generic row — prerequisites, and any relation without a dedicated presentation below.
+ * Used at the TOP of an article, where a quiet line is all an early link should be.
+ */
 function LinkRow({ link }: { readonly link: ContentLink }) {
   const body = (
     <>
@@ -120,20 +131,16 @@ function LinkRow({ link }: { readonly link: ContentLink }) {
       {link.meta ? <span className="mt-1.5 block text-xs text-text-300">{link.meta}</span> : null}
     </>
   );
-
   if (link.href === null) {
     return (
       <li className="border-b border-line-500 py-4">
         <span className="flex items-start justify-between gap-3">
           <span className="min-w-0">{body}</span>
-          <span className="shrink-0 rounded-full border border-line-500 px-1.5 py-0.5 text-[10px] font-medium text-text-300">
-            준비 중
-          </span>
+          <span className={PLANNED_BADGE}>준비 중</span>
         </span>
       </li>
     );
   }
-
   return (
     <li className="border-b border-line-500">
       <a
@@ -150,6 +157,224 @@ function LinkRow({ link }: { readonly link: ContentLink }) {
       </a>
     </li>
   );
+}
+
+/**
+ * Glossary terms — a compact REFERENCE list, not cards: the term, its one-line definition,
+ * an arrow. One column, hairlines, small type, so it reads like the margin of a textbook.
+ */
+function TermRow({ link }: { readonly link: ContentLink }) {
+  const [term, gloss] = splitTermLabel(link.label);
+  const inner = (
+    <>
+      <span className="min-w-0 flex-1 sm:truncate">
+        <span className="font-semibold text-text-100 transition-colors group-hover:text-brand-500">
+          {term}
+        </span>
+        {/* One line of definition: the title's own gloss when it has one, else the entry's
+            description, cut to one line. */}
+        {gloss !== null || link.description ? (
+          <span className="text-text-300"> — {gloss ?? link.description}</span>
+        ) : null}
+      </span>
+      {link.href === null ? (
+        <span className={PLANNED_BADGE}>준비 중</span>
+      ) : (
+        <span aria-hidden="true" className="shrink-0 text-brand-500">
+          →
+        </span>
+      )}
+    </>
+  );
+  return (
+    <li className="border-b border-line-500 last:border-b-0">
+      {link.href === null ? (
+        <span className="flex items-baseline gap-3 py-3 prose-ko text-[0.9375rem]">{inner}</span>
+      ) : (
+        <a
+          href={link.href}
+          className="group flex min-h-11 items-baseline gap-3 py-3 prose-ko text-[0.9375rem] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          {inner}
+        </a>
+      )}
+    </li>
+  );
+}
+
+/** `"수티드 (Suited) — 같은 무늬"` → `["수티드 (Suited)", "같은 무늬"]`. */
+function splitTermLabel(label: string): readonly [string, string | null] {
+  const index = label.indexOf(' — ');
+  return index === -1 ? [label, null] : [label.slice(0, index), label.slice(index + 3)];
+}
+
+/**
+ * Tools — an ACTION area. Each tool is a verb, a red rule and a red arrow button, because the
+ * reader is being asked to do something, not to read something. No filled surface: D-S3-17
+ * keeps related entries off the card wall (`responsive-a11y.spec.ts`).
+ */
+function ToolTile({ link }: { readonly link: ContentLink }) {
+  const inner = (
+    <>
+      <span className="min-w-0">
+        <span className="block text-xs font-semibold tracking-[0.08em] text-brand-500">
+          직접 해보기
+        </span>
+        <span className="mt-1 block font-semibold text-text-100">{link.label}</span>
+      </span>
+      {link.href === null ? (
+        <span className={PLANNED_BADGE}>준비 중</span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-600 text-ink-on-brand transition-colors group-hover:bg-brand-hover"
+        >
+          →
+        </span>
+      )}
+    </>
+  );
+  const frame =
+    'flex min-h-16 items-center justify-between gap-4 border-l-2 border-brand-500 py-3 pr-1 pl-4';
+  return (
+    <li>
+      {link.href === null ? (
+        <span className={frame}>{inner}</span>
+      ) : (
+        <a
+          href={link.href}
+          className={`group ${frame} outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500`}
+        >
+          {inner}
+        </a>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Lessons, articles and hands — THUMBNAIL cards with the piece's featured visual. A hand's
+ * thumbnail puts that hand's real cards (drawn from data) on the shared hands atmosphere, so
+ * twenty hand cards are told apart by their cards, never by a generated picture.
+ */
+function ThumbCard({ link }: { readonly link: ContentLink }) {
+  const record = contentById(link.key);
+  const visual = visualOf(record);
+  if (record.kind === 'hands') {
+    return (
+      <li className="min-w-0">
+        <article data-card={record.id} className="group relative rounded-lg">
+          <VisualBackdrop
+            visual={visual}
+            sizes="(min-width: 640px) 360px, 100vw"
+            className="grid aspect-[3/2] place-items-center rounded-lg"
+          >
+            <PokerCards hand={record.handKey} size="sm" showReading={false} className="my-0" />
+          </VisualBackdrop>
+          <p className="mt-3 prose-ko font-semibold text-text-100">
+            {link.href === null ? (
+              <span>
+                {link.label} <span className={PLANNED_BADGE}>준비 중</span>
+              </span>
+            ) : (
+              <a
+                href={link.href}
+                className="stretched-link transition-colors group-hover:text-brand-500"
+              >
+                {link.label}
+              </a>
+            )}
+          </p>
+          {link.description ? (
+            <p className="mt-1 line-clamp-2 prose-ko text-sm text-text-300">{link.description}</p>
+          ) : null}
+        </article>
+      </li>
+    );
+  }
+  return (
+    <li className="min-w-0">
+      <EditorialCard
+        href={link.href}
+        title={link.label}
+        visual={visual}
+        description={link.description}
+        meta={link.meta}
+        headingAs="p"
+        size="sm"
+        aspect="3/2"
+        sizes="(min-width: 640px) 360px, 100vw"
+        dataKey={record.id}
+      />
+    </li>
+  );
+}
+
+type GroupLayout = 'rows' | 'terms' | 'tools' | 'cards';
+
+const LAYOUT_OF: Readonly<Record<RelationKind, GroupLayout>> = {
+  prerequisites: 'rows',
+  relatedConcepts: 'terms',
+  relatedTools: 'tools',
+  relatedHands: 'cards',
+  nextLessons: 'cards',
+  relatedArticles: 'cards',
+};
+
+function Group({
+  layout,
+  links,
+}: {
+  readonly layout: GroupLayout;
+  readonly links: readonly ContentLink[];
+}) {
+  const many = links.length > 1;
+  switch (layout) {
+    case 'terms':
+      return (
+        <ul data-layout="terms" data-columns="1" className="mt-3 border-y border-line-500">
+          {links.map((link) => (
+            <TermRow key={link.key} link={link} />
+          ))}
+        </ul>
+      );
+    case 'tools':
+      return (
+        <ul
+          data-layout="tools"
+          data-columns={many ? '2' : '1'}
+          className={`mt-4 grid gap-3 ${many ? 'sm:grid-cols-2' : ''}`}
+        >
+          {links.map((link) => (
+            <ToolTile key={link.key} link={link} />
+          ))}
+        </ul>
+      );
+    case 'cards':
+      return (
+        <ul
+          data-layout="cards"
+          data-columns={many ? '2' : '1'}
+          className={`mt-5 grid gap-x-6 gap-y-8 ${many ? 'sm:grid-cols-2' : 'sm:max-w-figure'}`}
+        >
+          {links.map((link) => (
+            <ThumbCard key={link.key} link={link} />
+          ))}
+        </ul>
+      );
+    case 'rows':
+      return (
+        <ul
+          data-layout="rows"
+          data-columns={many ? '2' : '1'}
+          className={`mt-4 grid ${many ? 'sm:grid-cols-2 sm:gap-x-10' : ''}`}
+        >
+          {links.map((link) => (
+            <LinkRow key={link.key} link={link} />
+          ))}
+        </ul>
+      );
+  }
 }
 
 export function RelatedContent({
@@ -184,14 +409,7 @@ export function RelatedContent({
           {/* Two columns only when there are two rows to fill them: a group with one entry
               used to draw one row in a two-column grid and leave the right half empty, so
               the page bottom looked ragged rather than composed (B-M4). */}
-          <ul
-            data-columns={relation.links.length > 1 ? '2' : '1'}
-            className={`mt-4 grid ${relation.links.length > 1 ? 'sm:grid-cols-2 sm:gap-x-10' : ''}`}
-          >
-            {relation.links.map((link) => (
-              <LinkRow key={link.key} link={link} />
-            ))}
-          </ul>
+          <Group layout={LAYOUT_OF[relation.relation]} links={relation.links} />
         </section>
       ))}
     </div>

@@ -21,24 +21,38 @@
 import {
   BLOG_CONTENT_TYPE_ANCHOR,
   BLOG_CONTENT_TYPE_LABEL,
-  BLOG_CONTENT_TYPE_ORDER,
   blogRecords,
   hrefOfContent,
 } from '../../content/graph.js';
 import type { BlogContentType, BlogRecord } from '../../content/types.js';
 
 /** How the section for a content type lays its articles out. Varied on purpose (D-S3-17). */
-export type HubSectionLayout = 'stories' | 'rows' | 'data' | 'titles';
+export type HubSectionLayout = 'stories' | 'guides' | 'rows' | 'data' | 'titles';
 
 export const HUB_SECTION_LAYOUT: Readonly<Record<BlogContentType, HubSectionLayout>> = {
   'hand-story': 'stories',
-  'search-guide': 'rows',
+  'search-guide': 'guides',
   'beginner-mistake': 'rows',
   'data-probability': 'data',
   'concept-culture': 'titles',
 };
 
 /** One sentence under each section heading — what the type is FOR, in the hub's voice. */
+/**
+ * The hub's reading order (editorial upgrade): the featured story sits above everything, so
+ * the sections open with the Search Guides — the answers most readers arrive for — and the
+ * remaining stories follow, then the smaller series. The navigation, the sections, the "all
+ * articles" index and the `ItemList` all follow this one order. It is an editorial sequence,
+ * not a ranking.
+ */
+export const HUB_SECTION_ORDER: readonly BlogContentType[] = [
+  'search-guide',
+  'hand-story',
+  'beginner-mistake',
+  'data-probability',
+  'concept-culture',
+];
+
 export const HUB_SECTION_DESCRIPTION: Readonly<Record<BlogContentType, string>> = {
   'hand-story':
     '한 판을 처음부터 끝까지 따라가는 이야기. 카드와 팟은 전부 기록에서 그대로 그립니다. 학습과 재미를 위해 재구성한 핸드 시나리오입니다.',
@@ -98,7 +112,7 @@ export function buildBlogHub(articles: readonly BlogRecord[] = blogRecords()): B
   const featured = stories[0] ?? publishedOfType('search-guide')[0] ?? published[0] ?? null;
 
   const secondary: BlogRecord[] = [];
-  for (const type of BLOG_CONTENT_TYPE_ORDER) {
+  for (const type of HUB_SECTION_ORDER) {
     if (secondary.length >= SECONDARY_SLOTS) break;
     if (featured !== null && type === featured.contentType) continue;
     const first = publishedOfType(type)[0];
@@ -114,7 +128,7 @@ export function buildBlogHub(articles: readonly BlogRecord[] = blogRecords()): B
 
   const sections: HubSection[] = [];
   const comingSoon: BlogContentType[] = [];
-  for (const type of BLOG_CONTENT_TYPE_ORDER) {
+  for (const type of HUB_SECTION_ORDER) {
     const typed = ofType(type);
     if (typed.length === 0) {
       comingSoon.push(type);
@@ -130,7 +144,7 @@ export function buildBlogHub(articles: readonly BlogRecord[] = blogRecords()): B
     });
   }
 
-  const nav = BLOG_CONTENT_TYPE_ORDER.map((type) => {
+  const nav = HUB_SECTION_ORDER.map((type) => {
     const count = ofType(type).length;
     return {
       type,

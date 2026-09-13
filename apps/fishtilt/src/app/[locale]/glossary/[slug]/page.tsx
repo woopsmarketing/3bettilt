@@ -33,6 +33,9 @@ import { GlossaryTermHeader } from '../../../../components/glossary/GlossaryTerm
 import { GlossaryVisual } from '../../../../components/glossary/GlossaryVisual.js';
 import { visualOf } from '../../../../components/glossary/visuals.js';
 import { RelatedContent } from '../../../../components/RelatedContent.js';
+import { EditorialVisual } from '../../../../components/visual/EditorialVisual.js';
+import { VisualBackdrop } from '../../../../components/visual/VisualBackdrop.js';
+import { visualOf as featuredVisualOf } from '../../../../content/visuals.js';
 import { glossaryComponent } from '../../../../content/glossary/index.js';
 import {
   contentBySlug,
@@ -94,6 +97,7 @@ export default async function GlossaryEntryPage({
   const aliases = entry.aliases.filter((alias) => alias !== headword);
   const visual = visualOf(entry.slug);
   const path = contentPath(entry);
+  const featured = featuredVisualOf(entry);
 
   return (
     <main className="mx-auto max-w-reading px-6 py-16">
@@ -122,15 +126,33 @@ export default async function GlossaryEntryPage({
           label: category.label,
           href: `${hub}#${GLOSSARY_HUB_ANCHORS.category(category.id)}`,
         }}
-        visual={visual === undefined ? undefined : <GlossaryVisual visual={visual} />}
+        visual={
+          visual === undefined ? undefined : (
+            // The term's own cards, drawn from data, on the category's atmosphere.
+            <VisualBackdrop visual={featured} sizes="736px" className="px-5 py-6 sm:px-7">
+              <GlossaryVisual visual={visual} />
+            </VisualBackdrop>
+          )
+        }
       />
+
+      {/* A term with nothing to draw gets its category's shared picture as a quiet band. */}
+      {visual === undefined ? (
+        <EditorialVisual
+          className="mt-8"
+          visual={featured}
+          aspect="3/1"
+          scrim="soft"
+          sizes="(min-width: 800px) 736px, 100vw"
+        />
+      ) : null}
 
       {/*
         The first MDX paragraph restates the definition in the entry's own words; the lead
         above already said it in one line, so the body reads at prose size from its first
         line rather than repeating the lead at display size.
       */}
-      <article className="mt-10 border-t border-line-500 pt-8">
+      <article className="editorial-body mt-10">
         <Content />
       </article>
 

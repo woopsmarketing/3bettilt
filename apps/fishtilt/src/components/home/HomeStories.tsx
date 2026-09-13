@@ -21,7 +21,8 @@ import { BLOG_CONTENT_TYPE_ANCHOR, contentMeta, hrefOfContent } from '../../cont
 import { HAND_STORY_DISCLOSURE } from '../../content/stories/types.js';
 import type { HandStoryRecord } from '../../content/types.js';
 import { BoardCards } from '../BoardCards.js';
-import { EditorialImage } from '../EditorialImage.js';
+import { visualOf } from '../../content/visuals.js';
+import { EditorialCard } from '../visual/EditorialCard.js';
 import { GuideCards } from '../tools/GuideCards.js';
 import type { HomeStoriesModel } from './homeModel.js';
 
@@ -47,38 +48,33 @@ function Featured({ story }: { readonly story: HandStoryRecord }) {
   const href = hrefOfContent(story);
   const { hand } = story;
   return (
-    <article data-featured-story={story.id} className="min-w-0">
-      <EditorialImage
-        alt=""
-        decorative
+    <div data-featured-story={story.id} className="min-w-0">
+      {/* The largest piece on the home page (§17): the story's own picture with its title in
+          live HTML on it, the whole card one link. */}
+      <EditorialCard
+        shape="overlay"
+        size="lg"
+        headingAs="h3"
+        href={href}
+        title={story.title}
+        eyebrow={`${hand.heroPosition} 대 ${hand.villainPosition} · ${hand.stakes}`}
+        description={story.description}
+        visual={visualOf(story)}
         aspect="16/9"
         sizes="(min-width: 1024px) 720px, 100vw"
-        fallback={{ kind: story.kind, topic: story.topic, variant: story.id }}
       />
-      {/* The record's own cards: what the hero held, and the board as it fell. */}
+      {/* The hand itself, drawn from the record — outside the card link, beside the picture
+          rather than painted into it. */}
       <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-3">
         <GuideCards cards={hand.heroHand} label="내 패" size="sm" />
         {hand.flop !== undefined ? (
           <BoardCards flop={hand.flop} turn={hand.turn} river={hand.river} size="sm" />
         ) : null}
       </div>
-      <p className="mt-5 text-sm font-medium tracking-[0.06em] text-brand-500">
-        {`${hand.heroPosition} 대 ${hand.villainPosition} · ${hand.stakes}`}
-      </p>
-      <h3 className="mt-1 text-h2">
-        {href === null ? (
-          <span className="prose-ko font-semibold text-text-300">{story.title}</span>
-        ) : (
-          <a href={href} className={TITLE_LINK}>
-            {story.title}
-          </a>
-        )}
-      </h3>
-      <p className="mt-3 max-w-lead prose-ko text-prose text-text-300">{story.description}</p>
-      <p className="mt-3 text-sm text-text-300">
+      <p className="mt-4 text-sm text-text-300">
         {contentMeta(story)} · {HAND_STORY_DISCLOSURE}
       </p>
-    </article>
+    </div>
   );
 }
 

@@ -35,10 +35,11 @@ import type { BreadcrumbItem } from '../../lib/seo/index.js';
 import { ArticleHero } from '../ArticleHero.js';
 import { ArticleMeta } from '../ArticleMeta.js';
 import { Breadcrumbs } from '../Breadcrumbs.js';
-import { EditorialImage } from '../EditorialImage.js';
 import type { BetAction } from '../HandTimeline.js';
 import { PokerCards } from '../PokerCards.js';
 import { Section } from '../Section.js';
+import { EditorialVisual } from '../visual/EditorialVisual.js';
+import { visualOf } from '../../content/visuals.js';
 import { StatStrip } from '../StatStrip.js';
 import { StreetSection, STREET_HEADING, type Street } from '../StreetSection.js';
 import {
@@ -240,15 +241,15 @@ export function StoryArticleLayout({ record, trail, Content }: StoryArticleLayou
               />
             }
           />
-          {/* The story's editorial visual (VA-09..14) at 16:9. It carries the moment's feeling,
-              never the cards: those are drawn below from the record. */}
-          <EditorialImage
+          {/* The story's own picture (`INDIVIDUAL_VISUALS`) at 16:9, else the story theme. It
+              carries the moment's feeling, never the cards: those are drawn below from data. */}
+          <EditorialVisual
             className={`mt-10 ${BREAKOUT}`}
-            alt=""
-            decorative
+            visual={visualOf(record)}
             aspect="16/9"
+            scrim="soft"
+            priority
             sizes="(min-width: 1024px) 960px, 100vw"
-            fallback={{ kind: record.kind, topic: record.topic, variant: record.id }}
           />
           <StoryGameInfo record={record} />
           <StoryHeroHand record={record} resolved={resolved} />
@@ -258,7 +259,7 @@ export function StoryArticleLayout({ record, trail, Content }: StoryArticleLayou
       <Section width="breakout" padded="none" className="pb-section lg:pb-section-lg">
         <article
           data-story
-          className={`mt-4 ${ARTICLE_BREAKOUT} grid grid-cols-[1fr_min(var(--container-reading),100%)_1fr] [&>*]:col-start-2 [&>*]:min-w-0 [&>p:first-child]:text-xl [&>p:first-child]:leading-[1.75] [&>p:first-child]:text-text-100`}
+          className={`editorial-body mt-4 ${ARTICLE_BREAKOUT} grid grid-cols-[1fr_min(var(--container-reading),100%)_1fr] [&>*]:col-start-2 [&>*]:min-w-0 [&>p:first-child]:text-xl [&>p:first-child]:leading-[1.75] [&>p:first-child]:text-text-100`}
         >
           <Content components={components} />
         </article>
