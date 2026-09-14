@@ -17,6 +17,7 @@ export const GLOSSARY_G6_RECORDS: readonly GlossaryRecord[] = [
     term: 'Hand Ranking',
     aliases: ['족보', '핸드 랭킹', '핸드랭킹', 'hand rankings', '패의 순위'],
     title: '패의 순서, 족보 (Hand Ranking)',
+    seoTerm: '족보',
     shortDefinition: '다섯 장으로 만드는 아홉 가지 족보 사이의 순서를 말합니다.',
     description: '핸드 랭킹이 무엇의 순서를 매기는 말인지 설명합니다.',
     level: 'INTRO',
@@ -129,6 +130,7 @@ export const GLOSSARY_G6_RECORDS: readonly GlossaryRecord[] = [
     term: 'Set vs Trips',
     aliases: ['셋', 'set', 'trips', '트립스', '셋 vs 트립스'],
     title: '셋 vs 트립스 (Set vs Trips) — 셋과 트립스, 만들어지는 방식의 차이',
+    seoTitle: '셋과 트립스 차이 | 홀덤·포커 용어 설명',
     shortDefinition:
       '족보로는 같은 쓰리 오브 어 카인드지만, 손패와 보드가 어떻게 섞였는지로 나누는 두 이름입니다.',
     description:

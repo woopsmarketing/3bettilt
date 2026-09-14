@@ -44,9 +44,9 @@ import { routeById } from '../../../lib/routes.js';
 /*
  * WP-7a: THE TITLE AND THE H1 ARE DELIBERATELY DIFFERENT, and both stay as they are.
  *
- * `formatTitle` composes this into `소개 · 3BetTilt`, which is already the brand query WP-1 §2
+ * `formatTitle` composes this into `소개 - 3BetTilt`, which is already the brand query WP-1 §2
  * assigns this route (`3BetTilt 소개`) with the site name where the site name belongs — a
- * title of `3BetTilt 소개` would render as `3BetTilt 소개 · 3BetTilt`. The `<h1>` is
+ * title of `3BetTilt 소개` would render as `3BetTilt 소개 - 3BetTilt`. The `<h1>` is
  * `3BetTilt는 무엇인가요` because a page that exists to answer "is this site trustworthy" opens
  * by asking the reader's own question; a heading reading `소개` would answer nothing.
  */

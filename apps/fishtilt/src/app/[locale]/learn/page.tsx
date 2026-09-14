@@ -48,7 +48,7 @@ import { routeById } from '../../../lib/routes.js';
  *  different pages. Same shape the six tool pages already use. */
 const SEO = {
   path: routeById('learn').path,
-  title: '홀덤 처음 배우기',
+  title: '텍사스 홀덤 배우기 | 규칙·족보·포지션·프리플랍',
   description:
     '텍사스 홀덤을 순서대로 배우는 무료 강의. 규칙과 족보부터 핸드레인지, 팟오즈까지 표와 도구를 직접 눌러보며 익힙니다.',
 } as const;

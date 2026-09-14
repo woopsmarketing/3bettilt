@@ -17,7 +17,7 @@ const ROUTE = routeById('toolPotOdds');
 
 const SEO = {
   path: ROUTE.path,
-  title: `${ROUTE.label} — 콜에 필요한 승률 바로 계산`,
+  title: '홀덤 팟오즈 계산기 | 무료 포커 계산기',
   description:
     '콜하려면 몇 퍼센트는 이겨야 하는지 바로 계산합니다. 공식, 계산 과정, 베팅 크기별 필요 승률과 자주 헷갈리는 점까지 함께 보여주는 무료 팟 오즈 계산기.',
 } as const;

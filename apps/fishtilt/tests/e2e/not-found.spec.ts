@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { HOME_SEO_TITLE, SITE_NAME, TITLE_BRAND_SEPARATOR } from '../../src/lib/seo/site.js';
 import { koPath, visibleBodyText } from './helpers.js';
 
 /*
@@ -34,7 +35,7 @@ test.describe('404', () => {
     const titles = await page.locator('title').count();
     expect(titles, 'a 404 with two <title> tags is the Next built-in leaking through').toBe(1);
     await expect(page).toHaveTitle(/[가-힣]/);
-    await expect(page).not.toHaveTitle('무료 홀덤 학습 · 3BetTilt');
+    await expect(page).not.toHaveTitle(`${HOME_SEO_TITLE}${TITLE_BRAND_SEPARATOR}${SITE_NAME}`);
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
     await expect(page.getByRole('main')).toBeVisible();

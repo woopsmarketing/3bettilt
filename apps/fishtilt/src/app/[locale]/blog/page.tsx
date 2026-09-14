@@ -50,7 +50,7 @@ import { routeById } from '../../../lib/routes.js';
  *  `name`/`description` all read it. */
 const SEO = {
   path: routeById('blog').path,
-  title: '포커 이야기와 검색 가이드',
+  title: '홀덤 핸드 분석·포커 질문 가이드 | 텍사스 홀덤 블로그',
   description:
     '한 판을 따라가는 핸드 스토리와, 검색창에 치는 질문에 끝까지 답하는 가이드. 숫자는 모두 계산된 값입니다.',
 } as const;

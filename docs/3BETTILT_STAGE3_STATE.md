@@ -6,6 +6,9 @@ Stage 3(리브랜드 · /ko 로케일 · 에디토리얼 리디자인 · 배포 
 
 ## CURRENT STATUS
 
+- **post-Stage-3 (2026-09-14)**: **SEO Title & Multilingual Architecture Upgrade 완료** — 141 indexable 페이지 title/description
+  재설계(` - 3BetTilt` suffix, kind별 템플릿 + record override), hreflang editions 준비(출력 불변), `/en` 미생성.
+  보고서 `docs/reports/3BETTILT_SEO_TITLES_SUMMARY.md`, 설계 `docs/3BETTILT_MULTILINGUAL_ARCHITECTURE.md`. 결정 D-S3-22.
 - **current WP**: **없음 — Stage 3 코드 작업 완료. 최종 게이트 통과(2026-09-12).**
   최종 보고서 `docs/reports/3BETTILT_STAGE3_FINAL.md`. 남은 것은 오너 조치 1건: `apps/fishtilt`·`packages/learn-core` 커밋 후 Vercel Preview 배포.
   게이트: typecheck 전 패키지 PASS · lint 0 error · unit **5252 passed/3 skipped** · 클린 빌드 **148/148 static, `ƒ` 0** ·
@@ -184,6 +187,7 @@ Stage 3(리브랜드 · /ko 로케일 · 에디토리얼 리디자인 · 배포 
 | D-S3-17 | 시각 언어: charcoal/black + brand red, editorial; 카드 벽 금지; 라이트 모드 동급; 새 webfont(네트워크 fetch) 의존 추가 금지 | 계약 R/V |
 | D-S3-19 | Blog 카테고리(콘텐츠 타입 5종)는 `BlogRecord.contentType`(typed union)으로 표현. 카테고리 전용 라우트는 만들지 않고 허브 내 섹션 + 앵커 내비로 처리(신규 라우트·sitemap·키워드맵 영향 없음). 필요성이 Search Console에서 증명되면 개정 | 계약 AF/AG, BM |
 | D-S3-20 | 핸드 스토리는 `HandStoryRecord`(계약 AM 필드) typed data + 테스트(카드 중복 0, 보드 유효, showdown은 strategy-core evaluator로 검증). `disclosure`는 레코드 필드이며 템플릿이 항상 가시 렌더 | 계약 AL/AM |
+| D-S3-22 | `<title>` = `{검색 문구}[ \| {qualifier}] - 3BetTilt`(브랜드 마지막, 도메인 표기 금지). H1은 페이지 문장으로 유지(title과 의미 공유, 문자열 동일 불필요). content title은 `seoTitleOf`(record `seoTitle` override → glossary `{seoTerm} 뜻 \| 홀덤·포커 용어 설명` / hands `{key} 승률·순위 \| 텍사스 홀덤 프리플랍 핸드 가이드` / learn·blog H1), description은 `seoDescriptionOf`. JSON-LD name은 `titleHead`(qualifier 앞). `hreflangAlternates(…, editions)` — editions 기본값 = 자기 로케일(현재 출력 불변) | 2026-09-14 오너 prompt(SEO title upgrade). 이전 ` · 3BetTilt` 형식 대체. **`3벳 뜻`은 glossary 소유 유지**(keyword map C1) — learn/three-bet은 `3벳이란?` |
 | D-S3-18 | 이미지 생성 capability는 이 세션에 없음 → 자산은 manifest(`3BETTILT_VISUAL_ASSET_MANIFEST.md`)로만 정의, 모든 슬롯은 fallback으로 렌더. 홈 히어로 4:5, 스토리 16:9, 카드/허브 3:2, 카테고리 1:1, OG 1200×630 단일 카드로 런칭 | 계약 AB |
 | D-S3-21 | 실행 순서: 06(블로그 아키텍처)‖09(러닝 아키텍처) → 05(홈)‖07‖08‖10 → 11‖13‖14‖15 → 12 → 16 → 17 → 18 → 19 → 20. 번호 순서를 깨는 유일한 이유는 의존성: 홈은 blog `contentType`·스토리·learn 카테고리를 집계하는 페이지다 | 계약 CB "순서 존중, 필요한 병렬만" — 홈을 먼저 만들면 06/08/09 뒤 재작업 |
 

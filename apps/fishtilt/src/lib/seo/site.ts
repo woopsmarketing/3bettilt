@@ -17,12 +17,38 @@
  * says which origin it used. Every test asserts the RULE (absolute, same origin throughout,
  * no query string) rather than the literal host.
  */
+import { DEFAULT_LOCALE, OPEN_GRAPH_LOCALE } from '../locale.js';
 
 /** The Latin wordmark, exactly as `SiteHeader`/`SiteFooter` render it. */
 export const SITE_NAME = '3BetTilt';
 
-/** BCP 47 tag matching `<html lang>` in `src/app/layout.tsx`. */
-export const SITE_LOCALE = 'ko_KR';
+/**
+ * The home page's search title (without the brand suffix) and meta description. Here rather
+ * than in `app/[locale]/page.tsx` because the root layout carries the same pair as the
+ * site-level fallback, and a layout must not import a page module.
+ */
+export const HOME_SEO_TITLE = '텍사스 홀덤 배우기 | 홀덤 족보·핸드레인지·승률 계산기';
+export const HOME_SEO_DESCRIPTION =
+  '텍사스 홀덤을 규칙과 족보부터 핸드레인지·확률까지 쉬운 한국어로 배웁니다. 13×13 핸드레인지 표와 승률·팟오즈·아웃츠 계산기를 직접 눌러보는 무료 학습 사이트입니다.';
+
+/** Before the brand at the end of every `<title>`: `… - 3BetTilt` (`metadata.ts` `formatTitle`). */
+export const TITLE_BRAND_SEPARATOR = ' - ';
+
+/** Between a title's search phrase and its qualifier: `홀덤 팟오즈 계산기 | 무료 포커 계산기`. */
+export const TITLE_QUALIFIER_SEPARATOR = ' | ';
+
+/**
+ * The search phrase of a title — everything before the qualifier. What structured data names
+ * a page, a tool or a term set: `WebApplication.name` is `홀덤 팟오즈 계산기`, not the whole
+ * search-result line.
+ */
+export function titleHead(title: string): string {
+  return title.split(TITLE_QUALIFIER_SEPARATOR, 1)[0] ?? title;
+}
+
+/** The default locale's Open Graph tag (`<html lang>` in `src/app/layout.tsx` is the same
+ *  locale). A page's own `og:locale` comes from its path — see `metadata.ts`. */
+export const SITE_LOCALE = OPEN_GRAPH_LOCALE[DEFAULT_LOCALE];
 
 /** Where the site is deployed. The default origin of every absolute URL (D-S3-05). */
 export const PRODUCTION_ORIGIN = 'https://3bettilt.com';

@@ -17,6 +17,7 @@ export const LEARN_H2_RECORDS: readonly LearnRecord[] = [
     slug: 'position',
     order: 7,
     title: '자리(포지션)가 왜 그렇게 중요할까요?',
+    seoTitle: '홀덤 포지션 | 자리가 왜 그렇게 중요할까',
     description:
       '같은 패라도 어느 자리에 앉아 있느냐에 따라 판단이 달라집니다. 그 이유를 순서의 문제로 설명합니다.',
     level: 'BASIC',
@@ -48,6 +49,9 @@ export const LEARN_H2_RECORDS: readonly LearnRecord[] = [
     slug: 'positions-6max',
     order: 8,
     title: '6맥스 포지션 이름 — UTG·HJ·CO·BTN·SB·BB',
+    seoTitle: '6맥스 포지션 이름 | UTG·HJ·CO·BTN·SB·BB 자리 순서',
+    seoDescription:
+      '6인 테이블의 여섯 자리 UTG·HJ·CO·BTN·SB·BB를 하나씩 짚고, 각 자리가 언제 행동하는지와 자리마다 오픈 레인지 크기가 어떻게 다른지 정리합니다.',
     description: '6인 테이블의 여섯 자리를 하나씩 짚고, 각 자리가 언제 행동하는지 정리합니다.',
     level: 'BASIC',
     topic: 'position',
@@ -80,6 +84,7 @@ export const LEARN_H2_RECORDS: readonly LearnRecord[] = [
     slug: 'poker-actions',
     order: 9,
     title: '체크 · 베팅 · 콜 · 레이즈 · 폴드, 다섯 가지 행동',
+    seoTitle: '체크·콜·레이즈·폴드 | 홀덤 액션 5가지와 베팅',
     description:
       '내 차례에 고를 수 있는 행동은 다섯 가지입니다. 체크, 베팅, 콜, 레이즈, 폴드가 각각 무엇을 뜻하고 언제 고를 수 있는지 확실히 합니다.',
     level: 'INTRO',
@@ -119,6 +124,7 @@ export const LEARN_H2_RECORDS: readonly LearnRecord[] = [
     slug: 'preflop',
     order: 10,
     title: '첫 두 장을 받은 뒤, 프리플랍',
+    seoTitle: '프리플랍이란? | 홀덤 첫 베팅 라운드 진행',
     description:
       '공용 카드가 아직 한 장도 열리지 않은 첫 번째 베팅. 이때 무엇을 보고 결정하는지 살펴봅니다.',
     level: 'BASIC',

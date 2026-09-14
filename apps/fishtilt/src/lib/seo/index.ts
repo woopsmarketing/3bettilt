@@ -16,6 +16,7 @@ export {
   collectionPageJsonLd,
   definedTermJsonLd,
   definedTermSetJsonLd,
+  GLOSSARY_TERM_SET_NAME,
   faqPageJsonLd,
   itemListJsonLd,
   organizationJsonLd,
@@ -46,8 +47,11 @@ export {
   type IndexReason,
 } from './policy.js';
 export { sitemapEntries, sitemapPaths, sitemapUrls, type SitemapEntry } from './sitemapEntries.js';
+export { seoDescriptionOf } from './contentSeo.js';
 export {
   absoluteUrl,
+  HOME_SEO_DESCRIPTION,
+  HOME_SEO_TITLE,
   normaliseOrigin,
   OG_IMAGE_ALT,
   OG_IMAGE_HEIGHT,
@@ -58,4 +62,7 @@ export {
   SITE_NAME,
   SITE_ORIGIN,
   SITE_ORIGIN_IS_DEFAULT,
+  TITLE_BRAND_SEPARATOR,
+  TITLE_QUALIFIER_SEPARATOR,
+  titleHead,
 } from './site.js';

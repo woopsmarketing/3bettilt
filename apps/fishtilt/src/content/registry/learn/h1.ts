@@ -21,6 +21,7 @@ export const LEARN_H1_RECORDS: readonly LearnRecord[] = [
     slug: 'holdem-basics',
     order: 1,
     title: '텍사스 홀덤 하는 법 — 규칙과 한 판의 흐름',
+    seoTitle: '텍사스 홀덤 규칙 | 홀덤 하는 법과 한 판의 흐름',
     description:
       '카드를 받고, 돈을 걸고, 승자를 가리기까지. 한 판의 흐름을 처음부터 끝까지 따라갑니다.',
     level: 'INTRO',
@@ -51,6 +52,9 @@ export const LEARN_H1_RECORDS: readonly LearnRecord[] = [
     slug: 'poker-hand-rankings',
     order: 2,
     title: '포커 족보 순서 — 어떤 족보가 더 강할까요?',
+    seoTitle: '포커 족보 순서 | 홀덤 핸드 순위 한눈에 보기',
+    seoDescription:
+      '포커 족보 순서를 가장 약한 패부터 실제 카드로 정리합니다. 드물수록 강한 이유, 같은 족보끼리 우열을 가리는 법, 팟을 나눠 갖는 경우까지 설명합니다.',
     description:
       '원페어부터 스트레이트 플러시까지, 다섯 장으로 만드는 패의 순서를 그림으로 정리합니다.',
     level: 'INTRO',
@@ -90,6 +94,7 @@ export const LEARN_H1_RECORDS: readonly LearnRecord[] = [
     slug: 'starting-hands',
     order: 3,
     title: '홀덤 시작 핸드 보는 법 — 수티드·커넥터·포켓 페어',
+    seoTitle: '홀덤 시작 핸드 보는 법 | 수티드·커넥터·포켓 페어',
     description:
       '같은 무늬인지, 숫자가 붙어 있는지, 같은 숫자인지. 시작 패를 보는 세 가지 기준을 설명합니다.',
     level: 'INTRO',
@@ -120,6 +125,7 @@ export const LEARN_H1_RECORDS: readonly LearnRecord[] = [
     slug: 'starting-hand-ranking',
     order: 4,
     title: '시작 패는 어떤 순서로 강할까요?',
+    seoTitle: '홀덤 시작 패 강한 순서 | 169가지 핸드 순위를 매기는 기준',
     description:
       '169가지 시작 패를 강한 순서로 늘어놓으면 어떤 모습인지, 그리고 그 순서가 무엇을 뜻하는지 봅니다.',
     level: 'BASIC',
@@ -152,6 +158,7 @@ export const LEARN_H1_RECORDS: readonly LearnRecord[] = [
     slug: 'hand-matrix',
     order: 5,
     title: '13×13 표는 어떻게 읽나요?',
+    seoTitle: '홀덤 핸드표 읽는 법 | 13×13 핸드 매트릭스 169칸',
     description:
       '포커 자료에 자주 나오는 정사각형 표. 대각선, 위쪽, 아래쪽이 각각 무엇을 뜻하는지 짚어봅니다.',
     level: 'BASIC',

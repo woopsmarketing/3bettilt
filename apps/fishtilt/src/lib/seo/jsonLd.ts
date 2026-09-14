@@ -26,7 +26,7 @@
  */
 import type { BreadcrumbItem } from './breadcrumbs.js';
 import type { FaqItem } from './faq.js';
-import { absoluteUrl, OG_IMAGE_PATH, SITE_NAME } from './site.js';
+import { absoluteUrl, OG_IMAGE_PATH, SITE_NAME, titleHead } from './site.js';
 import { canonicalUrl } from './canonical.js';
 import type { BlogRecord, LearnRecord } from '../../content/types.js';
 import { BLOG_CONTENT_TYPE_LABEL, contentPath } from '../../content/graph.js';
@@ -182,7 +182,7 @@ export function webApplicationJsonLd(input: ToolAppInput): JsonLdObject {
   return {
     '@context': CONTEXT,
     '@type': 'WebApplication',
-    name: input.name,
+    name: titleHead(input.name),
     description: input.description,
     url: canonicalUrl(input.path),
     applicationCategory: 'EducationalApplication',
@@ -256,6 +256,13 @@ export interface DefinedTermItem extends ListedItem {
  * `inDefinedTermSet` is not written on each term: they are nested inside the set's
  * `hasDefinedTerm`, which states the same relation without needing an `@id` to point at.
  */
+/**
+ * The glossary's `DefinedTermSet` name — the dictionary's own name, as its hub `<h1>` prints
+ * it. One constant because the hub's set and every term page's `inDefinedTermSet` must name
+ * the same set; the hub's `<title>` is a search line and is deliberately not used here.
+ */
+export const GLOSSARY_TERM_SET_NAME = '포커 용어 사전';
+
 export function definedTermSetJsonLd(
   name: string,
   path: string,
@@ -323,7 +330,9 @@ export function definedTermJsonLd(input: DefinedTermInput): JsonLdObject {
 export interface CollectionPageInput {
   readonly path: string;
   /**
-   * The page's own `<title>` text, WITHOUT the site suffix, published as the block's `name`.
+   * The page's own `<title>` text, WITHOUT the site suffix. The block's `name` is its search
+   * phrase (`titleHead` — the part before ` | `), so the structured data names the page and
+   * the `<title>` carries the qualifier.
    *
    * Named `title` rather than `name` so that a page's single `SEO = { path, title,
    * description }` constant — the shape the six tool pages already use — spreads straight
@@ -354,7 +363,7 @@ export function collectionPageJsonLd(input: CollectionPageInput): JsonLdObject |
   return {
     '@context': CONTEXT,
     '@type': 'CollectionPage',
-    name: input.title,
+    name: titleHead(input.title),
     description: input.description,
     url,
     mainEntityOfPage: { '@type': 'WebPage', '@id': url },

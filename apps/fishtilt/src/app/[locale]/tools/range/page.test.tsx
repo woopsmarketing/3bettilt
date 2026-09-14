@@ -105,12 +105,13 @@ describe('/tools/range page shell', () => {
     );
   });
 
-  it('sets page metadata that leads with the <h1> name and carries the search phrase', () => {
-    // WP-S3-14: the `<title>` STARTS with the `<h1>` (the tool's name) and goes on to the
-    // keyword-map phrase for this route; the brand suffix comes from `formatTitle`.
+  it('sets page metadata that leads with the search phrase and shares the <h1> topic', () => {
+    // The `<title>` leads with the query (`홀덤 핸드레인지표`) and qualifies it with what the
+    // tool shows; the `<h1>` names the same table for the reader. Brand suffix from `formatTitle`.
     render(<RangeExplorerPage />);
     const h1 = screen.getByRole('heading', { level: 1 }).textContent ?? '';
-    expect(String(metadata.title).startsWith(h1)).toBe(true);
+    expect(h1).toContain('핸드레인지');
+    expect(String(metadata.title).startsWith('홀덤 핸드레인지표')).toBe(true);
     expect(String(metadata.title)).toContain('6-max');
     expect(String(metadata.title).endsWith(formatTitle('').trim())).toBe(true);
     expect(metadata.description).toBeTruthy();

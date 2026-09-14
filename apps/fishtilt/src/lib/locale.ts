@@ -32,6 +32,9 @@ export const DEFAULT_LOCALE: Locale = 'ko';
 /** `hreflang` / BCP 47 tag per locale (D-S3-06). */
 export const HREFLANG: Readonly<Record<Locale, string>> = { ko: 'ko-KR' };
 
+/** Open Graph `og:locale` per locale (underscore form, as the protocol spells it). */
+export const OPEN_GRAPH_LOCALE: Readonly<Record<Locale, string>> = { ko: 'ko_KR' };
+
 export function isLocale(value: string): value is Locale {
   return (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }

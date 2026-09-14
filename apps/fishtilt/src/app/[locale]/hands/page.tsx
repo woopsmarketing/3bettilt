@@ -43,7 +43,7 @@ import { routeById } from '../../../lib/routes.js';
  *  `name`/`description` all read it. */
 const SEO = {
   path: routeById('hands').path,
-  title: '홀덤 시작 핸드 목록 — 패별 순위·조합 수·기대 몫',
+  title: '홀덤 시작 핸드 순위 | AA·AKs 등 프리플랍 핸드 가이드',
   description:
     '홀덤 시작 패를 하나씩 살펴보는 페이지 모음. 패마다 169개 중 순위, 조합 수, 13×13 표에서의 위치, 무작위 상대와 끝까지 갔을 때 팟에서 기대되는 몫을 계산된 값으로 보여줍니다.',
 } as const;

@@ -21,7 +21,7 @@ const ROUTE = routeById('toolEquity');
 
 const SEO = {
   path: ROUTE.path,
-  title: `포커 ${ROUTE.label} (에퀴티) — 핸드 vs 핸드`,
+  title: '홀덤 승률·에퀴티 계산기 | 무료 포커 계산기',
   description:
     '내 핸드와 상대 핸드를 골라보세요. 보드를 더하거나 비워둔 채로, 지금 이 대결의 정확한 승률을 계산하는 무료 승률 계산기. 이김·비김·승률의 차이와 결과 읽는 법까지.',
 } as const;

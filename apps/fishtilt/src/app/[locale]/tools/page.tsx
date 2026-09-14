@@ -41,9 +41,9 @@ import { routeById } from '../../../lib/routes.js';
 
 const SEO = {
   path: routeById('tools').path,
-  title: '무료 포커 도구',
+  title: '홀덤 계산기 모음 | 승률·팟오즈·아웃츠·핸드레인지',
   description:
-    '팟 오즈, 아웃, 핸드레인지까지 — 설명을 읽기 전에 먼저 눌러보는 무료 홀덤 학습 도구 모음입니다.',
+    '승률·팟오즈·아웃츠 계산기와 13×13 핸드레인지 표, 시작 핸드 순위표, 족보 판정기까지 — 설명을 읽기 전에 먼저 눌러보는 무료 홀덤 도구 모음입니다.',
 } as const;
 
 export const metadata: Metadata = pageMetadata({ ...SEO, index: true });

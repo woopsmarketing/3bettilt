@@ -17,18 +17,46 @@
  *
  * ## The title shape
  *
- * `'{page} · 3BetTilt'`, one separator for the whole site. Deliberately composed here
- * rather than through Next's `title.template`, because the template is applied to
- * `metadata.title` and NOT reliably to `openGraph.title`, which would leave the tab title
- * and the social card disagreeing about the site's name. One function, one string, both
- * fields.
+ * `'{page} - 3BetTilt'`, one separator for the whole site. Inside `{page}` a hub, tool or
+ * glossary title may use ` | ` between its search phrase and its qualifier
+ * (`홀덤 팟오즈 계산기 | 무료 포커 계산기`); the brand is always last, after ` - `, so a
+ * search result that truncates the title loses the brand rather than the query.
+ *
+ * Deliberately composed here rather than through Next's `title.template`, because the
+ * template is applied to `metadata.title` and NOT reliably to `openGraph.title`, which would
+ * leave the tab title and the social card disagreeing about the site's name. One function,
+ * one string, all three fields (`<title>`, `og:title`, `twitter:title`). `og:site_name`
+ * carries the bare `3BetTilt`, which is what a search engine reads for the site name — the
+ * domain is never spelt into a title.
+ *
+ * ## Titles and H1s
+ *
+ * The title is written for the search result, the H1 for the reader who already arrived.
+ * They share one meaning, not one string: `seoTitleOf` (content) and each static route's
+ * `SEO.title` choose the words; the H1 stays the page's own sentence.
+ *
+ * ## Locales
+ *
+ * Nothing here assumes Korean. The canonical, `og:locale` and the hreflang set are all read
+ * off the page's localised path, and `hreflangAlternates` takes the list of editions a
+ * document exists in. Today that list is always the page's own locale — see
+ * `docs/3BETTILT_MULTILINGUAL_ARCHITECTURE.md` for what changes when `/en` has real pages.
  */
 import type { Metadata } from 'next';
 import { contentPath, seoTitleOf } from '../../content/graph.js';
-import { HREFLANG, localeOfPath, SUPPORTED_LOCALES } from '../locale.js';
+import {
+  DEFAULT_LOCALE,
+  HREFLANG,
+  localeOfPath,
+  localePath,
+  OPEN_GRAPH_LOCALE,
+  sitePathOf,
+  type Locale,
+} from '../locale.js';
 import type { AnyContentRecord } from '../../content/types.js';
 import { OG_CARD_HEIGHT, OG_CARD_WIDTH, ogCardPath } from '../og/ogCard.js';
 import { canonicalUrl } from './canonical.js';
+import { seoDescriptionOf } from './contentSeo.js';
 import { contentIndexDecision } from './policy.js';
 import {
   absoluteUrl,
@@ -36,15 +64,14 @@ import {
   OG_IMAGE_HEIGHT,
   OG_IMAGE_PATH,
   OG_IMAGE_WIDTH,
-  SITE_LOCALE,
   SITE_NAME,
+  TITLE_BRAND_SEPARATOR,
 } from './site.js';
 
-/** `'팟 오즈 계산기'` -> `'팟 오즈 계산기 · 3BetTilt'`. The site name is never doubled. */
+/** `'홀덤 팟오즈 계산기'` -> `'홀덤 팟오즈 계산기 - 3BetTilt'`. The site name is never doubled. */
 export function formatTitle(title: string): string {
-  return title === SITE_NAME || title.endsWith(` · ${SITE_NAME}`)
-    ? title
-    : `${title} · ${SITE_NAME}`;
+  const suffix = `${TITLE_BRAND_SEPARATOR}${SITE_NAME}`;
+  return title === SITE_NAME || title.endsWith(suffix) ? title : `${title}${suffix}`;
 }
 
 export interface PageMetadataInput {
@@ -71,19 +98,39 @@ const OG_IMAGE = {
 } as const;
 
 /**
- * The `hreflang` set for one indexable page (D-S3-06): its own locale's tag and
- * `x-default`, both naming the canonical. There is one language, so both point at the same
- * document; the set exists so that a crawler is told, in the standard vocabulary, that
- * this URL is the Korean edition and the default one. Nothing is emitted for a language the
- * site does not have.
+ * The `hreflang` set for one indexable page (D-S3-06): one entry per EDITION of the document,
+ * each naming that edition's canonical, plus `x-default`.
+ *
+ * `editions` is the list of locales the document really exists in, and it defaults to the
+ * page's own locale alone — which is the whole truth today: there is one language, so the set
+ * is `ko-KR` + `x-default`, both naming the canonical. Nothing is emitted for a language the
+ * site does not have, and nothing may be: a translation exists when its record exists, and
+ * the caller that knows that passes it here. Because every edition computes the same set from
+ * the same list, the annotations are reciprocal by construction.
+ *
+ * `x-default` names the default locale's edition while `/` redirects to it (D-S3-03). When a
+ * real language selector replaces that redirect, this is the one line that points `x-default`
+ * at `/` instead (`docs/3BETTILT_MULTILINGUAL_ARCHITECTURE.md`).
  */
-export function hreflangAlternates(canonical: string, path: string): Record<string, string> {
+export function hreflangAlternates(
+  canonical: string,
+  path: string,
+  editions?: readonly Locale[],
+): Record<string, string> {
   const locale = localeOfPath(path);
-  const languages: Record<string, string> = {};
-  for (const supported of SUPPORTED_LOCALES) {
-    if (supported === locale) languages[HREFLANG[supported]] = canonical;
+  if (locale === null) {
+    throw new Error(`hreflangAlternates expects a localised path, got: ${path}`);
   }
-  languages['x-default'] = canonical;
+  const available = editions ?? [locale];
+  if (!available.includes(locale)) {
+    throw new Error(`hreflangAlternates: ${path} is not listed among its own editions`);
+  }
+  const sitePath = sitePathOf(path);
+  const urlOf = (edition: Locale): string =>
+    edition === locale ? canonical : canonicalUrl(localePath(edition, sitePath));
+  const languages: Record<string, string> = {};
+  for (const edition of available) languages[HREFLANG[edition]] = urlOf(edition);
+  languages['x-default'] = urlOf(available.includes(DEFAULT_LOCALE) ? DEFAULT_LOCALE : locale);
   return languages;
 }
 
@@ -120,7 +167,7 @@ export function pageMetadata(input: PageMetadataInput): Metadata {
       type: input.ogType ?? 'website',
       url,
       siteName: SITE_NAME,
-      locale: SITE_LOCALE,
+      locale: OPEN_GRAPH_LOCALE[localeOfPath(input.path) ?? DEFAULT_LOCALE],
       title,
       description: input.description,
       images: [image],
@@ -142,17 +189,16 @@ export function pageMetadata(input: PageMetadataInput): Metadata {
  * This is why WP-N did not have to type a hundred Korean strings, and why it cannot type
  * one that disagrees with the page.
  *
- * The one deliberate divergence is a blog record's optional `seoTitle` (WP-S3-06): the
- * `<title>` and the Open Graph title take it, the `<h1>` keeps `title`. A story's heading
- * can be a sentence while its search title names the subject.
+ * The `<title>` and the description are the two places a content page deliberately diverges
+ * from its on-page copy: `seoTitleOf` (an explicit `seoTitle`, or the kind's template) while
+ * the `<h1>` keeps `title`, and `seoDescriptionOf` (an explicit `seoDescription`, or the
+ * kind's default) while the deck keeps `description`.
  */
 export function contentMetadata(record: AnyContentRecord): Metadata {
   return pageMetadata({
     path: contentPath(record),
-    // A blog record may carry a search title distinct from its H1 (`seoTitle`); every other
-    // kind titles the tab with its heading. `graph.ts` owns the choice.
     title: seoTitleOf(record),
-    description: record.description,
+    description: seoDescriptionOf(record),
     index: contentIndexDecision(record).index,
     // `article` where the page really is an authored article with a body and a
     // `BreadcrumbList`+`Article` pair; `website` for the reference pages (a glossary

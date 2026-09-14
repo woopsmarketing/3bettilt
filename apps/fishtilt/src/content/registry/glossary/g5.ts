@@ -107,6 +107,7 @@ export const GLOSSARY_G5_RECORDS: readonly GlossaryRecord[] = [
     term: 'UTG',
     aliases: ['언더더건', '언더 더 건', 'under the gun', '유티지'],
     title: '언더 더 건 (UTG) — 첫 번째 자리',
+    seoTerm: 'UTG(언더 더 건)',
     shortDefinition: '6인 테이블에서 가장 먼저 행동하는 자리를 말합니다.',
     description: 'UTG가 왜 가장 먼저 행동하는 자리인지, 무엇이 불리한지 설명합니다.',
     level: 'INTRO',
@@ -129,6 +130,7 @@ export const GLOSSARY_G5_RECORDS: readonly GlossaryRecord[] = [
     term: 'IP / OOP',
     aliases: ['인포지션', '아웃오브포지션', 'IP', 'OOP', '인 포지션', '아웃 오브 포지션'],
     title: '인포지션 (IP / OOP) — 상대보다 늦게 행동하나요, 먼저 행동하나요',
+    seoTerm: 'IP·OOP(인포지션·아웃오브포지션)',
     shortDefinition:
       '이번 핸드에서 상대보다 늦게 행동하면 인포지션(IP), 먼저 행동해야 하면 아웃오브포지션(OOP)이라고 부릅니다.',
     description: 'IP/OOP가 무엇을 기준으로 나뉘는지, 자리와 어떻게 다른지 설명합니다.',

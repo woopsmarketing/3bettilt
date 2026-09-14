@@ -32,7 +32,7 @@ export const HAND_STORY_S1_RECORDS: readonly HandStoryRecord[] = [
     slug: 'qq-vs-72o-flop-227',
     contentType: 'hand-story',
     title: '72o로 3벳을 콜한다고? 그런데 플랍이 2-2-7이었다',
-    seoTitle: '홀덤 핸드 리뷰: QQ vs 72o, 플랍 227에서 벌어진 상황',
+    seoTitle: '3벳에 72o가 콜했고 플랍은 2-2-7이었다 | QQ vs 72o 핸드 리뷰',
     description:
       '버튼에서 QQ로 3벳을 했더니 컷오프가 콜. 플랍은 2-2-7. 오버페어로 세 스트리트를 달렸는데, 쇼다운에서 상대가 뒤집은 카드는 7과 2였다.',
     level: 'BASIC',
@@ -102,7 +102,7 @@ export const HAND_STORY_S1_RECORDS: readonly HandStoryRecord[] = [
     slug: 'full-house-loses',
     contentType: 'hand-story',
     title: '풀하우스를 만들었는데 내가 진다고?',
-    seoTitle: '홀덤 핸드 리뷰: 99 vs T9o, 플랍 TT9에서 풀하우스가 풀하우스에게 진 이유',
+    seoTitle: '풀하우스를 만들고도 진 판 | 99 vs T9o, 플랍 TT9 핸드 리뷰',
     description:
       '버튼에서 99로 오픈, 빅 블라인드가 콜. 플랍 T-T-9으로 풀하우스가 떴는데 상대도 풀하우스였다. 같은 다섯 장의 숫자로 만든 두 풀하우스 중 왜 내 것이 작았는지 따라가 본다.',
     level: 'BASIC',

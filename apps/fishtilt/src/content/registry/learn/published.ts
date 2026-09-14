@@ -14,6 +14,7 @@ export const LEARN_PUBLISHED_RECORDS: readonly LearnRecord[] = [
     slug: 'poker-range',
     order: 6,
     title: '핸드레인지란?',
+    seoTitle: '포커 레인지란? | 홀덤 핸드레인지 개념과 13×13 표',
     description:
       '홀덤 핸드레인지가 어렵다면 13×13 표를 직접 눌러보세요. 상대가 들고 있을 수 있는 패를 하나로 묶어서 보는 방법을 초보자 눈높이에서 설명합니다.',
     level: 'BASIC',

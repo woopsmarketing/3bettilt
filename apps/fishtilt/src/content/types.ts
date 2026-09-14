@@ -86,6 +86,20 @@ export interface ContentRecord {
   readonly title: string;
   /** The one-sentence answer / meta description. Korean, written for a person (§65). */
   readonly description: string;
+  /**
+   * The `<title>` / Open Graph title when it should differ from the `<h1>` (`title`),
+   * WITHOUT the site suffix. The H1 is written for the reader on the page; this is written
+   * for the search result. Omitted = the kind's default (`graph.ts` `seoTitleOf`): a
+   * glossary entry and a hand page have a template, a learn lesson falls back to its H1.
+   * `seo/metadata.ts` is the only reader; nothing renders it on the page.
+   */
+  readonly seoTitle?: string;
+  /**
+   * The meta description when the record's `description` (the on-site deck/card sentence)
+   * is not what a search result should show. Omitted = the kind's default
+   * (`lib/seo/contentSeo.ts` `seoDescriptionOf`). Nothing renders it on the page.
+   */
+  readonly seoDescription?: string;
   readonly level: ContentLevel;
   readonly topic: ContentTopic;
   /**
@@ -146,6 +160,12 @@ export interface GlossaryRecord extends ContentRecord {
    * prose, where that entry's MDX is not loaded.
    */
   readonly shortDefinition: string;
+  /**
+   * The word a Korean reader actually types before "뜻", when the H1's headword is not it
+   * (`쓰리벳` -> `3벳`, `판에 자발적으로 들어간 비율` -> `VPIP`). Feeds the glossary title
+   * template in `graph.ts` `seoTitleOf`. Omitted = derived from `title`.
+   */
+  readonly seoTerm?: string;
 }
 
 /**
@@ -172,13 +192,6 @@ export interface BlogRecord extends ContentRecord {
   readonly kind: 'blog';
   /** Which of the five hub sections this article belongs to. See `BLOG_CONTENT_TYPES`. */
   readonly contentType: BlogContentType;
-  /**
-   * The `<title>` / Open Graph title when it should differ from the `<h1>` (`title`). A
-   * story's H1 can be a sentence ("…그런데 플랍이 2-2-7이었다") while the search title
-   * names the subject ("홀덤 핸드 리뷰: QQ vs 72o"). Omitted = `title` is used for both.
-   * `seo/metadata.ts` is the only reader; nothing renders it on the page.
-   */
-  readonly seoTitle?: string;
   /**
    * Present on exactly the records whose `contentType` is `'hand-story'` — the reconstructed
    * hand the story template renders from data (D-S3-20). `stories/validate.ts` is the gate;

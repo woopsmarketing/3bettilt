@@ -175,7 +175,8 @@ describe('/tools hub', () => {
   });
 
   it('sets page metadata that names the hub', () => {
-    expect(metadata.title).toContain('무료');
+    expect(metadata.title).toContain('홀덤 계산기');
+    expect(metadata.description).toContain('무료');
     expect(metadata.description).toBeTruthy();
   });
 

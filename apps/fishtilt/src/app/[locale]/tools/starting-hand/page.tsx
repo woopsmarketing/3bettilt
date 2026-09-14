@@ -20,7 +20,7 @@ const ROUTE = routeById('toolStartingHand');
 
 const SEO = {
   path: ROUTE.path,
-  title: `시작 핸드 순위표 — 169개 패를 승률순으로 (${ROUTE.label})`,
+  title: '홀덤 시작 핸드 순위표 | 169개 핸드 무료 탐색 도구',
   description:
     '169개 시작 패를 무작위 상대 기준 승률 순서로 살펴보고, 상위 몇 %까지 볼지 직접 슬라이더로 골라보세요. 순위를 매기는 숫자와 수티드·오프수트의 차이까지.',
 } as const;

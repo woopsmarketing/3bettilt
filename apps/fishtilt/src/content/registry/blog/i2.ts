@@ -55,7 +55,7 @@ export const BLOG_I2_RECORDS: readonly BlogRecord[] = [
     slug: 'why-72o-is-weak',
     contentType: 'concept-culture',
     title: '72o가 최악의 패라는 말은 맞을까?',
-    seoTitle: '72o가 최악의 패라는 말은 맞을까? 순위표 진짜 바닥은 따로 있다',
+    seoTitle: '72o는 정말 홀덤 최약체 핸드일까? 순위표의 진짜 바닥',
     description:
       '흔히 최악의 패로 꼽히는 72o의 실제 순위와, 169가지 중 진짜 꼴찌가 무엇인지 데이터로 확인합니다.',
     level: 'INTRO',
@@ -100,6 +100,8 @@ export const BLOG_I2_RECORDS: readonly BlogRecord[] = [
     contentType: 'search-guide',
     title: '플러시와 스트레이트 중 뭐가 강할까?',
     seoTitle: '플러시 vs 스트레이트: 어느 쪽이 이기고, 왜 더 드문가',
+    seoDescription:
+      '플러시가 스트레이트보다 강합니다. 실제 카드로 두 족보를 비교하고, 순위를 가르는 이유인 나오는 빈도 차이를 설명합니다.',
     description: '두 족보 중 왜 플러시가 더 높은 순위인지, 나오는 빈도로 설명합니다.',
     level: 'BASIC',
     topic: 'hand-strength',
@@ -121,6 +123,8 @@ export const BLOG_I2_RECORDS: readonly BlogRecord[] = [
     contentType: 'search-guide',
     title: '풀하우스와 플러시 중 뭐가 강할까?',
     seoTitle: '풀하우스 vs 플러시: 순위와 빈도, 풀하우스끼리 비교하는 법',
+    seoDescription:
+      '풀하우스가 플러시보다 강합니다. 실제 카드로 두 족보를 비교하고, 더 드물게 나오는 이유와 풀하우스끼리 승부를 가리는 법까지 정리합니다.',
     description:
       '두 족보 중 왜 풀하우스가 더 높은 순위인지, 풀하우스끼리 비교하는 법까지 정리합니다.',
     level: 'BASIC',

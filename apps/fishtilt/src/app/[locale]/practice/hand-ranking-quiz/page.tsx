@@ -37,7 +37,7 @@ const QUESTION_LIMIT = 10;
 
 export const metadata: Metadata = pageMetadata({
   path: routeById('practiceHandRanking').path,
-  title: '족보 퀴즈',
+  title: '홀덤 족보 퀴즈 | 포커 핸드 순위 연습',
   description:
     '두 핸드 중 어떤 패가 이기는지 직접 맞혀보세요. 정답은 그 자리에서 바로 확인하고, 틀린 문제만 다시 풀 수 있습니다.',
   index: true,

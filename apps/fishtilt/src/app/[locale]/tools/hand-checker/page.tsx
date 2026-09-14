@@ -18,7 +18,7 @@ const ROUTE = routeById('toolHandChecker');
 
 const SEO = {
   path: ROUTE.path,
-  title: `포커 족보 확인기 (${ROUTE.label}) — 내 패 족보 판정`,
+  title: '포커 핸드 판정기 | 홀덤 족보 확인',
   description:
     '핸드 카드와 보드 카드를 골라보세요. 지금 만들어진 족보가 무엇인지, 어떤 다섯 장으로 만들어졌는지 바로 보여주는 무료 핸드 체커. 키커와 비기는 경우까지 예시로.',
 } as const;

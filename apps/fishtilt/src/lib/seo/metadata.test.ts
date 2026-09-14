@@ -9,7 +9,7 @@
 import type { Metadata } from 'next';
 import { describe, expect, it } from 'vitest';
 import type { BlogRecord, LearnRecord } from '../../content/types.js';
-import { contentMetadata, formatTitle, pageMetadata } from './metadata.js';
+import { contentMetadata, formatTitle, hreflangAlternates, pageMetadata } from './metadata.js';
 import { OG_IMAGE_PATH, SITE_LOCALE, SITE_NAME, SITE_ORIGIN } from './site.js';
 import { HREFLANG } from '../locale.js';
 import { DEFAULT_LOCALE, localePath } from '../locale.js';
@@ -52,9 +52,15 @@ function ogType(meta: Metadata): string | undefined {
 
 describe('formatTitle', () => {
   it('appends the site name exactly once', () => {
-    expect(formatTitle('팟 오즈 계산기')).toBe(`팟 오즈 계산기 · ${SITE_NAME}`);
-    expect(formatTitle(`팟 오즈 계산기 · ${SITE_NAME}`)).toBe(`팟 오즈 계산기 · ${SITE_NAME}`);
+    expect(formatTitle('팟 오즈 계산기')).toBe(`팟 오즈 계산기 - ${SITE_NAME}`);
+    expect(formatTitle(`팟 오즈 계산기 - ${SITE_NAME}`)).toBe(`팟 오즈 계산기 - ${SITE_NAME}`);
     expect(formatTitle(SITE_NAME)).toBe(SITE_NAME);
+  });
+
+  it('keeps the brand last, after the qualifier, and never spells the domain', () => {
+    const title = formatTitle('홀덤 팟오즈 계산기 | 무료 포커 계산기');
+    expect(title).toBe(`홀덤 팟오즈 계산기 | 무료 포커 계산기 - ${SITE_NAME}`);
+    expect(title).not.toMatch(/3bettilt\.com/iu);
   });
 });
 
@@ -81,7 +87,7 @@ describe('pageMetadata', () => {
   });
 
   it('uses the same title for the tab and the social card', () => {
-    expect(meta.title).toBe(`팟 오즈 계산기 · ${SITE_NAME}`);
+    expect(meta.title).toBe(`팟 오즈 계산기 - ${SITE_NAME}`);
     expect(meta.openGraph?.title).toBe(meta.title);
     expect(meta.twitter?.title).toBe(meta.title);
   });
@@ -109,6 +115,22 @@ describe('pageMetadata', () => {
     });
     // Only languages the site has: two entries, no `en`.
     expect(Object.keys(meta.alternates?.languages ?? {})).toHaveLength(2);
+  });
+
+  it('computes the hreflang set from the editions a document exists in', () => {
+    const path = ko('/learn/pot-odds');
+    const canonical = `${SITE_ORIGIN}${path}`;
+    // Default: the page's own locale is its only edition — today's whole truth.
+    expect(hreflangAlternates(canonical, path)).toEqual(
+      hreflangAlternates(canonical, path, [DEFAULT_LOCALE]),
+    );
+    // An edition list that omits the page itself would publish a set that is not reciprocal.
+    expect(() => hreflangAlternates(canonical, path, [])).toThrow(/own editions/u);
+    expect(() => hreflangAlternates(canonical, '/learn/pot-odds')).toThrow(/localised path/u);
+  });
+
+  it('reads og:locale off the page path', () => {
+    expect((meta.openGraph as { locale?: string } | undefined)?.locale).toBe(SITE_LOCALE);
   });
 
   it('emits no hreflang for a noindex page — it is not an edition of anything', () => {
@@ -143,7 +165,7 @@ describe('pageMetadata', () => {
 describe('contentMetadata', () => {
   it('derives everything from the record, including the path', () => {
     const meta = contentMetadata(blogRecord());
-    expect(meta.title).toBe(`AA는 얼마나 자주 나오나요? · ${SITE_NAME}`);
+    expect(meta.title).toBe(`AA는 얼마나 자주 나오나요? - ${SITE_NAME}`);
     expect(meta.description).toBe('테스트가 직접 만든 블로그 레코드입니다.');
     expect(meta.alternates?.canonical).toBe(`${SITE_ORIGIN}${ko('/blog/fixture-article')}`);
   });
@@ -177,5 +199,18 @@ describe('contentMetadata', () => {
     expect(ogType(contentMetadata({ ...blogRecord(), kind: 'hands', handKey: 'AKs' }))).toBe(
       'website',
     );
+  });
+});
+
+describe('content titles and descriptions', () => {
+  it('lets an explicit seoTitle win on any kind, and never touches the H1', () => {
+    const meta = contentMetadata(learnRecord({ seoTitle: '팟오즈 계산법 | 테스트' }));
+    expect(meta.title).toBe(`팟오즈 계산법 | 테스트 - ${SITE_NAME}`);
+  });
+
+  it('prefers an explicit seoDescription over the deck', () => {
+    const meta = contentMetadata(blogRecord({ seoDescription: '검색 결과에만 쓰는 설명입니다.' }));
+    expect(meta.description).toBe('검색 결과에만 쓰는 설명입니다.');
+    expect(meta.openGraph?.description).toBe(meta.description);
   });
 });

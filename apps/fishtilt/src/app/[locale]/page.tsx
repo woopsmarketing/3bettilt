@@ -80,24 +80,31 @@ import {
 } from '../../content/registry/learn/categories.js';
 import { describeRangeConditions, RANGE_LABEL } from '../../features/range/index.js';
 import { practiceHubCards } from '../../features/quiz/index.js';
-import { JsonLd, organizationJsonLd, pageMetadata, webSiteJsonLd } from '../../lib/seo/index.js';
+import {
+  HOME_SEO_DESCRIPTION,
+  HOME_SEO_TITLE,
+  JsonLd,
+  organizationJsonLd,
+  pageMetadata,
+  webSiteJsonLd,
+} from '../../lib/seo/index.js';
 import { routeById } from '../../lib/routes.js';
 
 /*
  * Routed through `pageMetadata` like every other page. The title is passed WITHOUT the
- * "· 3BetTilt" suffix — `pageMetadata` appends it.
+ * " - 3BetTilt" suffix — `pageMetadata` appends it.
  *
  * THE TITLE AND THE H1 ARE DELIBERATELY DIFFERENT. The `<h1>` is a sentence — a visitor
  * already looking at the page needs a reason to stay, not a label. A search result is the
  * opposite situation: there the line has to say WHAT this is to someone who has never heard
- * of it. `무료 홀덤 학습` is the site in three words and the keyword map's own secondary
- * keyword for `/`; it is also the exact string `layout.tsx` carries as the site-level fallback.
+ * of it: `텍사스 홀덤 배우기` is the query the home page answers, and the qualifier names the
+ * three things a searcher can do here (족보, 핸드레인지, 승률 계산기). Both strings live in
+ * `lib/seo/site.ts` because `layout.tsx` carries them as the site-level fallback.
  */
 export const metadata: Metadata = pageMetadata({
   path: routeById('home').path,
-  title: '무료 홀덤 학습',
-  description:
-    '핸드 순위부터 레인지와 확률까지, 텍사스 홀덤을 쉬운 한국어로. 13×13 핸드레인지 표와 승률·팟 오즈·아웃 계산기를 직접 눌러보며 배우는 무료 학습 사이트입니다.',
+  title: HOME_SEO_TITLE,
+  description: HOME_SEO_DESCRIPTION,
   index: true,
 });
 

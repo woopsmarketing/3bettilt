@@ -21,6 +21,7 @@ import type { Metadata } from 'next';
 import {
   collectionPageJsonLd,
   definedTermSetJsonLd,
+  GLOSSARY_TERM_SET_NAME,
   JsonLd,
   pageMetadata,
   routeBreadcrumbs,
@@ -52,7 +53,7 @@ import { routeById } from '../../../lib/routes.js';
  *  `name`/`description` all read it. */
 const SEO = {
   path: routeById('glossary').path,
-  title: '포커 용어 사전',
+  title: '홀덤 용어 사전 | 프리플랍·3벳·포지션·팟오즈 뜻',
   description:
     '홀덤에서 쓰는 말을 쉬운 한국어 한 줄로 먼저 설명하고, 영어 이름과 줄임말을 함께 보여줍니다. ㄱㄴㄷ순, 주제별, 검색으로 찾을 수 있습니다.',
 } as const;
@@ -101,7 +102,7 @@ export default function GlossaryIndexPage() {
         blocks={[
           collectionPageJsonLd({
             ...SEO,
-            mainEntity: definedTermSetJsonLd(SEO.title, SEO.path, declared),
+            mainEntity: definedTermSetJsonLd(GLOSSARY_TERM_SET_NAME, SEO.path, declared),
           }),
         ]}
       />

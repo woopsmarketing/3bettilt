@@ -31,7 +31,7 @@ export const HAND_STORY_S2_RECORDS: readonly HandStoryRecord[] = [
     slug: 'qq-three-bet-frustration',
     contentType: 'hand-story',
     title: 'QQ를 들고 3벳했는데, 상대 패를 보고 더 화가 났다',
-    seoTitle: '홀덤 핸드 리뷰: QQ vs A4s, 3벳 팟에서 턴에 A가 떨어진 상황',
+    seoTitle: 'QQ로 3벳했는데 턴에 A가 떨어졌다 | QQ vs A4s 핸드 리뷰',
     description:
       '빅 블라인드에서 QQ로 3벳, 버튼이 콜. 플랍 9-4-2에 턴 A. 리버까지 콜한 뒤 상대가 뒤집은 패는 A4s였다. 승률이 스트리트마다 어떻게 움직였는지 숫자로 다시 본다.',
     level: 'BASIC',
@@ -90,7 +90,7 @@ export const HAND_STORY_S2_RECORDS: readonly HandStoryRecord[] = [
     slug: 'river-changes-everything',
     contentType: 'hand-story',
     title: '리버 한 장 때문에 모든 게 바뀌었다',
-    seoTitle: '홀덤 핸드 리뷰: JTs 플러시 드로우 vs K7s 투페어, 리버에서 뒤집힌 판',
+    seoTitle: '리버 한 장에 뒤집힌 판 | JTs vs K7s 핸드 리뷰',
     description:
       '버튼에서 J♥T♥로 오픈, 플랍 K♥7♥2♦에서 플러시 드로우. 상대는 체크-레이즈에 턴, 리버까지 벳. 5♥ 리버가 떨어지기 전까지 나는 한 번도 앞선 적이 없었다.',
     level: 'BASIC',

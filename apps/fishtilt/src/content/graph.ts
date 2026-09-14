@@ -122,9 +122,49 @@ export function publishedStories(): readonly HandStoryRecord[] {
   );
 }
 
-/** The `<title>` for a record: a blog record's `seoTitle` when set, else its H1. */
+/**
+ * The glossary title's search word: `seoTerm` when the record names one, else the H1's
+ * Korean headword — everything before ` (` — keeping a short Latin abbreviation that is part
+ * of how the term is searched (`빅 블라인드 (BB)` -> `빅 블라인드(BB)`). A long English gloss
+ * (`앤티 (Ante) — …`) is dropped: nobody searches "앤티 Ante 뜻".
+ */
+export function glossarySeoTerm(record: GlossaryRecord): string {
+  if (record.seoTerm !== undefined) return record.seoTerm;
+  const match = /^(.+?) \(([^)]+)\)/u.exec(record.title);
+  if (match === null) return record.title.split(' — ')[0] ?? record.title;
+  const [, headword = record.title, gloss = ''] = match;
+  return /^[A-Z]{2,4}$/u.test(gloss) ? `${headword}(${gloss})` : headword;
+}
+
+/**
+ * The `<title>` for a record, WITHOUT the site suffix (`seo/metadata.ts` adds it). The H1
+ * (`title`) is written for the reader on the page; this is written for the search result,
+ * and the two share one meaning rather than one string.
+ *
+ * An explicit `seoTitle` always wins — that is the override for any record whose search
+ * intent the template gets wrong. Otherwise, per kind:
+ *
+ * - **glossary** — `{검색어} 뜻 | 홀덤·포커 용어 설명`. Sixty-four definitions are one
+ *   intent ("X 뜻") and one template keeps them from drifting; `glossarySeoTerm` is the part
+ *   that varies.
+ * - **hands** — `{AKs} 승률·순위 | 텍사스 홀덤 프리플랍 핸드 가이드`. The hand key is the
+ *   query. 승률 is the site's label for the ties-split expected pot share (ADR-0082 keeps the
+ *   label and the hand page states the tie convention on that surface); the title never says
+ *   이길 확률.
+ * - **learn / blog** — the H1. Every published lesson and article carries its own `seoTitle`
+ *   today; the fallback exists so a new record is never untitled.
+ */
 export function seoTitleOf(record: AnyContentRecord): string {
-  return record.kind === 'blog' && record.seoTitle !== undefined ? record.seoTitle : record.title;
+  if (record.seoTitle !== undefined) return record.seoTitle;
+  switch (record.kind) {
+    case 'glossary':
+      return `${glossarySeoTerm(record)} 뜻 | 홀덤·포커 용어 설명`;
+    case 'hands':
+      return `${record.handKey} 승률·순위 | 텍사스 홀덤 프리플랍 핸드 가이드`;
+    case 'learn':
+    case 'blog':
+      return record.title;
+  }
 }
 
 /**

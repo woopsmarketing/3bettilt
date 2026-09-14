@@ -4,7 +4,12 @@ import { SiteHeader } from '../components/SiteHeader.js';
 import { SiteFooter } from '../components/SiteFooter.js';
 import { DEFAULT_LOCALE } from '../lib/locale.js';
 import { routeById } from '../lib/routes.js';
-import { pageMetadata, SITE_ORIGIN } from '../lib/seo/index.js';
+import {
+  HOME_SEO_DESCRIPTION,
+  HOME_SEO_TITLE,
+  pageMetadata,
+  SITE_ORIGIN,
+} from '../lib/seo/index.js';
 
 /**
  * Site-level metadata.
@@ -24,16 +29,15 @@ import { pageMetadata, SITE_ORIGIN } from '../lib/seo/index.js';
  * templates set their own. What is left here is `metadataBase` (which is not a fallback: Next
  * needs it whether or not a page sets a canonical) plus a title and description that exist so
  * that a route added tomorrow without a `metadata` export emits the site's own name and a real
- * sentence rather than Next's defaults. They are kept identical to the homepage's title, so
- * the fallback and the front door cannot describe two different sites.
+ * sentence rather than Next's defaults. They are the homepage's own constants (`HOME_SEO_TITLE`,
+ * `HOME_SEO_DESCRIPTION`), so the fallback and the front door cannot describe two different sites.
  */
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
   ...pageMetadata({
     path: routeById('home').path,
-    title: '무료 홀덤 학습',
-    description:
-      '텍사스 홀덤을 처음부터 쉬운 한국어로. 13×13 핸드레인지 표, 승률·팟 오즈·아웃 계산기를 직접 눌러보며 배우는 무료 학습 사이트입니다.',
+    title: HOME_SEO_TITLE,
+    description: HOME_SEO_DESCRIPTION,
     index: true,
   }),
 };

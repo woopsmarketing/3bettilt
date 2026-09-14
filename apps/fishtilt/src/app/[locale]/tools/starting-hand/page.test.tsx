@@ -149,10 +149,9 @@ describe('/tools/starting-hand page shell', () => {
      */
     render(<StartingHandExplorerPage />);
     const h1 = screen.getByRole('heading', { level: 1 }).textContent ?? '';
-    // WP-S3-14: the `<title>` is the keyword-map phrase (시작 핸드 순위표) and still names the
-    // tool as the registry does; it is deliberately not the long `<h1>`.
-    expect(String(metadata.title)).toContain(routeById('toolStartingHand').label);
-    expect(String(metadata.title)).toContain('순위표');
+    // The `<title>` is the search phrase (홀덤 시작 핸드 순위표); it is deliberately not the
+    // long `<h1>`.
+    expect(String(metadata.title)).toContain('시작 핸드 순위표');
     expect(String(metadata.title).endsWith(formatTitle('').trim())).toBe(true);
     expect(metadata.title).not.toBe(formatTitle(h1));
     expect(metadata.description).toBeTruthy();

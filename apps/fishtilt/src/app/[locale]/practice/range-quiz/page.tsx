@@ -33,7 +33,7 @@ import { routeById } from '../../../../lib/routes.js';
 
 export const metadata: Metadata = pageMetadata({
   path: routeById('practiceRange').path,
-  title: '레인지 퀴즈',
+  title: '홀덤 핸드레인지 퀴즈 | 프리플랍 레인지 연습',
   description:
     '포지션을 고르고, 각 시작 패가 그 자리의 학습용 기본 레인지에 포함되는지 직접 맞혀보고 바로 확인하세요.',
   index: true,

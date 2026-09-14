@@ -52,7 +52,7 @@ import { routeById } from '../../../lib/routes.js';
  */
 const SEO = {
   path: routeById('practice').path,
-  title: '홀덤 퀴즈',
+  title: '홀덤 퀴즈 | 족보·핸드레인지·시작 핸드 연습',
   description:
     '레인지, 족보, 시작 핸드까지 — 배운 내용을 바로 확인하는 연습 문제 모음입니다. 읽었으면 직접 풀어보세요.',
 } as const;

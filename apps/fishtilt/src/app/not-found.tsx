@@ -6,7 +6,7 @@
  * (`404: This page could not be found.`) inside a `<title>` element of its own, INSIDE the
  * root layout — so the prerendered `_not-found.html` carried TWO `<title>` tags. The first
  * one wins in every browser and every link unfurler, and the first one is the root layout's
- * fallback, `무료 홀덤 학습 · 3BetTilt`. A Korean visitor who mistyped a URL got a page that
+ * fallback (the home page's own title). A Korean visitor who mistyped a URL got a page that
  * looked like a bug, and anything that read the document was told this was the homepage.
  * The built-in also renders no `<main>`, so the site's one landmark-less page was the page
  * where a screen-reader user most needs to find the way out.

@@ -18,7 +18,7 @@ const ROUTE = routeById('toolOuts');
 
 const SEO = {
   path: ROUTE.path,
-  title: `아웃츠 계산기 — 드로우 완성 확률과 ×2 · ×4 규칙`,
+  title: '포커 아웃츠 계산기 | 홀덤 드로우 완성 확률',
   description:
     '드로우가 완성될 확률을 정확하게 계산합니다. 흔히 쓰는 ×2 / ×4 암산 규칙과 실제 확률의 차이, 47장과 46장의 뜻, 겹치는 드로우 세는 법까지 함께 보여주는 무료 아웃 계산기.',
 } as const;

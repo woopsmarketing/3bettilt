@@ -13,14 +13,16 @@ import type { Metadata } from 'next';
 import EquityPage, { metadata as equityMeta } from '../../app/[locale]/tools/equity/page.js';
 import PotOddsPage, { metadata as potOddsMeta } from '../../app/[locale]/tools/pot-odds/page.js';
 import OutsPage, { metadata as outsMeta } from '../../app/[locale]/tools/outs/page.js';
-import HandCheckerPage, { metadata as handCheckerMeta } from '../../app/[locale]/tools/hand-checker/page.js';
+import HandCheckerPage, {
+  metadata as handCheckerMeta,
+} from '../../app/[locale]/tools/hand-checker/page.js';
 import RangePage, { metadata as rangeMeta } from '../../app/[locale]/tools/range/page.js';
 import StartingHandPage, {
   metadata as startingHandMeta,
 } from '../../app/[locale]/tools/starting-hand/page.js';
 import { TOOL_FAQ_TITLE } from '../../features/tools/index.js';
 import { routeById } from '../routes.js';
-import { formatTitle } from './metadata.js';
+import { TITLE_QUALIFIER_SEPARATOR } from './site.js';
 import { MIN_FAQ_ITEMS } from './faq.js';
 
 interface ToolPage {
@@ -60,11 +62,14 @@ function ofType(container: HTMLElement, type: string): Record<string, unknown> |
 }
 
 describe.each(PAGES)('$name structured data', (tool) => {
-  it('declares a WebApplication named the same thing the <title> is built from', () => {
+  it('declares a WebApplication named with the search phrase the <title> is built from', () => {
     const { container } = render(<tool.Page />);
     const app = ofType(container, 'WebApplication');
     expect(app, 'no WebApplication').toBeDefined();
-    expect(formatTitle(String(app?.['name']))).toBe(tool.metadata.title);
+    const name = String(app?.['name']);
+    expect(name).not.toBe('');
+    expect(name).not.toContain(TITLE_QUALIFIER_SEPARATOR);
+    expect(String(tool.metadata.title).startsWith(name)).toBe(true);
     expect(new URL(String(app?.['url'])).pathname).toBe(routeById(tool.routeId).path);
   });
 

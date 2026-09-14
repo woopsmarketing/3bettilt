@@ -20,6 +20,7 @@ import type { Metadata } from 'next';
 import type * as GraphModule from '../../content/graph.js';
 import type { LearnRecord } from '../../content/types.js';
 import { formatTitle } from './metadata.js';
+import { TITLE_QUALIFIER_SEPARATOR } from './site.js';
 import { DEFAULT_LOCALE, localePath } from '../locale.js';
 
 /** The localised form of a site path — what every href on the site carries (D-S3-02). */
@@ -130,10 +131,15 @@ function renderedHrefs(container: HTMLElement): string[] {
 }
 
 describe.each(HUBS)('$name CollectionPage', (hub) => {
-  it('names the page with the same string the <title> is built from', () => {
+  it('names the page with the search phrase the <title> is built from', () => {
     const { container } = render(<hub.Page />);
     const block = collectionPage(container);
-    expect(formatTitle(String(block['name']))).toBe(hub.metadata.title);
+    const name = String(block['name']);
+    // The `name` is the title's search phrase (`titleHead`); the `<title>` adds the qualifier
+    // and the brand. Same literal, so the two cannot name the page differently.
+    expect(name).not.toContain(TITLE_QUALIFIER_SEPARATOR);
+    expect(formatTitle(String(hub.metadata.title))).toBe(hub.metadata.title);
+    expect(String(hub.metadata.title).startsWith(name)).toBe(true);
     expect(block['description']).toBe(hub.metadata.description);
   });
 

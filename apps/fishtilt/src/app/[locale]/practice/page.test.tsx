@@ -112,7 +112,7 @@ describe('/practice hub', () => {
      */
     render(<PracticeHubPage />);
     const h1 = screen.getByRole('heading', { level: 1 }).textContent ?? '';
-    expect(metadata.title).toBe(formatTitle('홀덤 퀴즈'));
+    expect(metadata.title).toBe(formatTitle('홀덤 퀴즈 | 족보·핸드레인지·시작 핸드 연습'));
     expect(h1).toBe('배운 내용을 직접 풀어보세요');
     expect(metadata.title).not.toBe(formatTitle(h1));
     expect(metadata.description).toBeTruthy();

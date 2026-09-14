@@ -95,7 +95,7 @@ describe('/tools/equity page shell', () => {
   });
 
   it('sets page metadata that names the tool', () => {
-    expect(metadata.title).toContain('승률 계산기');
+    expect(metadata.title).toContain('승률·에퀴티 계산기');
     expect(metadata.description).toBeTruthy();
   });
 

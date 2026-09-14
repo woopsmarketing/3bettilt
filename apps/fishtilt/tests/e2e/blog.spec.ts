@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { BLOG_RECORDS } from '../../src/content/registry/blog/index.js';
 import { seoTitleOf } from '../../src/content/graph.js';
 import { THEME_VISUALS } from '../../src/content/visuals.js';
+import { SITE_NAME, TITLE_BRAND_SEPARATOR } from '../../src/lib/seo/site.js';
 import { koPath, visibleBodyText } from './helpers.js';
 
 /**
@@ -308,7 +309,9 @@ test.describe('blog article', () => {
     await page.goto(ARTICLE);
     // `<title>` is `seoTitleOf(record)` (seoTitle ?? title) + the site name; the H1 stays
     // `title`. Read from the registry so a WP-S3-07 retitle cannot silently stale this case.
-    await expect(page).toHaveTitle(`${seoTitleOf(ARTICLE_RECORD)} · 3BetTilt`);
+    await expect(page).toHaveTitle(
+      `${seoTitleOf(ARTICLE_RECORD)}${TITLE_BRAND_SEPARATOR}${SITE_NAME}`,
+    );
     await expect(page.getByRole('heading', { level: 1, name: ARTICLE_RECORD.title })).toBeVisible();
     const ld = await page.locator('script[type="application/ld+json"]').allTextContents();
     const article = ld
@@ -338,7 +341,7 @@ test.describe('blog article', () => {
     });
     for (const record of sample) {
       await page.goto(koPath(`/blog/${record.slug}`));
-      await expect(page).toHaveTitle(`${record.seoTitle} · 3BetTilt`);
+      await expect(page).toHaveTitle(`${seoTitleOf(record)}${TITLE_BRAND_SEPARATOR}${SITE_NAME}`);
       await expect(page.getByRole('heading', { level: 1, name: record.title })).toBeVisible();
       expect(await page.getByRole('heading', { level: 1 }).allTextContents()).not.toContain(
         record.seoTitle,

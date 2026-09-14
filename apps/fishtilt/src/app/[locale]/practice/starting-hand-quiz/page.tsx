@@ -40,7 +40,7 @@ const QUESTION_LIMIT = 10;
 
 export const metadata: Metadata = pageMetadata({
   path: routeById('practiceStartingHand').path,
-  title: '시작 핸드 퀴즈',
+  title: '홀덤 시작 핸드 퀴즈 | 두 패 중 강한 쪽 맞히기',
   description:
     '두 시작 패 중 어느 쪽이 더 강한지 직접 비교해보세요. 프리플랍 기본 강도 데이터로 그 자리에서 바로 채점됩니다.',
   index: true,

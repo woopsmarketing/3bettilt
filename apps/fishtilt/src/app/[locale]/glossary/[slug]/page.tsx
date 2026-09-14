@@ -53,15 +53,13 @@ import {
   contentMetadata,
   definedTermJsonLd,
   faqPageJsonLd,
+  GLOSSARY_TERM_SET_NAME,
   JsonLd,
 } from '../../../../lib/seo/index.js';
 import { readFaqItems } from '../../../../lib/seo/faqSource.js';
 import { routeById } from '../../../../lib/routes.js';
 
 export const dynamicParams = false;
-
-/** The set every term page points back at — the hub's own name and path. */
-const GLOSSARY_SET_NAME = '포커 용어 사전';
 
 export function generateStaticParams(): { slug: string }[] {
   return publishedOfKind('glossary').map((entry) => ({ slug: entry.slug }));
@@ -109,7 +107,7 @@ export default async function GlossaryEntryPage({
             description: entry.shortDefinition,
             alternateNames: [entry.term, ...aliases].filter((name) => name !== headword),
             path,
-            set: { name: GLOSSARY_SET_NAME, path: hub },
+            set: { name: GLOSSARY_TERM_SET_NAME, path: hub },
           }),
           faqPageJsonLd(readFaqItems('glossary', entry.slug)),
         ]}

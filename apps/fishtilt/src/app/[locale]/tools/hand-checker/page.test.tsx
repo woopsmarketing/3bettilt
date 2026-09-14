@@ -95,7 +95,8 @@ describe('/tools/hand-checker page shell', () => {
   });
 
   it('sets page metadata that names the tool', () => {
-    expect(metadata.title).toContain('핸드 체커');
+    expect(metadata.title).toContain('핸드 판정기');
+    expect(metadata.title).toContain('족보');
     expect(metadata.description).toBeTruthy();
   });
 

@@ -102,7 +102,7 @@ export default function GlobalError({
   return (
     <html lang="ko">
       <head>
-        <title>문제가 생겼습니다 · 3BetTilt</title>
+        <title>문제가 생겼습니다 - 3BetTilt</title>
         <meta name="robots" content="noindex, follow" />
         <style dangerouslySetInnerHTML={{ __html: STYLE }} />
       </head>

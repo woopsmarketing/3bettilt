@@ -81,7 +81,7 @@ describe('/tools/pot-odds page shell', () => {
   });
 
   it('sets page metadata that names the tool', () => {
-    expect(metadata.title).toContain('팟 오즈');
+    expect(metadata.title).toContain('팟오즈 계산기');
     expect(metadata.description).toBeTruthy();
   });
 

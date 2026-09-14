@@ -11,6 +11,7 @@ export const LEARN_H3_RECORDS: readonly LearnRecord[] = [
     slug: 'flop-turn-river',
     order: 11,
     title: '플랍 · 턴 · 리버, 카드는 이렇게 열립니다',
+    seoTitle: '플랍·턴·리버 | 홀덤 공용 카드가 열리는 순서',
     description:
       '공용 카드 다섯 장이 3장, 1장, 1장으로 나뉘어 열리는 순서와 각 단계의 이름을 정리합니다.',
     level: 'INTRO',
@@ -42,6 +43,7 @@ export const LEARN_H3_RECORDS: readonly LearnRecord[] = [
     slug: 'three-bet',
     order: 12,
     title: '상대의 레이즈에 다시 레이즈 (3-Bet)',
+    seoTitle: '3벳이란? | 레이즈에 다시 레이즈하는 상황 이해하기',
     description:
       '왜 두 번째 레이즈를 3-Bet이라고 부르는지, 그리고 그 상황에서 무엇이 달라지는지 설명합니다.',
     level: 'INTERMEDIATE',
@@ -72,6 +74,7 @@ export const LEARN_H3_RECORDS: readonly LearnRecord[] = [
     slug: 'equity',
     order: 13,
     title: '내 승률은 몇 퍼센트일까? (Equity)',
+    seoTitle: '포커 에퀴티란? | 승률 개념과 계산 방법',
     description:
       '지금 이 패가 끝까지 갔을 때 팟에서 기대되는 몫을 뜻하는 말. 어떻게 세는지 예로 확인합니다.',
     level: 'BASIC',
@@ -93,6 +96,7 @@ export const LEARN_H3_RECORDS: readonly LearnRecord[] = [
     slug: 'pot-odds',
     order: 14,
     title: '콜할 값어치가 있을까? 팟오즈',
+    seoTitle: '팟오즈 계산법 | 콜에 필요한 최소 승률 구하기',
     description:
       '내야 하는 돈과 가져갈 수 있는 돈을 비교해, 콜에 필요한 최소 승률을 구하는 방법입니다.',
     level: 'BASIC',
@@ -114,6 +118,9 @@ export const LEARN_H3_RECORDS: readonly LearnRecord[] = [
     slug: 'outs',
     order: 15,
     title: '아직 남은 좋은 카드, 아웃츠',
+    seoTitle: '포커 아웃츠 세는 법 | 드로우를 완성하는 남은 카드',
+    seoDescription:
+      '내 패를 완성시켜 주는 카드, 아웃츠가 몇 장 남았는지 세고 그 카드가 나올 확률을 구합니다. 실제 예시와 자주 헷갈리는 부분까지 함께 봅니다.',
     description:
       '내 패를 완성시켜 주는 카드가 몇 장 남았는지 세고, 그 카드가 나올 확률을 구합니다.',
     level: 'BASIC',

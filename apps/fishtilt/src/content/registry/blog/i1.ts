@@ -30,7 +30,7 @@ export const BLOG_I1_RECORDS: readonly BlogRecord[] = [
     slug: 'aks-vs-ako',
     contentType: 'search-guide',
     title: 'AKs vs AKo 차이: 수티드가 실제로 얼마나 중요한가?',
-    seoTitle: 'AKs vs AKo 차이 — 수티드가 실제로 얼마나 중요한가',
+    seoTitle: 'AKs vs AKo 차이는? 수티드가 실제로 얼마나 중요한가',
     description:
       '같은 A와 K인데 무늬 한 글자가 조합 수, 승률, 순위를 얼마나 바꾸는지 계산해 둔 숫자로 재고, 어디까지는 똑같은지도 함께 봅니다.',
     level: 'INTRO',
@@ -60,7 +60,7 @@ export const BLOG_I1_RECORDS: readonly BlogRecord[] = [
     slug: 'next-best-after-aa',
     contentType: 'data-probability',
     title: 'AA 다음으로 강한 시작 패는? 상위 20위 순위표와 승률',
-    seoTitle: 'AA 다음으로 좋은 패는? 시작 핸드 순위 2위~20위와 승률',
+    seoTitle: 'AA 다음으로 강한 홀덤 시작 핸드는? 순위 2위~20위와 승률',
     description:
       '2위 KK부터 20위까지 시작 패 순위표를 통째로 펼치고, 이 순위가 정확히 무엇을 잰 값인지, 왜 포켓페어가 위쪽에 몰리는지 봅니다.',
     level: 'BASIC',
@@ -87,7 +87,7 @@ export const BLOG_I1_RECORDS: readonly BlogRecord[] = [
     slug: 'how-often-aa',
     contentType: 'data-probability',
     title: 'AA를 받을 확률은? 조합 6가지로 계산하는 법',
-    seoTitle: 'AA 받을 확률 — 포켓 에이스는 몇 판에 한 번?',
+    seoTitle: 'AA 받을 확률은? 포켓 에이스는 몇 판에 한 번 나올까',
     description:
       'AA를 만드는 조합 6가지를 직접 늘어놓고 전체 조합 중 비율로 바꾸는 계산, 다른 페어·AK와의 비교, 그리고 "이제 나올 때가 됐다"는 오해까지 다룹니다.',
     level: 'INTRO',

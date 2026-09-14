@@ -29,7 +29,7 @@ const H1 = '13×13 핸드레인지 표';
 
 const SEO = {
   path: routeById('range').path,
-  title: `${H1} — 포지션별 오픈 레인지 (6-max · 100BB)`,
+  title: '홀덤 핸드레인지표 | 6-max 포지션별 오픈 레인지 도구',
   description:
     '포지션별로 어떤 시작 패로 레이즈하는지 13×13 표로 직접 눌러보고 두 위치를 비교하세요. 표 읽는 법, 자리별 크기, UTG와 BTN 비교까지 한 페이지에.',
 } as const;

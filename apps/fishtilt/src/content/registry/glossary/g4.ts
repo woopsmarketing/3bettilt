@@ -63,6 +63,7 @@ export const GLOSSARY_G4_RECORDS: readonly GlossaryRecord[] = [
     term: '3-Bet',
     aliases: ['3벳', '쓰리벳', '쓰리 벳', '3-bet', '3bet', '삼벳'],
     title: '쓰리벳 (3-Bet) — 다시 거는 세 번째 레이즈',
+    seoTerm: '3벳',
     shortDefinition:
       '오픈 레이즈에 다시 레이즈하는 것을 말합니다. 빅 블라인드를 첫 번째, 오픈 레이즈를 두 번째로 세어 세 번째 벳이라는 뜻입니다.',
     description: '3-Bet이라는 이름이 어떻게 붙었는지, 세는 방법을 설명합니다.',
@@ -86,6 +87,7 @@ export const GLOSSARY_G4_RECORDS: readonly GlossaryRecord[] = [
     term: '4-Bet',
     aliases: ['4벳', '포벳', '포 벳', '4-bet', '4bet'],
     title: '포벳 (4-Bet) — 그 다음 레이즈',
+    seoTerm: '4벳',
     shortDefinition: '3-Bet에 다시 레이즈하는 것을 말합니다.',
     description: '4-Bet이 3-Bet 다음에 오는 레이즈라는 것을 설명합니다.',
     level: 'BASIC',
@@ -108,6 +110,7 @@ export const GLOSSARY_G4_RECORDS: readonly GlossaryRecord[] = [
     term: 'C-Bet',
     aliases: ['씨벳', '시벳', 'cbet', 'continuation bet', '컨티뉴에이션 벳'],
     title: '컨티뉴에이션 벳 (C-Bet) — 앞선 공격자가 이어서 거는 베팅',
+    seoTerm: 'C벳(컨티뉴에이션 벳)',
     shortDefinition:
       '프리플랍에서 마지막으로 레이즈한 사람이 플랍에서도 이어서 거는 베팅을 부르는 이름입니다. 얼마나 자주 하는 것이 좋은지는 이 사이트가 다루지 않습니다.',
     description: 'C-Bet이 어떤 상황의 베팅을 가리키는 이름인지 설명합니다.',
@@ -153,6 +156,7 @@ export const GLOSSARY_G4_RECORDS: readonly GlossaryRecord[] = [
     term: 'VPIP',
     aliases: ['브이핍', '자발적 참여율', 'voluntarily put in pot'],
     title: '판에 자발적으로 들어간 비율 (VPIP)',
+    seoTerm: 'VPIP',
     shortDefinition:
       '판에 자발적으로 돈을 걸고 참여한 비율을 세는 숫자입니다. 3BetTilt는 이 숫자를 계산하거나 추적하지 않습니다.',
     description: 'VPIP가 무엇을 세는 숫자인지 설명하고, 좋은 수치를 제시하지 않는 이유를 밝힙니다.',
@@ -176,6 +180,7 @@ export const GLOSSARY_G4_RECORDS: readonly GlossaryRecord[] = [
     term: 'PFR',
     aliases: ['피에프알', '프리플랍 레이즈율', 'preflop raise'],
     title: '프리플랍에서 레이즈한 비율 (PFR)',
+    seoTerm: 'PFR',
     shortDefinition:
       '프리플랍에서 레이즈한 비율을 세는 숫자입니다. 3BetTilt는 이 숫자를 계산하거나 추적하지 않습니다.',
     description: 'PFR이 무엇을 세는 숫자인지 설명하고, 좋은 수치를 제시하지 않는 이유를 밝힙니다.',

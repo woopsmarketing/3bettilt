@@ -33,7 +33,7 @@ export const HAND_STORY_S3_RECORDS: readonly HandStoryRecord[] = [
     slug: 'aa-loses',
     contentType: 'hand-story',
     title: '포켓 에이스를 들고 스택을 다 잃었다',
-    seoTitle: '홀덤 핸드 리뷰: AA vs 87s, 턴에 스트레이트가 완성된 상황',
+    seoTitle: '포켓 에이스로 스택을 다 잃은 판 | AA vs 87s 핸드 리뷰',
     description:
       '하이잭에서 AA로 오픈, 버튼이 콜. 플랍 T-9-3에 턴 6. 리버에서 올인을 콜하고 뒤집힌 패는 8♦7♦였다. 최고의 시작 핸드가 스트리트마다 어디까지 최고였는지 숫자로 다시 본다.',
     level: 'BASIC',
@@ -103,7 +103,7 @@ export const HAND_STORY_S3_RECORDS: readonly HandStoryRecord[] = [
     slug: 'ak-flop-miss',
     contentType: 'hand-story',
     title: 'AK로 플랍을 완전히 놓쳤다. 그런데 내가 이겼다',
-    seoTitle: '홀덤 핸드 리뷰: AKs vs QJs, 플랍 962에서 둘 다 미스한 판',
+    seoTitle: 'AK로 플랍을 놓치고도 이긴 판 | AKs vs QJs 핸드 리뷰',
     description:
       '컷오프에서 A♥K♥로 오픈, 버튼이 콜. 플랍 9-6-2, 턴 4, 리버 7. 페어 하나 없이 쇼다운까지 갔는데 상대 패는 Q♣J♣였다. AK가 플랍을 "놓쳤다"는 말이 정확히 무슨 뜻인지 숫자로 본다.',
     level: 'BASIC',
