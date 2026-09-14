@@ -24,7 +24,12 @@
  * because the page is long enough to want one.
  */
 import type { Metadata } from 'next';
-import { pageMetadata, routeBreadcrumbs } from '../../../lib/seo/index.js';
+import {
+  breadcrumbListJsonLd,
+  JsonLd,
+  pageMetadata,
+  routeBreadcrumbs,
+} from '../../../lib/seo/index.js';
 import { Breadcrumbs } from '../../../components/Breadcrumbs.js';
 import { PageHero } from '../../../components/PageHero.js';
 import { EditorialVisual } from '../../../components/visual/EditorialVisual.js';
@@ -98,6 +103,10 @@ export default function AboutPage() {
   return (
     <main className="mx-auto max-w-reading px-6 py-16">
       <Breadcrumbs className="mb-8" trail={routeBreadcrumbs('about')} />
+      {/* No `Article`: this page is plain static content, not a registry record with an
+          author/date the site can substantiate (see module doc). `BreadcrumbList` is the
+          honest amount, same as a glossary or hand page. */}
+      <JsonLd blocks={[breadcrumbListJsonLd(routeBreadcrumbs('about'))]} />
       <PageHero
         visual={
           <PageHeroVisual

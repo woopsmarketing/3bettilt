@@ -10,7 +10,13 @@
  * the question on the left, the seat and conditions on the right.
  */
 import type { Metadata } from 'next';
-import { pageMetadata, routeBreadcrumbs } from '../../../../lib/seo/index.js';
+import {
+  breadcrumbListJsonLd,
+  JsonLd,
+  pageMetadata,
+  routeBreadcrumbs,
+  webApplicationJsonLd,
+} from '../../../../lib/seo/index.js';
 import { ExplanationCard } from '../../../../components/ExplanationCard.js';
 import { QuizOnward } from '../../../../components/QuizOnward.js';
 import { QuizPageHeader } from '../../../../components/QuizPageHeader.js';
@@ -43,6 +49,18 @@ export default function RangeQuizPage() {
         divider="bottom"
         aria-label="퀴즈 소개"
       >
+        {/* `WebApplication`, not `SoftwareApplication`: a scored quiz that runs in the
+            browser, free, with no account — same reasoning as `ToolPageShell`. */}
+        <JsonLd
+          blocks={[
+            breadcrumbListJsonLd(routeBreadcrumbs('practiceRange')),
+            webApplicationJsonLd({
+              path: routeById('practiceRange').path,
+              name: '레인지 퀴즈',
+              description: `포지션을 고르고, 각 시작 패가 그 자리의 학습용 기본 레인지에 포함되는지 직접 맞혀보고 바로 확인하세요.`,
+            }),
+          ]}
+        />
         <QuizPageHeader
           trail={routeBreadcrumbs('practiceRange')}
           title="레인지 퀴즈"

@@ -14,7 +14,13 @@
  * way onward (`QuizOnward`). The question bank and the seed are untouched.
  */
 import type { Metadata } from 'next';
-import { pageMetadata, routeBreadcrumbs } from '../../../../lib/seo/index.js';
+import {
+  breadcrumbListJsonLd,
+  JsonLd,
+  pageMetadata,
+  routeBreadcrumbs,
+  webApplicationJsonLd,
+} from '../../../../lib/seo/index.js';
 import { ExplanationCard } from '../../../../components/ExplanationCard.js';
 import { Quiz } from '../../../../components/Quiz.js';
 import { QuizOnward } from '../../../../components/QuizOnward.js';
@@ -47,6 +53,19 @@ export default function HandRankingQuizPage() {
         divider="bottom"
         aria-label="퀴즈 소개"
       >
+        {/* `WebApplication`, not `SoftwareApplication`: a scored quiz that runs in the
+            browser, free, with no account — same reasoning as `ToolPageShell`. */}
+        <JsonLd
+          blocks={[
+            breadcrumbListJsonLd(routeBreadcrumbs('practiceHandRanking')),
+            webApplicationJsonLd({
+              path: routeById('practiceHandRanking').path,
+              name: '족보 퀴즈',
+              description:
+                '두 핸드 중 어떤 패가 이기는지 직접 맞혀보세요. 정답은 실제 족보 평가 결과로 채점됩니다.',
+            }),
+          ]}
+        />
         <QuizPageHeader
           trail={routeBreadcrumbs('practiceHandRanking')}
           title="족보 퀴즈"
