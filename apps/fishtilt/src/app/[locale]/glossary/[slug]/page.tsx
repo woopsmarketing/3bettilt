@@ -137,6 +137,7 @@ export default async function GlossaryEntryPage({
       {/* A term with nothing to draw gets its category's shared picture as a quiet band. */}
       {visual === undefined ? (
         <EditorialVisual
+          describe
           className="mt-8"
           visual={featured}
           aspect="3/1"

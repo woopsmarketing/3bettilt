@@ -22,8 +22,10 @@ import { notFound } from 'next/navigation.js';
 import { GuideArticleLayout } from '../../../../components/blog/GuideArticleLayout.js';
 import { StoryArticleLayout } from '../../../../components/blog/StoryArticleLayout.js';
 import { readArticleHeadings } from '../../../../components/blog/articleSource.js';
+import { resolveAsset } from '../../../../components/visual/assetSource.js';
 import { blogComponent } from '../../../../content/blog/index.js';
 import { contentBySlug, isHandStory, publishedOfKind } from '../../../../content/graph.js';
+import { visualOf } from '../../../../content/visuals.js';
 import {
   articleJsonLd,
   contentBreadcrumbs,
@@ -73,7 +75,7 @@ export default async function BlogArticlePage({
     // three-track grid inside a `breakout` band), not on `<main>` — `<main>` is a stack of
     // bands now. See `theme-tokens.test.ts` for the token check that moved with it.
     <main data-content-type={article.contentType}>
-      <JsonLd blocks={[articleJsonLd(article), faq]} />
+      <JsonLd blocks={[articleJsonLd(article, resolveAsset(visualOf(article))), faq]} />
       {isHandStory(article) ? (
         <StoryArticleLayout record={article} trail={trail} Content={Content} />
       ) : (

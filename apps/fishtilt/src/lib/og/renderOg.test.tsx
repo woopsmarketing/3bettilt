@@ -19,8 +19,8 @@ function record(kind: ContentKind, slug: string): AnyContentRecord {
 
 describe('renderContentOg over the featured visual', () => {
   it.each([
-    ['blog', 'qq-vs-72o-flop-227', 'story-qq-vs-72o-flop-227.jpg'],
-    ['hands', 'aa', 'theme-starting-hands.jpg'],
+    ['blog', 'qq-vs-72o-flop-227', 'player-stunned-by-qq-vs-72o-flop.jpg'],
+    ['hands', 'aa', 'two-face-down-hole-cards.jpg'],
   ] as const)(
     '%s/%s draws a 1200×630 PNG on its own production picture',
     async (kind, slug, file) => {

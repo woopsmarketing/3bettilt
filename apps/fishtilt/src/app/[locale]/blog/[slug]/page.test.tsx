@@ -122,17 +122,19 @@ describe('/blog/[slug] — search guide layout', () => {
     // The theme comes from the registry, not from a string in the template.
     expect(slot?.getAttribute('data-visual')).toBe(visualOf(ARTICLE).theme);
     expect(slot?.getAttribute('data-visual-source')).toBe('asset');
-    // The file is the theme's registered asset; decorative — the title is above it.
+    // The file is the theme's registered asset, announced with its registry alt.
+    const theme = visualOf(ARTICLE).candidates.at(-1);
     const img = slot?.querySelector('img');
-    expect(decodeURIComponent(img?.getAttribute('src') ?? '')).toContain(
-      `/visuals/${visualOf(ARTICLE).candidates.at(-1)?.file}`,
-    );
-    expect(img?.getAttribute('alt')).toBe('');
+    expect(decodeURIComponent(img?.getAttribute('src') ?? '')).toContain(`/visuals/${theme?.file}`);
+    expect(theme?.role).toBe('informational');
+    expect(img?.getAttribute('alt')).toBe(theme?.alt);
+    expect(img?.hasAttribute('title')).toBe(false);
     expect(slot?.querySelectorAll('img')).toHaveLength(1);
-    // Every other picture (related reads) is also a decorative slot asset; none is a CSS background.
+    // Every other picture (related reads, inside links) is a decorative slot asset; none is a
+    // CSS background.
     for (const other of Array.from(container.querySelectorAll('img'))) {
       expect(other.closest('[data-visual-source="asset"]')).not.toBeNull();
-      expect(other.getAttribute('alt')).toBe('');
+      if (other !== img) expect(other.getAttribute('alt')).toBe('');
     }
     expect(container.innerHTML).not.toContain('url(');
   });
@@ -263,13 +265,14 @@ describe('/blog/[slug] — hand story layout (test fixture, never published)', (
     expect(container.querySelector('aside')?.textContent).toContain('비슷한 핸드');
   });
 
-  it('draws the editorial visual as a decorative asset — the story theme when it has no picture of its own', async () => {
+  it('draws the editorial visual as a described asset — the story theme when it has no picture of its own', async () => {
     const { container } = await renderArticle(FIXTURE_STORY_SLUG);
     const slot = container.querySelector('[data-visual]');
     expect(slot?.getAttribute('data-visual-source')).toBe('asset');
     const images = Array.from(slot?.querySelectorAll('img') ?? []);
     expect(images).toHaveLength(1);
-    expect(images[0]?.getAttribute('alt')).toBe('');
+    expect(images[0]?.getAttribute('alt')).toBe(THEME_VISUALS.story.asset.alt);
+    expect(THEME_VISUALS.story.asset.alt).not.toBe('');
     for (const other of Array.from(container.querySelectorAll('img'))) {
       expect(other.closest('[data-visual-source="asset"]')).not.toBeNull();
     }

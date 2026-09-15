@@ -5,8 +5,8 @@
  *
  * VA-01 (`3BETTILT_VISUAL_ASSET_MANIFEST.md`) is a hybrid: an AI-generated *scene* (a
  * player, a table, one warm key light, a red rim) with the one thing that must be exact —
- * five card faces — drawn by code on top of it. The scene is `public/visuals/home-hero.jpg`
- * (`PAGE_VISUALS.homeHero`); when that file is missing the scene half falls back to
+ * five card faces — drawn by code on top of it. The scene is the `PAGE_VISUALS.homeHero` file
+ * in `public/visuals/`; when that file is missing the scene half falls back to
  * `ThemeArt` (the editorial system's drawn room) with its table object switched off. Either
  * way it keeps its dark palette in both themes; the frame is a `.cover-stage`, so the card
  * faces on it measure as they do on the dark site.
@@ -17,8 +17,8 @@
  *
  * ## How the VA-01 photo drops in (no layout change)
  *
- * The page passes `photo={{ src }}` when `public/visuals/home-hero.jpg` exists
- * (`PAGE_VISUALS.homeHero`, resolved by `assetSource.ts`). The photo replaces the CSS scene as the bottom layer, through
+ * The page passes `photo={{ src }}` when the `PAGE_VISUALS.homeHero` file exists (resolved by
+ * `assetSource.ts`). The photo replaces the CSS scene as the bottom layer, through
  * `EditorialImage` (next/image, `fill`, `priority`, decorative), inside the same 4:5 frame.
  * The card overlay is positioned in the manifest's reserved band — x 8–92 %, y 64–94 % —
  * which the photo's prompt leaves as empty felt, so nothing about the page moves: same

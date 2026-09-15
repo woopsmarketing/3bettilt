@@ -40,6 +40,15 @@ export function ogCardCategory(record: AnyContentRecord): string {
   }
 }
 
+/**
+ * `og:image:alt` for a record's card: what the picture IS — a card carrying the page's
+ * category label and its title — rather than the `<title>` pasted again. Both strings are
+ * drawn onto the image by `renderOg.tsx`, so the description is literally true.
+ */
+export function ogCardAlt(record: AnyContentRecord): string {
+  return `${ogCardCategory(record)} 소개 이미지 — ${record.title}`;
+}
+
 export const OG_CARD_KINDS: readonly ContentKind[] = ['learn', 'blog', 'glossary', 'hands'];
 
 /** `aks-vs-ako.png` → `aks-vs-ako`; anything else → `null`. */

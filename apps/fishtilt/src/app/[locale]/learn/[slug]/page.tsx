@@ -50,6 +50,7 @@ import { TableOfContents } from '../../../../components/TableOfContents.js';
 import { MIN_TOC_HEADINGS } from '../../../../components/blog/articleHeadings.js';
 import { readArticleHeadings } from '../../../../components/blog/articleSource.js';
 import { EditorialVisual } from '../../../../components/visual/EditorialVisual.js';
+import { resolveAsset } from '../../../../components/visual/assetSource.js';
 import { visualOf } from '../../../../content/visuals.js';
 import {
   contentBySlug,
@@ -117,7 +118,7 @@ export default async function LessonPage({
   return (
     <main className="mx-auto max-w-reading px-6 py-16">
       <Breadcrumbs className="mb-8" trail={trail} />
-      <JsonLd blocks={[articleJsonLd(lesson), faq]} />
+      <JsonLd blocks={[articleJsonLd(lesson, resolveAsset(visualOf(lesson))), faq]} />
 
       <LessonHeader
         order={lesson.order}
@@ -149,8 +150,10 @@ export default async function LessonPage({
         brighter ink so the answer is legible before the reader has decided to read on.
       */}
       {/* The category's shared picture (`LEARN_CATEGORY_THEME`), breaking out of the reading
-          column by the same 7rem a side a figure does. Decorative: the header names the lesson. */}
+          column by the same 7rem a side a figure does. Described: the lesson's own unlinked
+          featured picture, so it announces the registry `alt`. */}
       <EditorialVisual
+        describe
         className="mt-10 lg:-mx-28 lg:w-auto"
         visual={visualOf(lesson)}
         aspect="21/9"

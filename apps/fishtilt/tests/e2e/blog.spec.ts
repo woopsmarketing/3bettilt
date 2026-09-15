@@ -1,13 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 import { BLOG_RECORDS } from '../../src/content/registry/blog/index.js';
 import { seoTitleOf } from '../../src/content/graph.js';
-import { THEME_VISUALS } from '../../src/content/visuals.js';
+import { allVisualAssets, THEME_VISUALS } from '../../src/content/visuals.js';
 import { SITE_NAME, TITLE_BRAND_SEPARATOR } from '../../src/lib/seo/site.js';
 import { koPath, visibleBodyText } from './helpers.js';
 
 /**
- * Every picture in `main` is a decorative production asset inside a featured-visual slot,
- * served from `public/visuals/` and actually decoded — never a stray image or a CSS background.
+ * Every picture in `main` is a production asset inside a featured-visual slot, served from
+ * `public/visuals/` and actually decoded — never a stray image or a CSS background. A picture
+ * is silent (`alt=""`) unless it is the page's own unlinked featured slot, which announces
+ * exactly its registry `alt`; a picture inside a link never repeats the link's text.
  */
 async function expectOnlySlotPictures(page: Page): Promise<number> {
   const pictures = await page.locator('main img').evaluateAll((nodes) =>
@@ -15,6 +17,7 @@ async function expectOnlySlotPictures(page: Page): Promise<number> {
       const img = node as HTMLImageElement;
       return {
         inSlot: img.closest('[data-visual-source="asset"]') !== null,
+        inLink: img.closest('a') !== null,
         alt: img.getAttribute('alt'),
         src: decodeURIComponent(img.getAttribute('src') ?? ''),
       };
@@ -22,8 +25,15 @@ async function expectOnlySlotPictures(page: Page): Promise<number> {
   );
   for (const picture of pictures) {
     expect(picture.inSlot, picture.src).toBe(true);
-    expect(picture.alt, picture.src).toBe('');
     expect(picture.src).toMatch(/\/visuals\/[a-z0-9-]+\.jpg/u);
+    const file = /\/visuals\/([a-z0-9-]+\.jpg)/u.exec(picture.src)?.[1];
+    const asset = allVisualAssets().find((candidate) => candidate.file === file);
+    expect(asset, picture.src).toBeDefined();
+    if (picture.alt !== '') {
+      expect(picture.inLink, picture.src).toBe(false);
+      expect(picture.alt, picture.src).toBe(asset?.alt);
+    }
+    expect(picture.alt, picture.src).not.toBeNull();
   }
   expect(await page.locator('main [style*="url("]').count()).toBe(0);
   return pictures.length;
@@ -251,7 +261,7 @@ test.describe('blog article', () => {
     expect((box?.width ?? 0) / (box?.height ?? 1)).toBeCloseTo(16 / 9, 1);
     const photo = slot.locator('img');
     await expect(photo).toHaveCount(1);
-    await expect(photo).toHaveAttribute('alt', '');
+    await expect(photo).toHaveAttribute('alt', THEME_VISUALS['starting-hands'].asset.alt);
     expect(decodeURIComponent((await photo.getAttribute('src')) ?? '')).toContain(
       `/visuals/${THEME_VISUALS['starting-hands'].asset.file}`,
     );

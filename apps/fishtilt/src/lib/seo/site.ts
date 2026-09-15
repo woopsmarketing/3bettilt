@@ -118,4 +118,5 @@ export function absoluteUrl(path: string, origin: string = SITE_ORIGIN): string 
 export const OG_IMAGE_PATH = '/og.png';
 export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
-export const OG_IMAGE_ALT = '3BetTilt';
+/** Describes the picture, not the page: the wordmark beside a partly filled 13×13 grid. */
+export const OG_IMAGE_ALT = '3BetTilt 워드마크와 붉은 칸이 채워진 13×13 핸드 격자';

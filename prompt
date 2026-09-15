@@ -1,29 +1,630 @@
-현재 저장소의 Git 상태를 안전하게 정리해서 커밋/푸시할 준비를 해줘.
+# Site-wide Image SEO Optimization
 
-목표는 코드를 수정하거나 개발을 계속하는 것이 아니라,
-현재 변경사항을 분류하고 안전하게 Git에 올릴 수 있게 만드는 것이다.
+3BetTilt의 현재 production 이미지 전체를 대상으로
+Image SEO 구조를 정리하고 실제 코드에 적용해줘.
 
-규칙:
-- 테스트, 빌드, E2E, 코드 리뷰는 실행하지 마.
-- 기능 코드 수정도 하지 마.
-- 전체 프로젝트를 다시 분석하지 마.
-- git status / git diff --stat / 필요한 최소 diff만 확인해.
-- .env, API key, secret, credential 등 민감정보가 포함되는지 확인해.
-- artifacts, 임시파일, 캐시, lock/temp 파일 등 Git에 불필요한 생성물이 있으면 .gitignore에 추가해.
-- 현재 변경사항을 아래로 분류해:
-  1. 3BetTilt 완료 작업
-  2. 다른 프로젝트의 완료 또는 보존 가능한 작업
-  3. 미완성 가능성이 있어 주의가 필요한 작업
-  4. Git에 올리지 말아야 할 생성물/임시파일
-- 기존 작업을 삭제하거나 restore/reset하지 마.
-- pnpm-lock.yaml 같은 공용 파일은 어떤 작업들이 섞여 있는지 확인해.
+이번 작업의 목표:
 
-분류가 끝나면 현재 상태를 안전하게 보존할 수 있는 추천 commit 전략을 제시해.
-
-가능하면 현재 workspace 전체를 안전하게 checkpoint commit할 수 있는지도 판단해줘.
+1. 모든 production 이미지 파일명을 SEO 친화적으로 변경
+2. 모든 이미지 asset에 명시적인 alt metadata 추가
+3. 의미 있는 콘텐츠 이미지는 정확한 descriptive alt 사용
+4. 장식용 이미지는 접근성 원칙에 따라 alt="" 유지
+5. Article/Blog 대표 이미지를 structured data image에도 연결
+6. OG image alt까지 일관되게 연결
+7. Next/Image 최적화 구조는 그대로 유지
 
 중요:
-내 승인 전에는 commit / push 하지 마.
-필요한 .gitignore 수정까지만 수행하고,
-마지막에 정확히 어떤 파일이 stage되어야 하는지와
-`git add ...` 또는 `git add .` 사용 가능 여부를 명확하게 알려줘.
+
+keyword stuffing은 절대 하지 마.
+이미지 내용과 관계없는 SEO keyword를 alt나 filename에 넣지 마.
+
+==================================================
+1. SCOPE
+==================================================
+
+우선 실제 사이트에서 사용되는 모든 이미지 asset을 inventory 해라.
+
+특히:
+
+apps/fishtilt/public/visuals/
+apps/fishtilt/public/
+
+및:
+
+src/content/visuals.ts
+components/visual/**
+HomeHeroVisual
+PageHeroVisual
+EditorialVisual
+EditorialCard
+VisualBackdrop
+OG renderer
+
+등 실제 참조 구조를 확인한다.
+
+현재 production editorial JPG는 약 28개다.
+
+favicon/icon/apple icon처럼 SEO editorial image가 아닌 시스템 asset은
+별도 취급한다.
+
+==================================================
+2. FILENAME POLICY
+==================================================
+
+production editorial 이미지 파일명을
+모두 SEO-friendly filename으로 바꾼다.
+
+규칙:
+
+- lowercase
+- ASCII
+- kebab-case
+- 공백 없음
+- 의미 없는 숫자 최소화
+- 지나치게 길지 않음
+- 이미지 실제 내용/용도를 설명
+- keyword stuffing 금지
+- 현재 브랜드명 `3bettilt`은 파일명에 넣지 않음
+
+브랜드명이 향후 변경될 수 있으므로
+filename은 content/topic 중심으로 유지한다.
+
+나쁜 예:
+
+brand-blog.jpg
+theme-math.jpg
+image-01.jpg
+3bettilt-poker-holdem-best-free-seo.jpg
+
+좋은 방향:
+
+texas-holdem-learning-hero.jpg
+poker-blog-editorial-hero.jpg
+holdem-hand-range-study.jpg
+six-max-poker-position-table.jpg
+poker-pot-odds-study.jpg
+qq-vs-72o-hand-review.jpg
+pocket-aces-losing-hand.jpg
+
+단 실제 사진을 보고 가장 적합한 이름을 직접 결정해라.
+
+==================================================
+3. EXISTING MANIFEST / PROCESSING SCRIPT
+==================================================
+
+현재 다음 구조가 존재한다:
+
+apps/fishtilt/scripts/process-editorial-images.mjs
+apps/fishtilt/scripts/editorial-images.manifest.json
+
+manifest의 output filename도 새 SEO filename과 일치하도록 변경한다.
+
+중요:
+
+이미 압축된 production JPG를 다시 JPEG encode해서
+품질을 떨어뜨리지 마.
+
+단순 filename 변경만 필요한 경우 filesystem rename을 사용한다.
+
+원본 PNG가 존재하고 재처리가 필요한 경우에만 processing script를 사용한다.
+
+기존:
+
+crop
+resize
+quality
+dimensions
+
+은 이번 SEO 작업 때문에 변경하지 않는다.
+
+==================================================
+4. VISUAL REGISTRY
+==================================================
+
+src/content/visuals.ts 또는 현재 asset registry에
+각 asset이 다음 metadata를 갖도록 한다.
+
+개념:
+
+{
+  file: "/visuals/six-max-poker-position-table.jpg",
+  width: 1920,
+  height: 1080,
+  alt: "6맥스 홀덤 테이블의 포지션과 좌석을 보여주는 장면",
+  role: "informational"
+}
+
+또는:
+
+{
+  file: "/visuals/poker-blog-editorial-hero.jpg",
+  width: 1200,
+  height: 800,
+  alt: "",
+  role: "decorative"
+}
+
+모든 production editorial image는
+명시적인 alt 필드를 가져야 한다.
+
+alt가 누락되는 상태를 허용하지 마.
+
+==================================================
+5. ALT TEXT POLICY
+==================================================
+
+매우 중요.
+
+"모든 이미지에 SEO keyword를 넣는다"가 아니다.
+
+모든 이미지에는 explicit alt decision을 한다.
+
+A. INFORMATIONAL IMAGE
+
+페이지 내용을 이해하는 데 실제 의미가 있는 경우:
+
+non-empty alt.
+
+예:
+
+6맥스 포지션 테이블
+→ "6맥스 홀덤 테이블의 포지션과 좌석 구조"
+
+핸드레인지 학습 이미지
+→ "홀덤 핸드레인지를 공부하는 카드와 노트"
+
+QQ vs 72o Story 대표 이미지
+→ "QQ로 예상 밖의 플랍을 마주한 포커 플레이어"
+
+alt는:
+
+- 이미지가 실제로 보여주는 것
+- 해당 페이지의 문맥
+
+을 자연스럽게 설명한다.
+
+한 문장 이하를 우선한다.
+
+B. DECORATIVE IMAGE
+
+단순한:
+
+- 분위기용 hero
+- 브랜드 인물 사진
+- background
+- 이미 주변 텍스트가 의미를 전부 설명하는 editorial photo
+
+라면:
+
+alt=""
+
+를 유지한다.
+
+이것도 "alt가 없는 상태"가 아니라
+의도적으로 decorative라고 명시한 것이다.
+
+접근성을 깨면서 SEO keyword를 넣지 마.
+
+==================================================
+6. NO IMAGE TITLE ATTRIBUTE
+==================================================
+
+HTML:
+
+<img title="...">
+
+같은 title attribute를 SEO 목적으로 추가하지 마.
+
+이번 작업에서 말하는 "이미지 제목"은:
+
+- filename
+- registry label/alt
+- structured data image metadata
+
+이다.
+
+불필요한 title attribute는 만들지 않는다.
+
+==================================================
+7. CONTEXT-SPECIFIC ALT
+==================================================
+
+같은 theme asset이 여러 페이지에서 사용될 수 있다.
+
+가능하면 alt를 무조건 파일 자체에 고정해서
+엉뚱한 문맥으로 사용하지 마.
+
+필요하다면 architecture를:
+
+asset.alt
++
+optional usage override
+
+형태로 만든다.
+
+예:
+
+<EditorialVisual
+  visual={themeVisual}
+  alt={contextSpecificAlt}
+/>
+
+단 unnecessary abstraction은 피한다.
+
+동일 사진의 실제 의미가 어디서나 같다면
+registry alt 하나를 그대로 쓴다.
+
+==================================================
+8. ARTICLE / BLOG STRUCTURED DATA IMAGE
+==================================================
+
+현재 Article JSON-LD를 확인한다.
+
+Learn / Blog 등 Article 성격 페이지에
+실제 featured visual이 존재한다면:
+
+"image": "https://3bettilt.com/visuals/....jpg"
+
+또는 적절한 ImageObject를 제공한다.
+
+이미 image property가 있다면
+새 SEO filename으로 정확히 업데이트한다.
+
+Google이 crawl 가능한 production URL을 사용한다.
+
+대표 이미지가 없는 페이지에
+억지로 unrelated image를 넣지 않는다.
+
+Article headline/canonical/date 등의 기존 의미는 변경하지 않는다.
+
+==================================================
+9. OPEN GRAPH IMAGE ALT
+==================================================
+
+페이지별 OG metadata를 확인한다.
+
+가능한 경우:
+
+og:image
+og:image:alt
+
+을 함께 제공한다.
+
+og:image:alt는
+이미지 자체를 자연스럽게 설명해야 한다.
+
+SEO title 전체를 그대로 복붙하지 마.
+
+예:
+
+page title:
+"AA 승률·순위 | 텍사스 홀덤 프리플랍 핸드 가이드"
+
+og:image:alt:
+"포켓 에이스 AA 핸드를 설명하는 홀덤 가이드 이미지"
+
+정도로 분리한다.
+
+==================================================
+10. NEXT/IMAGE
+==================================================
+
+현재:
+
+/_next/image?url=...
+
+형태의 optimized srcset은 정상적인 Next/Image 동작이다.
+
+이를 제거하거나:
+
+unoptimized
+plain <img>
+
+로 바꾸지 마.
+
+기존:
+
+sizes
+srcset
+responsive image
+AVIF/WebP optimization
+width/height/aspect ratio
+
+구조를 유지한다.
+
+SEO filename이 query 내부에서도 새 경로로 나타나게 한다.
+
+예:
+
+/_next/image?url=%2Fvisuals%2Fsix-max-poker-position-table.jpg...
+
+==================================================
+11. IMAGE URL MIGRATION
+==================================================
+
+기존 이미지 URL이 이미 production에 노출됐다.
+
+old:
+
+/visuals/theme-position.jpg
+
+new:
+
+/visuals/six-max-poker-position-table.jpg
+
+처럼 변경되는 경우
+현재 사이트가 매우 새롭더라도 broken URL을 만들지 않는다.
+
+먼저 repo 전체에서 old filename 참조를 검색하여
+전부 새 filename으로 갱신한다.
+
+다음에서 stale path가 0이어야 한다:
+
+- TS/TSX
+- JSON manifest
+- tests
+- OG
+- JSON-LD
+- docs 중 실제 runtime source로 쓰이는 파일
+
+과거 보고서 markdown은 historical record라면
+굳이 수정하지 않아도 된다.
+
+가능하면 오래된 production image URL에 대한
+permanent redirect가 실익이 있는지 판단해라.
+
+단 이미지 28개 redirect를 위해
+복잡한 redirect surface를 만들지는 마.
+
+사이트가 신규라 아직 image index equity가 거의 없다면
+새 URL로 직접 교체하고 그 판단을 보고한다.
+
+==================================================
+12. CURRENT GROUPS
+==================================================
+
+현재 크게:
+
+Brand/static
+Category themes
+Individual hand stories
+
+세 그룹이 있다.
+
+각 그룹 모두 filename 개선 대상이다.
+
+예:
+
+theme-basics.jpg
+→ texas-holdem-basics-table.jpg
+
+theme-rankings.jpg
+→ poker-hand-ranking-cards.jpg
+
+theme-starting-hands.jpg
+→ holdem-starting-hand-cards.jpg
+
+theme-range.jpg
+→ holdem-hand-range-study.jpg
+
+theme-position.jpg
+→ six-max-poker-position-table.jpg
+
+theme-betting.jpg
+→ poker-betting-chips-action.jpg
+
+theme-math.jpg
+→ poker-probability-study.jpg
+
+theme-story.jpg
+→ late-night-poker-hand-story.jpg
+
+이는 예시일 뿐이다.
+실제 이미지를 보고 더 정확한 filename이 있다면 사용한다.
+
+Hand Story도:
+
+story-aa-loses.jpg
+→ pocket-aces-losing-hand.jpg
+
+story-qq-vs-72o-flop-227.jpg
+→ qq-vs-72o-flop-hand-review.jpg
+
+처럼 의미 중심으로 변경한다.
+
+==================================================
+13. BRAND IMAGES
+==================================================
+
+현재:
+
+home-hero
+blog hub
+learn hub
+hands hub
+practice hub
+glossary hub
+tools hub
+about
+roadmap
+breathing
+CTA
+
+등 brand/static visual이 있다.
+
+파일명은 해당 역할을 자연스럽게 설명한다.
+
+예:
+
+home-hero.jpg
+→ texas-holdem-learning-hero.jpg
+
+brand-blog.jpg
+→ poker-blog-editorial-hero.jpg
+
+brand-learn.jpg
+→ texas-holdem-learning-guide-hero.jpg
+
+단 사진 속 인물의:
+
+- 성별
+- 국적
+- 외모
+
+등이 SEO상 필요하지 않으면 filename/alt에 억지로 넣지 않는다.
+
+==================================================
+14. ACCESSIBILITY
+==================================================
+
+SEO를 이유로 accessibility를 악화시키지 마.
+
+확인:
+
+- 모든 img에 alt attribute 존재
+- decorative = alt=""
+- informational = descriptive alt
+- linked image라면 주변 link text와 의미 중복 검토
+- screen reader가 같은 H1/title을 반복해서 읽지 않게
+
+==================================================
+15. IMAGE SEO AUDIT TEST
+==================================================
+
+새 targeted test를 추가해라.
+
+모든 production editorial asset에 대해:
+
+- SEO filename regex 통과
+- lowercase ASCII kebab-case
+- 의미 없는 `image-`, `brand-`, `theme-`, `story-` 같은 generic prefix가
+  production filename에 남지 않았는지 검사
+- duplicate filename 0
+- registry entry 존재
+- width/height 존재
+- alt field 존재
+- role = informational | decorative
+- informational이면 alt non-empty
+- decorative이면 alt == ""
+- public file 실제 존재
+- stale old path 0
+
+를 검증한다.
+
+==================================================
+16. BUILT HTML AUDIT
+==================================================
+
+대표 페이지:
+
+/ko
+/ko/blog
+/ko/blog/qq-vs-72o-flop-227
+/ko/learn
+/ko/learn/position
+/ko/tools/range
+/ko/hands/aa
+/ko/about
+
+빌드 HTML에서:
+
+- image src / srcset가 새 filename 사용
+- alt attribute 존재
+- broken image 0
+- old filename 0
+- Article image structured data가 있다면 새 URL
+- OG image alt 존재 여부
+- canonical/title/hreflang 불변
+
+확인한다.
+
+==================================================
+17. SITEMAP
+==================================================
+
+일반 page sitemap URL 141개는 그대로 유지한다.
+
+이번 작업 때문에 페이지 sitemap count를 바꾸지 마.
+
+image sitemap을 새로 추가하는 것이
+현재 architecture에서 실제 가치가 있는지 검토는 해도 된다.
+
+하지만 명백한 이점 없이
+별도의 복잡한 image sitemap system을 만들지는 마.
+
+필요성이 없으면 "not added"로 보고한다.
+
+==================================================
+18. TEST POLICY
+==================================================
+
+불필요한 전체 테스트를 반복하지 마.
+
+실행:
+
+- affected typecheck
+- image SEO tests
+- visual registry tests
+- metadata / JSON-LD / OG targeted tests
+- representative built HTML audit
+
+필요하면 FishTilt production build 1회.
+
+실행하지 마:
+
+- full monorepo tests
+- full E2E
+- 전체 screenshot suite
+- unrelated visual regression
+
+==================================================
+19. REPORT
+==================================================
+
+완료 후 표로 전체 production image mapping을 보고해라.
+
+old filename
+→ new filename
+→ role
+→ alt
+→ 사용 위치
+
+그리고:
+
+- 총 production image 수
+- renamed count
+- informational count
+- decorative count
+- missing alt count
+- duplicate filename count
+- stale old filename references
+- broken image count
+- Article JSON-LD image 적용 수
+- OG image alt 적용 상태
+- sitemap count
+- 테스트 결과
+
+를 보고한다.
+
+==================================================
+20. IMPORTANT
+==================================================
+
+이번 작업은 SEO 최적화지만
+"키워드를 이미지마다 집어넣는 작업"으로 만들지 마.
+
+목표는:
+
+descriptive filename
++
+accurate alt
++
+crawlable image URL
++
+page context
++
+structured data consistency
++
+Next/Image performance
+
+가 서로 일치하는 production image architecture를 만드는 것이다.

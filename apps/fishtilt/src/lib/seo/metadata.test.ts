@@ -10,7 +10,8 @@ import type { Metadata } from 'next';
 import { describe, expect, it } from 'vitest';
 import type { BlogRecord, LearnRecord } from '../../content/types.js';
 import { contentMetadata, formatTitle, hreflangAlternates, pageMetadata } from './metadata.js';
-import { OG_IMAGE_PATH, SITE_LOCALE, SITE_NAME, SITE_ORIGIN } from './site.js';
+import { ogCardAlt } from '../og/ogCard.js';
+import { OG_IMAGE_ALT, OG_IMAGE_PATH, SITE_LOCALE, SITE_NAME, SITE_ORIGIN } from './site.js';
 import { HREFLANG } from '../locale.js';
 import { DEFAULT_LOCALE, localePath } from '../locale.js';
 
@@ -105,6 +106,9 @@ describe('pageMetadata', () => {
     const images = meta.openGraph?.images;
     expect(Array.isArray(images)).toBe(true);
     expect(JSON.stringify(images)).toContain(`${SITE_ORIGIN}${OG_IMAGE_PATH}`);
+    const [image] = (Array.isArray(images) ? images : [images]) as { alt?: string }[];
+    expect(image?.alt).toBe(OG_IMAGE_ALT);
+    expect(OG_IMAGE_ALT).not.toBe(SITE_NAME);
   });
 
   it('names its own locale and x-default as hreflang alternates of the canonical — D-S3-06', () => {
@@ -180,6 +184,17 @@ describe('contentMetadata', () => {
       index: false,
       follow: true,
     });
+  });
+
+  it('describes its social card in og:image:alt instead of repeating the <title>', () => {
+    const meta = contentMetadata(blogRecord());
+    const images = meta.openGraph?.images;
+    const [card] = (Array.isArray(images) ? images : [images]) as { alt?: string; url?: string }[];
+    expect(card?.url).toBe(`${SITE_ORIGIN}/og/blog/fixture-article.png`);
+    expect(card?.alt).toBe(ogCardAlt(blogRecord()));
+    expect(card?.alt).toContain(blogRecord().title);
+    expect(card?.alt).not.toBe(meta.title);
+    expect(card?.alt).not.toContain(SITE_NAME);
   });
 
   it('marks the two article kinds as `article` and the reference kinds as `website`', () => {

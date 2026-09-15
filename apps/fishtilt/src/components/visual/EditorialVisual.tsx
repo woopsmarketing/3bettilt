@@ -2,8 +2,11 @@
  * `EditorialVisual` — one featured-picture slot: the page's asset when its file exists,
  * `ThemeArt` otherwise, in a fixed-aspect box so the swap changes pixels and nothing else.
  *
- * The box is decorative by default (`alt=""`, `aria-hidden` art): wherever this renders, the
- * page's title and category are live text beside or over it. A `scrim` darkens the picture
+ * The box is decorative by default (`alt=""`, `aria-hidden` art): on a card, a thumbnail or a
+ * backdrop the title is live text beside or over it, and often the link itself. A page's own
+ * featured picture — the one slot that stands alone under the header — passes `describe`, and
+ * the image announces the registry's `alt` for the file actually served: a sentence for an
+ * `informational` asset, still `''` for a `decorative` one (`content/visuals.ts`). A `scrim` darkens the picture
  * for text laid on top (`bottom`), settles an article photo into the page (`soft`) or barely
  * touches a hub's opening picture (`hero`); the
  * strength is a theme variable (`--ft-cover-*` in `globals.css`) — the same picture, a
@@ -54,6 +57,8 @@ export interface EditorialVisualProps {
   readonly hoverZoom?: boolean;
   /** Draw `ThemeArt`'s table object. Off when deterministic content is laid on top. */
   readonly motif?: boolean;
+  /** Announce the served asset's registry `alt`. Only for a page's own, unlinked featured slot. */
+  readonly describe?: boolean;
 }
 
 export function EditorialVisual({
@@ -66,6 +71,7 @@ export function EditorialVisual({
   className = '',
   hoverZoom = false,
   motif = true,
+  describe = false,
 }: EditorialVisualProps) {
   const asset = resolveAsset(visual);
   const zoom = hoverZoom ? 'transition-transform duration-500 group-hover:scale-[1.03]' : '';
@@ -82,7 +88,7 @@ export function EditorialVisual({
         ) : (
           <Image
             src={asset.src}
-            alt=""
+            alt={describe ? asset.spec.alt : ''}
             fill
             sizes={sizes}
             priority={priority}

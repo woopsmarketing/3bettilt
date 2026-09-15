@@ -63,8 +63,9 @@ export function GuideArticleLayout({ record, trail, headings, Content }: GuideAr
             }
           />
           {/* The featured visual (`content/visuals.ts`): the article's theme picture at 16:9,
-              spanning the band — `ThemeArt` until the file exists. Decorative: the title is above. */}
+              spanning the band — `ThemeArt` until the file exists. Described with the registry `alt`. */}
           <EditorialVisual
+            describe
             className={`mt-10 ${BREAKOUT}`}
             visual={visualOf(record)}
             aspect="16/9"

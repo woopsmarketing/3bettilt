@@ -120,7 +120,22 @@ export function breadcrumbListJsonLd(trail: readonly BreadcrumbItem[]): JsonLdOb
  * reference page whose body is mostly this site's own computed figures). Those get their
  * `BreadcrumbList` and nothing else, which is the honest amount.
  */
-export function articleJsonLd(record: LearnRecord | BlogRecord): JsonLdObject {
+export interface ArticleImage {
+  /** Root-relative URL of the file the page renders, e.g. `/visuals/two-face-down-hole-cards.jpg`. */
+  readonly src: string;
+  readonly spec: { readonly width: number; readonly height: number };
+}
+
+/**
+ * `image` is the page's featured visual — the same file the article renders under its header
+ * (a `ResolvedAsset` from `components/visual/assetSource.ts` fits), as an `ImageObject` with
+ * its real size. Without one (the file is missing and the slot draws `ThemeArt`) the shared
+ * social card stands in, which is what every article carried before it had a picture.
+ */
+export function articleJsonLd(
+  record: LearnRecord | BlogRecord,
+  image?: ArticleImage | null,
+): JsonLdObject {
   const url = canonicalUrl(contentPath(record));
   return {
     '@context': CONTEXT,
@@ -130,7 +145,15 @@ export function articleJsonLd(record: LearnRecord | BlogRecord): JsonLdObject {
     url,
     mainEntityOfPage: { '@type': 'WebPage', '@id': url },
     inLanguage: 'ko',
-    image: absoluteUrl(OG_IMAGE_PATH),
+    image:
+      image === undefined || image === null
+        ? absoluteUrl(OG_IMAGE_PATH)
+        : {
+            '@type': 'ImageObject',
+            url: absoluteUrl(image.src),
+            width: image.spec.width,
+            height: image.spec.height,
+          },
     isAccessibleForFree: true,
     author: PUBLISHER,
     publisher: PUBLISHER,

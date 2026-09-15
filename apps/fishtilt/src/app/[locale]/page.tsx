@@ -129,7 +129,7 @@ const ID = {
   glossary: 'home-glossary',
 } as const;
 
-/** The VA-01 photo when `public/visuals/home-hero.jpg` exists; the drawn scene otherwise. */
+/** The VA-01 photo when the `PAGE_VISUALS.homeHero` file exists; the drawn scene otherwise. */
 function heroPhotoProps(): { photo?: { src: string } } {
   const asset = resolveAsset(pageVisual(PAGE_VISUALS.homeHero, 'story'));
   return asset === null ? {} : { photo: { src: asset.src } };

@@ -65,7 +65,9 @@ describe('featured visual registry', () => {
     expect(new Set(assets.map((a) => a.id)).size).toBe(assets.length);
     for (const asset of assets) {
       expect(asset.file, asset.id).toMatch(/^[a-z0-9-]+\.jpg$/u);
-      expect(asset.alt.length, asset.id).toBeGreaterThan(5);
+      // Every picture is described; only an informational one announces it (`imageSeo.test.tsx`).
+      expect(asset.description.length, asset.id).toBeGreaterThan(5);
+      expect(asset.alt, asset.id).toBe(asset.role === 'informational' ? asset.description : '');
       expect(asset.width).toBeGreaterThan(asset.height * 0.7);
     }
   });

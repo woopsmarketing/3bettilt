@@ -54,7 +54,7 @@ import {
   type Locale,
 } from '../locale.js';
 import type { AnyContentRecord } from '../../content/types.js';
-import { OG_CARD_HEIGHT, OG_CARD_WIDTH, ogCardPath } from '../og/ogCard.js';
+import { OG_CARD_HEIGHT, OG_CARD_WIDTH, ogCardAlt, ogCardPath } from '../og/ogCard.js';
 import { canonicalUrl } from './canonical.js';
 import { seoDescriptionOf } from './contentSeo.js';
 import { contentIndexDecision } from './policy.js';
@@ -204,6 +204,6 @@ export function contentMetadata(record: AnyContentRecord): Metadata {
     // `BreadcrumbList`+`Article` pair; `website` for the reference pages (a glossary
     // entry, a hand page) which are documents but not articles. See `jsonLd.ts`.
     ogType: record.kind === 'learn' || record.kind === 'blog' ? 'article' : 'website',
-    image: { path: ogCardPath(record), alt: record.title },
+    image: { path: ogCardPath(record), alt: ogCardAlt(record) },
   });
 }

@@ -242,8 +242,10 @@ export function StoryArticleLayout({ record, trail, Content }: StoryArticleLayou
             }
           />
           {/* The story's own picture (`INDIVIDUAL_VISUALS`) at 16:9, else the story theme. It
-              carries the moment's feeling, never the cards: those are drawn below from data. */}
+              carries the moment's feeling, never the cards: those are drawn below from data. Described
+              with the registry `alt`, which names that moment. */}
           <EditorialVisual
+            describe
             className={`mt-10 ${BREAKOUT}`}
             visual={visualOf(record)}
             aspect="16/9"

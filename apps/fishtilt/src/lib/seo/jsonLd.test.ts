@@ -22,7 +22,7 @@ import {
   webSiteJsonLd,
   type JsonLdObject,
 } from './jsonLd.js';
-import { SITE_NAME, SITE_ORIGIN } from './site.js';
+import { OG_IMAGE_PATH, SITE_NAME, SITE_ORIGIN } from './site.js';
 import type { BreadcrumbItem } from './breadcrumbs.js';
 import { DEFAULT_LOCALE, localePath } from '../locale.js';
 
@@ -111,6 +111,26 @@ describe('articleJsonLd', () => {
       url: `${SITE_ORIGIN}${ko('/')}`,
     });
     expect(block['author']).toEqual(block['publisher']);
+  });
+
+  it('names the page`s featured visual as an ImageObject at its real size', () => {
+    const image = parsed(
+      articleJsonLd(article(), {
+        src: '/visuals/two-face-down-hole-cards.jpg',
+        spec: { width: 1920, height: 1080 },
+      }),
+    )['image'];
+    expect(image).toEqual({
+      '@type': 'ImageObject',
+      url: `${SITE_ORIGIN}/visuals/two-face-down-hole-cards.jpg`,
+      width: 1920,
+      height: 1080,
+    });
+  });
+
+  it('falls back to the shared social card when the featured file is missing', () => {
+    expect(block['image']).toBe(`${SITE_ORIGIN}${OG_IMAGE_PATH}`);
+    expect(parsed(articleJsonLd(article(), null))['image']).toBe(`${SITE_ORIGIN}${OG_IMAGE_PATH}`);
   });
 
   it('works the same for a lesson', () => {

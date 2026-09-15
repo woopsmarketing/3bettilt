@@ -24,7 +24,7 @@ export function resolveVisualsDir(cwd: string = process.cwd()): string | null {
 
 export interface ResolvedAsset {
   readonly spec: VisualAssetSpec;
-  /** Site-relative URL, e.g. `/visuals/theme-range.jpg`. */
+  /** Site-relative URL, e.g. `/visuals/poker-study-notebook-and-cards.jpg`. */
   readonly src: string;
   /** Absolute filesystem path, for the OG renderer. */
   readonly path: string;
