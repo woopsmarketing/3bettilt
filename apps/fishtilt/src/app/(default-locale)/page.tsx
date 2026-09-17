@@ -1,5 +1,5 @@
 /**
- * `/ko` — the homepage (WP-S3-05, contract AD).
+ * `/` — the homepage (WP-S3-05, contract AD; prefixless since D-S3-23).
  *
  * ## Nothing on this page is typed by hand
  *

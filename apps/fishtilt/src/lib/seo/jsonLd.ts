@@ -45,9 +45,9 @@ const CONTEXT = 'https://schema.org';
  * are the same entity rather than two that happen to share a name.
  */
 /**
- * The site's front door as an absolute URL — `https://…/ko`, not the bare origin. The bare
- * origin answers with a redirect, and a `WebSite`/`Organization` `url` is meant to name the
- * page a crawler can fetch (D-S3-01/04).
+ * The site's front door as an absolute URL — the bare origin, the homepage's canonical. The
+ * default locale is prefixless (D-S3-23), so the root IS the Korean homepage, and a
+ * `WebSite`/`Organization` `url` names the page a crawler can fetch.
  */
 const SITE_HOME_URL = canonicalUrl(routeById('home').path);
 
@@ -312,7 +312,7 @@ export interface DefinedTermInput {
   readonly description: string;
   /** The other names the header prints (Latin term, aliases) — never the headword itself. */
   readonly alternateNames: readonly string[];
-  /** The term page's site path (locale-prefixed). */
+  /** The term page's localised path (`localePath`; prefixless for the default locale). */
   readonly path: string;
   /** The hub the term belongs to — its name and path, so the two blocks describe one set. */
   readonly set: { readonly name: string; readonly path: string };

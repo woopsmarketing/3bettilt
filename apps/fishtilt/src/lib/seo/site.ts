@@ -8,9 +8,10 @@
  * nothing configured produces the URLs the live site will carry. `NEXT_PUBLIC_SITE_URL`
  * overrides it for a preview or a local e2e run.
  *
- * The override is an ORIGIN, not a URL. A value that carries a path — `…/ko` is the likely
- * mistake, because the Korean home is `/ko` — would either be silently truncated (and then
- * the variable lies) or produce `/ko/ko/…` everywhere. So it throws, here, at module load:
+ * The override is an ORIGIN, not a URL. A value that carries a path — `…/ko` was the likely
+ * mistake while the Korean home lived at `/ko`, and a locale path is still never part of the
+ * origin (the default locale is prefixless, D-S3-23) — would either be silently truncated (and
+ * then the variable lies) or produce `/ko/…` everywhere. So it throws, here, at module load:
  * the build fails with the reason rather than shipping wrong canonicals.
  *
  * `sitemap.ts` prints one informational line when the variable is unset, so a build log
@@ -24,7 +25,7 @@ export const SITE_NAME = '3BetTilt';
 
 /**
  * The home page's search title (without the brand suffix) and meta description. Here rather
- * than in `app/[locale]/page.tsx` because the root layout carries the same pair as the
+ * than in `app/(default-locale)/page.tsx` because the root layout carries the same pair as the
  * site-level fallback, and a layout must not import a page module.
  */
 export const HOME_SEO_TITLE = '텍사스 홀덤 배우기 | 홀덤 족보·핸드레인지·승률 계산기';
@@ -78,7 +79,7 @@ export function normaliseOrigin(value: string | undefined): string | null {
   if (trimmed !== origin && trimmed !== `${origin}/`) {
     throw new Error(
       `NEXT_PUBLIC_SITE_URL must be a bare origin with no path, query or fragment — ` +
-        `got "${trimmed}". The locale prefix is added by the app; set "${origin}".`,
+        `got "${trimmed}". Locale paths are added by the app; set "${origin}".`,
     );
   }
   return origin;
@@ -93,7 +94,11 @@ export const SITE_ORIGIN_IS_DEFAULT: boolean =
   normaliseOrigin(process.env.NEXT_PUBLIC_SITE_URL) === null;
 
 /**
- * `'/learn/pot-odds'` -> `'https://…/learn/pot-odds'`. Rejects anything that is not a
+ * `'/learn/pot-odds'` -> `'https://…/learn/pot-odds'`; the root is the bare origin
+ * `'https://…'`. That is the same URL as `https://…/` (a URL parser normalises one to the
+ * other), and it is the exact string Next's metadata resolver renders for a root canonical and
+ * `og:url` — so the sitemap, hreflang and JSON-LD spell the homepage identically to its
+ * `<head>` (D-S3-23). Rejects anything that is not a
  * root-relative path, because every caller has one and a silently-accepted absolute URL
  * would produce a canonical pointing at another origin.
  */

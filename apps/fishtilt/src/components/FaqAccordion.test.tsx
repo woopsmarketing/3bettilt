@@ -6,7 +6,7 @@ import { FaqAccordion } from './FaqAccordion.js';
 
 const ITEMS = [
   { question: '이 표는 정답인가요?', answer: '아니요. 학습용 기본 레인지입니다.' },
-  { question: '숫자는 어디서 나오나요?', answer: '그 자리에서 계산합니다.', link: { href: '/ko/learn', label: '배우기 열기' } },
+  { question: '숫자는 어디서 나오나요?', answer: '그 자리에서 계산합니다.', link: { href: '/learn', label: '배우기 열기' } },
 ];
 
 function faqBlock(container: HTMLElement): { readonly mainEntity: readonly { name: string }[] } | null {
@@ -38,7 +38,7 @@ describe('FaqAccordion (D-S3-12)', () => {
 
   it('keeps the follow-on link beside the answer, still a real link', () => {
     renderBothThemes(<FaqAccordion items={ITEMS} />);
-    expect(screen.getByRole('link', { name: '배우기 열기' })).toHaveAttribute('href', '/ko/learn');
+    expect(screen.getByRole('link', { name: '배우기 열기' })).toHaveAttribute('href', '/learn');
   });
 
   it('the summary is a 44px control with a visible focus ring', () => {

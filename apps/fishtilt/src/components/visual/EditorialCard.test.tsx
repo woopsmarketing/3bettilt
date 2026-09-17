@@ -13,7 +13,7 @@ describe('EditorialCard', () => {
       const { container } = renderBothThemes(
         <EditorialCard
           shape={shape}
-          href="/ko/learn/hand-matrix"
+          href="/learn/hand-matrix"
           title="13×13 표는 어떻게 읽나요?"
           eyebrow="레인지"
           description="설명"

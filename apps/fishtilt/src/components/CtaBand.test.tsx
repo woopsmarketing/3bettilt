@@ -9,14 +9,14 @@ describe('CtaBand (D-S3-12)', () => {
       <CtaBand
         title="직접 눌러보세요"
         description="13×13 표를 열어 봅니다."
-        primary={{ href: '/ko/tools/range', label: '핸드레인지 열기' }}
+        primary={{ href: '/tools/range', label: '핸드레인지 열기' }}
       />,
     );
     expect(container.firstElementChild?.className).toContain('bg-brand-950');
     expect(container.firstElementChild?.className).not.toContain('border');
     expect(screen.getByText('직접 눌러보세요')).toBeInTheDocument();
     const link = screen.getByRole('link', { name: '핸드레인지 열기' });
-    expect(link).toHaveAttribute('href', '/ko/tools/range');
+    expect(link).toHaveAttribute('href', '/tools/range');
     // The site's primary button verbatim: brand FILL + ink-on-brand, hover on brand-hover.
     expect(link.className).toContain('bg-brand-600');
     expect(link.className).toContain('text-ink-on-brand');
@@ -28,8 +28,8 @@ describe('CtaBand (D-S3-12)', () => {
     renderBothThemes(
       <CtaBand
         title="t"
-        primary={{ href: '/ko/tools/range', label: '열기' }}
-        secondary={{ href: '/ko/learn/poker-range', label: '먼저 배우기' }}
+        primary={{ href: '/tools/range', label: '열기' }}
+        secondary={{ href: '/learn/poker-range', label: '먼저 배우기' }}
       />,
     );
     const secondary = screen.getByRole('link', { name: '먼저 배우기' });
@@ -41,7 +41,7 @@ describe('CtaBand (D-S3-12)', () => {
     const { container } = renderBothThemes(
       <CtaBand
         title="지금 시작하세요"
-        primary={{ href: '/ko/learn', label: '첫 레슨 읽기' }}
+        primary={{ href: '/learn', label: '첫 레슨 읽기' }}
         backdrop={<span data-testid="picture" />}
       />,
     );
@@ -54,7 +54,7 @@ describe('CtaBand (D-S3-12)', () => {
     expect(layer?.querySelector('.cover-scrim-band')).not.toBeNull();
     // The text and the action stay live and above the picture layer.
     expect(screen.getByText('지금 시작하세요')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '첫 레슨 읽기' })).toHaveAttribute('href', '/ko/learn');
+    expect(screen.getByRole('link', { name: '첫 레슨 읽기' })).toHaveAttribute('href', '/learn');
   });
 
   it('never links a destination that is null — it shows 준비 중 instead', () => {

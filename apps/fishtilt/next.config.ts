@@ -1,6 +1,7 @@
 import createMDX from '@next/mdx';
 import type { NextConfig } from 'next';
-import { DEFAULT_LOCALE, localePath } from './src/lib/locale.ts';
+import { legacyLocaleRedirects } from './src/lib/legacyLocaleRedirects.ts';
+import { DEFAULT_LOCALE } from './src/lib/locale.ts';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -32,13 +33,16 @@ const nextConfig: NextConfig = {
   // `baseURL` uses the numeric loopback address.
   allowedDevOrigins: ['127.0.0.1'],
   /*
-   * THE ONE REDIRECT (D-S3-03). Every page lives under a locale segment, so the bare root
-   * sends a visitor to the default locale's home, permanently. Nothing else redirects: the
-   * old unprefixed routes (`/learn`, `/tools/range`, …) were never deployed anywhere, so
-   * there is no link in the world to keep alive, and they simply 404.
+   * THE LEGACY `/ko` REDIRECTS (D-S3-23, superseding D-S3-03). The default locale is
+   * prefixless: `/` is the Korean homepage itself (HTTP 200), not a redirect. Every page that
+   * used to be served under `/ko/…` answers with a permanent redirect, one hop, to exactly its
+   * prefixless page — generated from the frozen list in `legacyLocaleRedirects.ts`, so an
+   * address that never existed (`/ko/does-not-exist`) still simply 404s. The prefix is
+   * derived from the locale constant rather than spelt here. Old unprefixed-era routes and
+   * unsupported locales (`/en`, `/en/learn`) have no rule and 404.
    */
   async redirects() {
-    return [{ source: '/', destination: localePath(DEFAULT_LOCALE, '/'), permanent: true }];
+    return legacyLocaleRedirects(`/${DEFAULT_LOCALE}`);
   },
   /*
    * Preview deployments must not be indexed (WP-S3-19, DEPLOY §5.2). Vercel sets

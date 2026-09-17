@@ -56,17 +56,17 @@ vi.mock('../../content/graph.js', async (importOriginal) => {
 });
 
 const { default: LearnHubPage, metadata: learnMeta } =
-  await import('../../app/[locale]/learn/page.js');
+  await import('../../app/(default-locale)/learn/page.js');
 const { default: BlogIndexPage, metadata: blogMeta } =
-  await import('../../app/[locale]/blog/page.js');
+  await import('../../app/(default-locale)/blog/page.js');
 const { default: GlossaryIndexPage, metadata: glossaryMeta } =
-  await import('../../app/[locale]/glossary/page.js');
+  await import('../../app/(default-locale)/glossary/page.js');
 const { default: HandsIndexPage, metadata: handsMeta } =
-  await import('../../app/[locale]/hands/page.js');
+  await import('../../app/(default-locale)/hands/page.js');
 const { default: ToolsHubPage, metadata: toolsMeta } =
-  await import('../../app/[locale]/tools/page.js');
+  await import('../../app/(default-locale)/tools/page.js');
 const { default: PracticeHubPage, metadata: practiceMeta } =
-  await import('../../app/[locale]/practice/page.js');
+  await import('../../app/(default-locale)/practice/page.js');
 
 interface Hub {
   readonly name: string;

@@ -118,8 +118,8 @@ export default function GlobalError({
               다시 시도
             </button>
             {/* The bare root, on purpose: this file may import nothing (it exists to survive
-                a broken module graph — see its test), and `/` is the one redirect the site
-                keeps, to the default locale's home (D-S3-03). */}
+                a broken module graph — see its test), and `/` is the default locale's
+                homepage itself, prefixless (D-S3-23). */}
             <a className="button secondary" href="/">
               홈으로 가기
             </a>

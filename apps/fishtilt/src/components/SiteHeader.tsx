@@ -77,7 +77,7 @@ export function activeNavId(
   let best: RouteEntry | null = null;
   for (const route of routes) {
     if (!route.available) continue;
-    // The home route is its localised root (`/ko`) and matches only itself; every other
+    // The home route is its localised root (`/`) and matches only itself; every other
     // route matches itself and anything under it.
     const hit =
       route.sitePath === '/'

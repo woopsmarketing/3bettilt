@@ -19,12 +19,12 @@
  *
  * ## Two paths per route (Stage 3, D-S3-01/02)
  *
- * Every page lives under a locale segment (`/ko/learn`), so a route carries both the SITE
- * path it is defined by (`sitePath: '/learn'`, locale-less, the directory under
- * `src/app/[locale]/`) and the `path` the site actually links to (`'/ko/learn'`, built by
- * `localePath` from the default locale). Everything that renders or emits a URL reads
- * `path`; only the filesystem check and the locale layer read `sitePath`. The registry is
- * written in `sitePath` terms and never spells the prefix.
+ * A route carries both the SITE path it is defined by (`sitePath: '/learn'`, locale-less, the
+ * directory under `src/app/(default-locale)/`) and the `path` the site actually links to,
+ * built by `localePath` from the default locale. The default locale is prefixless (D-S3-23),
+ * so today the two are equal (`'/learn'`); a non-default locale would prefix `path`
+ * (`'/en/learn'`). Everything that renders or emits a URL reads `path`; only the filesystem
+ * check and the locale layer read `sitePath`. The registry is written in `sitePath` terms.
  */
 import { DEFAULT_LOCALE, localePath } from './locale.js';
 
@@ -35,9 +35,9 @@ export interface RouteEntry {
   /** Stable key, independent of the path or label, so callers can reference a route by
    *  intent (`routeById('range')`) without restating its Korean label or URL. */
   readonly id: string;
-  /** Locale-less site path — `'/learn'`. The directory under `src/app/[locale]/`. */
+  /** Locale-less site path — `'/learn'`. The directory under `src/app/(default-locale)/`. */
   readonly sitePath: string;
-  /** The localised path the site links to — `'/ko/learn'`. Derived; never written. */
+  /** The localised path the site links to — `'/learn'` for the default locale. Derived. */
   readonly path: string;
   /** Korean nav label. Ordinary UI copy, not poker notation, so it is fully translated
    *  (ADR-0053 only exempts things like card ranks/suits and position abbreviations). */

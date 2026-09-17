@@ -74,7 +74,7 @@ describe('breadcrumbListJsonLd', () => {
 
   it('mirrors the visible trail exactly, in order, 1-based', () => {
     expect(block['itemListElement']).toEqual([
-      { '@type': 'ListItem', position: 1, name: '홈', item: `${SITE_ORIGIN}${ko('/')}` },
+      { '@type': 'ListItem', position: 1, name: '홈', item: SITE_ORIGIN },
       { '@type': 'ListItem', position: 2, name: '배우기', item: `${SITE_ORIGIN}${ko('/learn')}` },
       {
         '@type': 'ListItem',
@@ -108,7 +108,7 @@ describe('articleJsonLd', () => {
     expect(block['publisher']).toEqual({
       '@type': 'Organization',
       name: SITE_NAME,
-      url: `${SITE_ORIGIN}${ko('/')}`,
+      url: SITE_ORIGIN,
     });
     expect(block['author']).toEqual(block['publisher']);
   });
@@ -211,10 +211,10 @@ describe('organizationJsonLd / webSiteJsonLd', () => {
   it('names the site from the two constants every other absolute URL is built from', () => {
     expect(org['@type']).toBe('Organization');
     expect(org['name']).toBe(SITE_NAME);
-    expect(org['url']).toBe(`${SITE_ORIGIN}${ko('/')}`);
+    expect(org['url']).toBe(SITE_ORIGIN);
     expect(site['@type']).toBe('WebSite');
     expect(site['name']).toBe(SITE_NAME);
-    expect(site['url']).toBe(`${SITE_ORIGIN}${ko('/')}`);
+    expect(site['url']).toBe(SITE_ORIGIN);
   });
 
   it('publishes the SAME organisation an Article embeds, not a second one that looks like it', () => {
@@ -378,7 +378,7 @@ describe('collectionPageJsonLd', () => {
     expect(block['isPartOf']).toEqual({
       '@type': 'WebSite',
       name: SITE_NAME,
-      url: `${SITE_ORIGIN}${ko('/')}`,
+      url: SITE_ORIGIN,
     });
     expect((block['mainEntity'] as Record<string, unknown>)['@type']).toBe('ItemList');
   });

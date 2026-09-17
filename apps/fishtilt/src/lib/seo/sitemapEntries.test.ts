@@ -24,7 +24,7 @@
  *  - as BEHAVIOUR against records and routes this file constructs, which stay `PLANNED`,
  *    unindexable and unavailable forever no matter how finished the site becomes.
  */
-import { APP_LOCALE_SEGMENT, DEFAULT_LOCALE, HREFLANG, localePath, sitePathOf } from '../locale.js';
+import { APP_DEFAULT_LOCALE_GROUP, DEFAULT_LOCALE, HREFLANG, localePath, sitePathOf } from '../locale.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,9 +53,9 @@ const routePaths = new Set(ROUTES.map((route) => route.path));
 const contentByPath = new Map(ALL_CONTENT.map((record) => [contentPath(record), record]));
 
 function routePageExists(path: string): boolean {
-  // Every page lives under `src/app/[locale]/`; the sitemap lists its localised URL.
+  // Every page lives under `src/app/(default-locale)/`; the sitemap lists its localised URL.
   const sitePath = sitePathOf(path);
-  const dir = join(APP_DIR, APP_LOCALE_SEGMENT, sitePath === '/' ? '' : sitePath.slice(1));
+  const dir = join(APP_DIR, APP_DEFAULT_LOCALE_GROUP, sitePath === '/' ? '' : sitePath.slice(1));
   return PAGE_FILES.some((file) => existsSync(join(dir, file)));
 }
 

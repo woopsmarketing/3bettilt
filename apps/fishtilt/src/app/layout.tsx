@@ -67,9 +67,9 @@ const NO_FLASH_THEME_SCRIPT = `try{var t=localStorage.getItem('fishtilt-theme');
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // The audience is Korean and so is the whole site: `lang` drives font selection, line
   // breaking and hyphenation in the browser (ADR-0053). It is the default locale constant,
-  // not a literal — the same value `src/app/[locale]/layout.tsx` prerenders every page under
-  // (D-S3-01). This root layout has no `params`, so with one locale the default IS the page's
-  // locale; a second locale would move `<html lang>` into the `[locale]` layout.
+  // not a literal — every page sits in the `src/app/(default-locale)/` route group (D-S3-23),
+  // so with one locale the default IS the page's locale; a second, prefixed locale would move
+  // `<html lang>` into a per-locale layout (`docs/3BETTILT_MULTILINGUAL_ARCHITECTURE.md`).
   //
   // `suppressHydrationWarning` on `<html>`: the script above mutates this element's
   // attributes before React hydrates, so the server's `<html>` and the browser's differ by

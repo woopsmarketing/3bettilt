@@ -130,7 +130,7 @@ describe('pageMetadata', () => {
     );
     // An edition list that omits the page itself would publish a set that is not reciprocal.
     expect(() => hreflangAlternates(canonical, path, [])).toThrow(/own editions/u);
-    expect(() => hreflangAlternates(canonical, '/learn/pot-odds')).toThrow(/localised path/u);
+    expect(() => hreflangAlternates(canonical, '/ko/learn/pot-odds')).toThrow(/never a URL prefix/u);
   });
 
   it('reads og:locale off the page path', () => {
@@ -148,10 +148,10 @@ describe('pageMetadata', () => {
     expect(hidden.alternates?.languages).toBeUndefined();
   });
 
-  it('refuses a locale-less path rather than emitting a canonical that 404s', () => {
+  it('refuses a legacy /ko path rather than emitting a canonical that only redirects', () => {
     expect(() =>
-      pageMetadata({ path: '/tools/pot-odds', title: 'x', description: 'y', index: true }),
-    ).toThrow(/supported locale/u);
+      pageMetadata({ path: '/ko/tools/pot-odds', title: 'x', description: 'y', index: true }),
+    ).toThrow(/never a URL prefix/u);
   });
 
   it('turns the index decision into a robots directive, and always follows', () => {

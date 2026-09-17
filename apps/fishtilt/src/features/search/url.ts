@@ -19,8 +19,8 @@ export function parseSearchUrlQuery(search: string): string {
 }
 
 /** `''` -> the search route's own path (no bare `?q=` clutter for an empty query);
- *  otherwise `<search path>?q=<encoded>`. The path is the registry's, so it carries the
- *  locale prefix like every other href (D-S3-02). */
+ *  otherwise `<search path>?q=<encoded>`. The path is the registry's, so it is localised
+ *  like every other href (D-S3-02). */
 export function buildSearchUrl(query: string): string {
   const { path } = routeById('search');
   if (query === '') return path;

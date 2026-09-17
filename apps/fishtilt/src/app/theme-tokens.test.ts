@@ -385,10 +385,10 @@ describe('theme tokens — structure', () => {
      * token of its own (ruling 113), never a bare literal.
      */
     const LONG_FORM = [
-      'app/[locale]/learn/[slug]/page.tsx',
-      'app/[locale]/glossary/[slug]/page.tsx',
-      'app/[locale]/hands/[hand]/page.tsx',
-      'app/[locale]/about/page.tsx',
+      'app/(default-locale)/learn/[slug]/page.tsx',
+      'app/(default-locale)/glossary/[slug]/page.tsx',
+      'app/(default-locale)/hands/[hand]/page.tsx',
+      'app/(default-locale)/about/page.tsx',
     ];
     for (const path of LONG_FORM) {
       const entry = COMPONENT_SOURCES.find(([rel]) => rel === path);

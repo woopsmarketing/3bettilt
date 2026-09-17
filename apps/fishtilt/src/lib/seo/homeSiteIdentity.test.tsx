@@ -12,14 +12,10 @@
  */
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import HomePage from '../../app/[locale]/page.js';
-import LearnHubPage from '../../app/[locale]/learn/page.js';
+import HomePage from '../../app/(default-locale)/page.js';
+import LearnHubPage from '../../app/(default-locale)/learn/page.js';
 import { SITE_NAME, SITE_ORIGIN } from './site.js';
 import { MIN_FAQ_ITEMS } from './faq.js';
-import { DEFAULT_LOCALE, localePath } from '../locale.js';
-
-/** The localised form of a site path — what every href on the site carries (D-S3-02). */
-const ko = (sitePath: string): string => localePath(DEFAULT_LOCALE, sitePath);
 
 function blocks(container: HTMLElement): Record<string, unknown>[] {
   return [...container.querySelectorAll('script[type="application/ld+json"]')].map(
@@ -45,8 +41,8 @@ describe('the home page`s site-level blocks', () => {
       ofType(container, 'Organization')[0],
     ]) {
       expect(block?.['name']).toBe(SITE_NAME);
-      // The front door is `/ko`, not the bare origin, which only redirects (D-S3-01/04).
-      expect(block?.['url']).toBe(`${SITE_ORIGIN}${ko('/')}`);
+      // The front door is the prefixless root: the bare origin IS the Korean homepage (D-S3-23).
+      expect(block?.['url']).toBe(SITE_ORIGIN);
       expect(block?.['@context']).toBe('https://schema.org');
     }
   });

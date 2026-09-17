@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { APP_LOCALE_SEGMENT, DEFAULT_LOCALE, localeOfPath, localePath } from './locale.js';
+import { APP_DEFAULT_LOCALE_GROUP, DEFAULT_LOCALE, localeOfPath, localePath, localePrefixOf } from './locale.js';
 import { FOOTER_NAV_IDS, PRIMARY_NAV_IDS, ROUTES, routeById, routesBySection } from './routes.js';
 
 const APP_DIR = fileURLToPath(new URL('../app', import.meta.url));
@@ -22,7 +22,7 @@ const APP_DIR = fileURLToPath(new URL('../app', import.meta.url));
  *  under the locale segment, where every page lives (D-S3-01). */
 function pageFileFor(sitePath: string): string {
   const segment = sitePath === '/' ? '' : sitePath.replace(/^\//, '');
-  return join(APP_DIR, APP_LOCALE_SEGMENT, segment, 'page.tsx');
+  return join(APP_DIR, APP_DEFAULT_LOCALE_GROUP, segment, 'page.tsx');
 }
 
 describe('route registry', () => {
@@ -38,11 +38,13 @@ describe('route registry', () => {
   });
 
   it('every linked path is the site path under the default locale, and nothing else', () => {
-    // D-S3-02: the prefix is derived, never written. A registry entry cannot carry a
-    // locale of its own, and cannot escape the locale layer.
+    // D-S3-02: the localised path is derived, never written. A registry entry cannot carry
+    // a locale of its own, and cannot escape the locale layer. The default locale is
+    // prefixless (D-S3-23), so the linked path IS the site path.
     for (const route of ROUTES) {
-      expect(localeOfPath(route.sitePath), route.id).toBeNull();
+      expect(localePrefixOf(route.sitePath), route.id).toBeNull();
       expect(route.path, route.id).toBe(localePath(DEFAULT_LOCALE, route.sitePath));
+      expect(route.path, route.id).toBe(route.sitePath);
       expect(localeOfPath(route.path), route.id).toBe(DEFAULT_LOCALE);
     }
   });

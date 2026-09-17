@@ -9,14 +9,14 @@
 | 항목 | 값 | 비고 |
 | --- | --- | --- |
 | Production origin | `https://3bettilt.com` | 코드 기본값(부록 A-1). www 없음, `/ko` 없음, 끝 슬래시 없음 |
-| 한국어 사이트 | `https://3bettilt.com/ko` + 경로 | `/` → `/ko` 308 영구 리다이렉트 1건(A-3) |
+| 한국어 사이트 | `https://3bettilt.com` + 경로(무접두) | `/` = 한국어 홈 200. 기존 `/ko/*` 142개 → 1:1 308 (D-S3-23) |
 | 환경변수 | `NEXT_PUBLIC_SITE_URL` 1개(선택) | 앱이 읽는 `process.env`는 이것, `next.config.ts`의 `VERCEL_ENV`(preview noindex 게이트, §5.2), Playwright의 `CI`(A-6) |
 | 프레임워크 | Next 16 App Router, 전 페이지 정적 프리렌더, API route 0, DB 0 | `output: 'export'`가 **아니므로** Vercel의 Next.js 프리셋으로 배포(A-2) |
 | Vercel Root Directory | `apps/fishtilt` | pnpm 워크스페이스 monorepo(A-5) |
 | Node | `.nvmrc` = `v22.22.3`, `engines.node >= 22` | Vercel 프로젝트 Node 버전을 22.x로(A-7) |
 | 패키지 매니저 | `pnpm@11.21.0`(`packageManager`), lockfile v9 | A-7 |
 | sitemap / robots | `https://3bettilt.com/sitemap.xml`, `https://3bettilt.com/robots.txt` | 빌드 시 정적 생성(A-9) |
-| 색인 제외 | `/ko/search`(noindex, follow), 404 페이지(noindex) | A-10 |
+| 색인 제외 | `/search`(noindex, follow), 404 페이지(noindex) | A-10 |
 | DNS | Cloudflare(Free). 값은 Vercel 도메인 화면에서 복사 | §7 |
 
 ## 1. 배포 전 반드시 확인할 것 (blocking)
@@ -45,13 +45,15 @@
 | Preview | 설정하지 않음 → 기본값 `https://3bettilt.com` | D-S3-05: preview도 canonical은 production을 가리킨다(§5.2) |
 | 로컬 | 설정하지 않음 | 로컬 빌드도 production canonical을 낸다(의도된 동작) |
 
-## 3. `/ko` 아키텍처
+## 3. URL 아키텍처 (D-S3-23 — 기본 로케일 무접두, 2026-09-17)
 
-- 모든 페이지는 `src/app/[locale]/…` 아래에 있다. `SUPPORTED_LOCALES = ['ko']`, `DEFAULT_LOCALE = 'ko'`가 단일 진실이다(A-3).
-- `[locale]/layout.tsx`가 `generateStaticParams`로 `['ko']`만 생성하고 `dynamicParams = false`라서 `/en/learn`, `/xx` 같은 첫 세그먼트는 사이트 자체 404다(A-3). 무접두 경로 `/learn`도 404다(D-S3-03 — 리다이렉트 없음, 배포된 적 없는 URL이므로 보존할 것이 없음).
-- **`/` → `/ko` 리다이렉트는 `next.config.ts`의 `redirects()` 1건**, `permanent: true`(A-3). 로컬 e2e에서 `GET /` → 308, `location: /ko`로 확인됨(A-11). 정적 사이트지만 `output: 'export'`가 아니라 Next 런타임 위의 정적 프리렌더이므로, Vercel이 이 리다이렉트를 라우팅 계층에서 그대로 처리한다. 만약 언젠가 `output: 'export'`로 바꾸면 이 리다이렉트는 호스트 설정으로 옮겨야 한다.
-- `<html lang>`은 루트 layout의 `DEFAULT_LOCALE`(A-4). hreflang은 `ko-KR` + `x-default`(둘 다 같은 URL) 두 개만 낸다(D-S3-06).
-- **미래 로케일 추가 방법**: `src/lib/locale.ts`의 `SUPPORTED_LOCALES`에 원소 추가 + `HREFLANG` 매핑 추가 → 번역된 콘텐츠·레지스트리 → `<html lang>`을 `[locale]` layout으로 이동(01A handoff Known limitations). 디렉토리 복제가 아니다. 존재하지 않는 언어의 placeholder 페이지는 금지(owner decision).
+- 한국어(`DEFAULT_LOCALE = 'ko'`)는 접두사 없음: `/`, `/learn`, `/learn/pot-odds`. 페이지는 route group `src/app/(default-locale)/…`에 있고, 디렉토리가 곧 공개 URL이다(rewrite·middleware 없음, 전부 정적).
+- `/`는 한국어 홈 HTML을 **200**으로 반환한다. `/` → `/ko` redirect는 제거됐다.
+- **기존 `/ko/*` URL**: `next.config.ts` `redirects()`가 `src/lib/legacyLocaleRedirects.ts`의 동결 목록(142 = 141 indexable + `/search`)으로 1:1 `permanent: true`(308) redirect를 낸다. 패턴 rule이 없으므로 `/ko/does-not-exist`는 redirect 없이 404. `/ko/…/`(끝 슬래시)는 Next 기본 슬래시 제거 308 뒤 migration 308 → 2 hop.
+- 미지원 로케일(`/en`, `/en/learn`, `/xx`)과 없는 경로는 사이트 자체 404.
+- `<html lang>`은 루트 layout의 `DEFAULT_LOCALE`. hreflang은 `ko-KR` + `x-default`(둘 다 같은 무접두 URL) 두 개만 낸다(D-S3-06).
+- **미래 로케일**: `docs/3BETTILT_MULTILINGUAL_ARCHITECTURE.md` §2 — 비기본 로케일만 `/<code>/…`(`src/app/[locale]/…`). 존재하지 않는 언어의 placeholder 페이지는 금지.
+- 정적 프리렌더 위의 Next 런타임이므로 Vercel이 redirects를 라우팅 계층에서 처리한다. `output: 'export'`로 바꾸면 이 142개 redirect를 호스트 설정으로 옮겨야 한다.
 
 ## 4. Vercel 프로젝트 구성 (pnpm monorepo)
 
@@ -106,7 +108,7 @@ cd apps/fishtilt && rm -rf .next && pnpm build
 
 - **코드가 보장하는 것(WP-S3-19)**: `apps/fishtilt/next.config.ts`의 `headers()`가 `process.env.VERCEL_ENV === 'preview'`일 때만 모든 경로(`/:path*`)에 `X-Robots-Tag: noindex` 응답 헤더를 붙인다. Vercel은 Production이 아닌 모든 배포에 `VERCEL_ENV=preview`를 빌드 시점에 넣으므로 preview 호스트의 모든 응답이 이 헤더를 갖는다. 이 헤더는 Vercel의 플랫폼 자동 noindex와 별개로 저장소가 직접 내는 것이며, preview 브랜치에 커스텀 도메인을 붙이거나 다른 호스트로 옮겨도 그대로 적용된다.
 - **Production은 완전히 무관하다**: `VERCEL_ENV`가 `production`이거나(Vercel) 비어 있으면(로컬 빌드·Playwright) `headers()`는 빈 배열을 돌려주고, 빌드 산출물 `.next/routes-manifest.json`의 `headers`는 이전과 같이 `[]`이다(로컬 빌드로 확인). `robots.txt`(항상 `Allow: /`), 페이지 `<meta robots>`(레지스트리 플래그, A-10), canonical·og:url·sitemap(항상 `https://3bettilt.com…`, D-S3-05)은 환경을 보지 않으며 preview에서도 바뀌지 않는다 — 즉 preview 페이지의 `<meta robots>`는 여전히 `index, follow`이고, 색인을 막는 것은 응답 헤더 한 줄뿐이다. 이는 의도한 설계다: `robots.txt` Disallow는 noindex를 읽지 못하게 하므로 쓰지 않고(§8.1), `policy.ts`의 deny list 없음도 유지된다.
-- **첫 preview에서 반드시 확인**: `curl -I https://<preview>.vercel.app/ko | grep -i x-robots-tag` → `x-robots-tag: noindex`가 있어야 한다(Vercel 자체 헤더가 있으면 같은 값이 두 번 보일 수 있다 — 정상). 없으면 `VERCEL_ENV`가 빌드에 주입되지 않은 것이므로 대시보드 Environment Variables에서 Vercel 시스템 환경변수 자동 노출("Automatically expose System Environment Variables")이 켜져 있는지 확인한다. Production(`https://3bettilt.com/ko`)에서는 같은 명령의 결과가 **비어 있어야** 한다(§9 체크리스트).
+- **첫 preview에서 반드시 확인**: `curl -I https://<preview>.vercel.app/ | grep -i x-robots-tag` → `x-robots-tag: noindex`가 있어야 한다(Vercel 자체 헤더가 있으면 같은 값이 두 번 보일 수 있다 — 정상). 없으면 `VERCEL_ENV`가 빌드에 주입되지 않은 것이므로 대시보드 Environment Variables에서 Vercel 시스템 환경변수 자동 노출("Automatically expose System Environment Variables")이 켜져 있는지 확인한다. Production(`https://3bettilt.com/`)에서는 같은 명령의 결과가 **비어 있어야** 한다(§9 체크리스트).
 - Preview 브랜치에 커스텀 도메인을 할당하지 않는다. 할당해도 위 헤더는 붙지만, Vercel 쪽 자동 noindex는 적용되지 않을 수 있다(Vercel 문서 사항, 미검증).
 
 ## 6. Production 배포
@@ -121,9 +123,9 @@ cd apps/fishtilt && rm -rf .next && pnpm build
 
 ### 7.1 도메인 정책 (§DH)
 
-- Canonical host: `https://3bettilt.com` (apex). 한국어 홈은 `https://3bettilt.com/ko`(끝 슬래시 없음이 정본, `/ko/`는 Next가 `/ko`로 308 — D-S3-04).
+- Canonical host: `https://3bettilt.com` (apex). 한국어 홈은 `https://3bettilt.com/` (D-S3-23; `<head>`·sitemap은 Next 렌더 방식대로 bare origin `https://3bettilt.com`으로 표기 — 같은 URL). 기존 `/ko`는 `/`로 308.
 - `www.3bettilt.com` → 301 → `https://3bettilt.com`. **Vercel 도메인 설정에서** apex를 primary로, www를 "Redirect to 3bettilt.com"(308/301)으로 둔다. 코드에는 www 처리가 없고, 있어서도 안 된다(host 정책은 인프라 소관).
-- `3bettilt.co.kr`: 현재 **보유하지 않음**. 확보한다면 `3bettilt.co.kr/*` → 301 → `https://3bettilt.com/ko/*` (Vercel에 도메인 추가 후 리다이렉트로, 또는 Cloudflare Redirect Rule로). 보유 전에는 아무것도 구현하지 않는다 — 문서화만.
+- `3bettilt.co.kr`: 현재 **보유하지 않음**. 확보한다면 `3bettilt.co.kr/*` → 301 → `https://3bettilt.com/*` (Vercel에 도메인 추가 후 리다이렉트로, 또는 Cloudflare Redirect Rule로). 보유 전에는 아무것도 구현하지 않는다 — 문서화만.
 
 ### 7.2 Vercel에 도메인 추가
 
@@ -141,7 +143,7 @@ cd apps/fishtilt && rm -rf .next && pnpm build
 
 ### 7.4 HTTPS
 
-- Vercel이 도메인 검증 후 인증서를 자동 발급한다. 확인: `curl -sI https://3bettilt.com/ | head -5`(308 → `/ko`), `curl -sI http://3bettilt.com/`(HTTPS로 308), `curl -sI https://www.3bettilt.com/ko`(apex로 301/308).
+- Vercel이 도메인 검증 후 인증서를 자동 발급한다. 확인: `curl -sI https://3bettilt.com/ | head -5`(200), `curl -sI http://3bettilt.com/`(HTTPS로 308), `curl -sI https://www.3bettilt.com/ko`(apex로 301/308).
 - HSTS는 Vercel이 기본으로 붙이는 헤더를 확인만 한다(`strict-transport-security`). preload 등록은 하지 않는다(되돌리기 어려움).
 
 ## 8. sitemap · robots · Google Search Console (§DI)
@@ -156,14 +158,14 @@ cd apps/fishtilt && rm -rf .next && pnpm build
   Sitemap: https://3bettilt.com/sitemap.xml
   ```
   Disallow가 없는 것이 **의도**다(`/search`는 noindex 메타로 처리; Disallow하면 오히려 noindex를 읽지 못한다 — A-10 robots.ts 주석).
-- `https://3bettilt.com/sitemap.xml` — 색인 가능한 정적 route(`/search` 제외) + `PUBLISHED`·`indexable` 콘텐츠 레코드 전부, 각 `<url>`에 `xhtml:link hreflang="ko-KR"`과 `x-default`(둘 다 자기 URL). `<loc>`은 전부 `https://3bettilt.com/ko…` 단일 host. `lastmod`·`priority`는 없다(만들어 넣지 않는다 — 가짜 날짜 금지). 목록은 `sitemapEntries()`가 레지스트리에서 계산하므로 **콘텐츠를 발행하면 자동으로 포함**된다(A-9).
+- `https://3bettilt.com/sitemap.xml` — 색인 가능한 정적 route(`/search` 제외) + `PUBLISHED`·`indexable` 콘텐츠 레코드 전부, 각 `<url>`에 `xhtml:link hreflang="ko-KR"`과 `x-default`(둘 다 자기 URL). `<loc>`은 전부 `https://3bettilt.com…` 단일 host, `/ko` 없음(D-S3-23). `lastmod`·`priority`는 없다(만들어 넣지 않는다 — 가짜 날짜 금지). 목록은 `sitemapEntries()`가 레지스트리에서 계산하므로 **콘텐츠를 발행하면 자동으로 포함**된다(A-9).
 
 ### 8.2 Search Console
 
 1. **Domain property**(`3bettilt.com`)로 등록 — apex/www/http/https를 한 번에 커버.
 2. 소유 확인: Google이 주는 `google-site-verification=…` TXT 값을 Cloudflare DNS에 **TXT 레코드(이름 `@`)**로 추가. 값은 Search Console 화면의 것만. 전파 후 "확인".
 3. Sitemaps → `https://3bettilt.com/sitemap.xml` 제출. 며칠 뒤 "발견된 URL 수"가 sitemap `<loc>` 수와 같은지 확인.
-4. URL 검사(대표 URL, 각 섹션 1개씩): `/ko`, `/ko/learn/pot-odds`, `/ko/blog/aks-vs-ako`, `/ko/glossary/kicker`, `/ko/hands/aks`, `/ko/tools/range`. 각각 "색인 생성 가능", 사용자 선언 canonical = Google 선택 canonical인지. `/ko/search`는 "noindex 태그로 제외"가 정상.
+4. URL 검사(대표 URL, 각 섹션 1개씩): `/`, `/learn/pot-odds`, `/blog/aks-vs-ako`, `/glossary/kicker`, `/hands/aks`, `/tools/range`. 각각 "색인 생성 가능", 사용자 선언 canonical = Google 선택 canonical인지. `/search`는 "noindex 태그로 제외"가 정상. 기존 `/ko/*`는 "리디렉션이 포함된 페이지"로 분류되는 것이 정상(D-S3-23 migration, `docs/reports/3BETTILT_URL_MIGRATION_SUMMARY.md` Search Console 절).
 5. 이후 정기 확인(운영 플레이북 `docs/3BETTILT_OPERATING_PLAYBOOK.md` §5): Coverage/Pages, Core Web Vitals, 검색 실적(query·CTR·순위).
 
 ## 9. Production 스모크 테스트 체크리스트
@@ -172,26 +174,26 @@ cd apps/fishtilt && rm -rf .next && pnpm build
 
 | # | 확인 | 명령/방법 | 기대값 |
 | --- | --- | --- | --- |
-| 1 | 루트 리다이렉트 | `curl -sI $H/` | `308`, `location: /ko`(또는 절대 URL) |
-| 2 | `/ko/` 슬래시 | `curl -sI $H/ko/` | 308 → `/ko` |
-| 3 | 홈 | `curl -s $H/ko \| grep -o '<html lang="ko"'` | 1건, HTTP 200 |
-| 4 | 섹션 허브 6 + about | `/ko/learn`, `/ko/blog`, `/ko/glossary`, `/ko/hands`, `/ko/tools`, `/ko/practice`, `/ko/about` | 전부 200 |
-| 5 | 섹션별 리프 1개씩 | `/ko/learn/pot-odds`, `/ko/blog/aks-vs-ako`, `/ko/glossary/kicker`, `/ko/hands/aks`, `/ko/tools/range`, `/ko/practice/range-quiz` | 200, 각 페이지 `<title>`이 다름, `· 3BetTilt` 접미사 |
-| 6 | 검색 noindex | `curl -s $H/ko/search \| grep -o '<meta name="robots"[^>]*>'` | `noindex, follow`; sitemap에 없음 |
-| 7 | 404 | `curl -sI $H/ko/no-such-page`, `$H/learn`, `$H/xx/learn` | 전부 HTTP 404, 한국어 404 페이지(`_not-found`), canonical 없음, `noindex` |
-| 7a | preview 헤더 부재 | `curl -sI $H/ko \| grep -i x-robots-tag` | Production에서는 **출력 없음**(§5.2 — `X-Robots-Tag: noindex`는 `VERCEL_ENV=preview`에서만 붙는다) |
-| 8 | sitemap | `curl -s $H/sitemap.xml \| grep -c '<loc>'`; `grep -o 'https://[^/]*' \| sort -u` | 개수 = 빌드 로그 기록값; host 1개 = `https://3bettilt.com` |
+| 1 | 루트 | `curl -sI $H/` | `200` (redirect 없음) |
+| 2 | 기존 `/ko` redirect | `curl -sI $H/ko`, `$H/ko/learn/pot-odds` | `308`, `location: /`, `/learn/pot-odds` (1 hop) |
+| 3 | 홈 | `curl -s $H/ \| grep -o '<html lang="ko"'` | 1건, HTTP 200 |
+| 4 | 섹션 허브 6 + about | `/learn`, `/blog`, `/glossary`, `/hands`, `/tools`, `/practice`, `/about` | 전부 200 |
+| 5 | 섹션별 리프 1개씩 | `/learn/pot-odds`, `/blog/aks-vs-ako`, `/glossary/kicker`, `/hands/aks`, `/tools/range`, `/practice/range-quiz` | 200, 각 페이지 `<title>`이 다름, ` - 3BetTilt` 접미사 |
+| 6 | 검색 noindex | `curl -s $H/search \| grep -o '<meta name="robots"[^>]*>'` | `noindex, follow`; sitemap에 없음 |
+| 7 | 404 | `curl -sI $H/no-such-page`, `$H/ko/no-such-page`, `$H/en`, `$H/en/learn` | 전부 HTTP 404(redirect 없음), 한국어 404 페이지(`_not-found`), canonical 없음, `noindex` |
+| 7a | preview 헤더 부재 | `curl -sI $H/ \| grep -i x-robots-tag` | Production에서는 **출력 없음**(§5.2 — `X-Robots-Tag: noindex`는 `VERCEL_ENV=preview`에서만 붙는다) |
+| 8 | sitemap | `curl -s $H/sitemap.xml \| grep -c '<loc>'`; `grep -c '/ko'` | 141; `/ko` 0; host 1개 = `https://3bettilt.com` |
 | 9 | robots | `curl -s $H/robots.txt` | §8.1과 동일 |
-| 10 | canonical / og:url 3페이지 | `/ko`, `/ko/learn/pot-odds`, `/ko/blog/aks-vs-ako`에서 `<link rel="canonical">`, `og:url` | 둘 다 `https://3bettilt.com/<그 경로>`, 쿼리 없음 |
+| 10 | canonical / og:url 3페이지 | `/`, `/learn/pot-odds`, `/blog/aks-vs-ako`에서 `<link rel="canonical">`, `og:url` | `https://3bettilt.com`(root) / `https://3bettilt.com/<그 경로>`, 쿼리 없음, `/ko` 없음 |
 | 11 | hreflang | 같은 3페이지 | `hrefLang="ko-KR"`·`x-default` 각 1, 둘 다 canonical과 동일 |
 | 12 | JSON-LD 파싱 | 3페이지의 `<script type="application/ld+json">`을 전부 `JSON.parse` | 예외 0; 홈 = `Organization`·`WebSite`·`FAQPage`, 아티클 = `Article`·`BreadcrumbList`(허브 = `CollectionPage`) |
 | 13 | OG 이미지 | `curl -sI $H/og.png` | 200, `content-type: image/png` |
 | 14 | 아이콘 | `$H/icon.svg`, `$H/apple-icon.png` | 200 |
 | 15 | 다크/라이트 | 브라우저에서 헤더 테마 토글 | 두 테마 모두 텍스트 대비 정상, 새로고침 후 유지 |
 | 16 | 모바일 | 390px 폭(DevTools)에서 홈·레슨·툴(range)·스토리 | 가로 스크롤 0, 헤더 모바일 내비 동작 |
-| 17 | 툴 상호작용 | `/ko/tools/range`에서 자리 바꾸기, `/ko/tools/equity` 계산 | 하이드레이션 후 동작(콘솔 오류 0) |
-| 18 | 툴 쿼리 canonical | `curl -s "$H/ko/tools/range?pos=BTN" \| grep canonical` | 쿼리 없는 `…/ko/tools/range` |
-| 19 | 구 브랜드 | `curl -s $H/ko \| grep -ci fishtilt` | 0 |
+| 17 | 툴 상호작용 | `/tools/range`에서 자리 바꾸기, `/tools/equity` 계산 | 하이드레이션 후 동작(콘솔 오류 0) |
+| 18 | 툴 쿼리 canonical | `curl -s "$H/tools/range?pos=BTN" \| grep canonical` | 쿼리 없는 `…/tools/range` |
+| 19 | 구 브랜드 | `curl -s $H/ \| grep -ci fishtilt` | 0 |
 | 20 | HTTPS/www | §7.4의 curl 3종 | http→https, www→apex |
 
 동일 항목은 저장소 e2e(`tests/e2e/seo.spec.ts`, `locale.spec.ts`, `not-found.spec.ts`)가 로컬 빌드에 대해 자동 검증한다(A-11). 프로덕션에서는 위 표를 사람이 돈다.
@@ -212,5 +214,5 @@ Vercel Deployments에서 직전 정상 배포를 "Promote to Production" 또는 
 - **A-8 git / ignore**: `git ls-files apps/fishtilt | wc -l` → 0, `git ls-files packages/learn-core | wc -l` → 0, `packages/strategy-core` 78, `packages/shared` 10, `packages/poker-core` 67; `.gitignore:6` `.next/`, `:20-22` `.env`/`.env.*`/`!.env.example`, `:45` `.data/`.
 - **A-9 sitemap/robots 산출물**: `apps/fishtilt/src/app/sitemap.ts:15` `dynamic = 'force-static'`, `:25-30` `console.info` 1줄; `src/lib/seo/sitemapEntries.ts:34,46` `ALL_CONTENT` + `:37,45` `ROUTES`에서 계산; 로컬 빌드(`.next/BUILD_ID` `858Dj-osbuYAiSYP4BtJs`, 2026-09-12 04:13): `.next/server/app/robots.txt.body` = §8.1 본문 그대로; `sitemap.xml.body` `<loc>` 135, host `https://3bettilt.com` 단일(405 매치), hreflang ko-KR/x-default; HTML 138(`find .next/server/app -name '*.html'`). 01A handoff 시점(2026-09-09)은 130/133 — 콘텐츠 증가분.
 - **A-10 index policy**: `apps/fishtilt/src/lib/seo/policy.ts:53-64` `SECTION_INDEXABLE` — `search: false` 외 전부 true; `src/lib/seo/metadata.ts:103-106` `robots: { index, follow: true }`, hreflang은 `index` 페이지만; `src/app/robots.ts:25-32` `allow: '/'` + sitemap, Disallow 없음(주석 4-17이 이유); `src/app/not-found.tsx:43` `robots: { index: false, follow: true }`; 빌드 HTML `ko/search.html` `<meta name="robots" content="noindex, follow"/>`, `ko.html` `index, follow`, canonical `https://3bettilt.com/ko`, `og:url` 동일, JSON-LD `@type` Organization 2·WebSite 1·FAQPage 1(Question 6). 환경변수를 읽는 robots/metadata 코드 없음(A-6).
-- **A-11 e2e**: `apps/fishtilt/tests/e2e/locale.spec.ts:11` "bare / redirects permanently to /ko"(308), `:24` unprefixed·unknown locale 404; `seo.spec.ts:188` robots, `:209-229` sitemap 절대 URL·단일 origin·canonical, `:274` search noindex + sitemap 제외, `:281` tool 쿼리 canonical, `:297` JSON-LD 파싱, `:616` hreflang; `not-found.spec.ts:23,44`; `playwright.config.ts:25` baseURL `127.0.0.1:3221`, `:33` `pnpm build && next start --port 3221`. 01A handoff: e2e 271/271 PASS(2026-09-09).
+- **A-11 e2e** (D-S3-23 이후): `apps/fishtilt/tests/e2e/locale.spec.ts` — `/` 200, 대표 무접두 URL 14개 200 + 자기 canonical, 기존 `/ko` URL 11개 308 1 hop → 200, `/does-not-exist`·`/ko/does-not-exist`·`/en`·`/en/learn` 404. 142개 전체 redirect는 `src/lib/legacyLocaleRedirects.test.ts`. _(이 부록의 나머지 A-항목 줄번호는 migration 이전 코드 기준 기록이다.)_
 - **A-12 결정 문서**: `docs/3BETTILT_STAGE3_STATE.md` ORCHESTRATOR DECISIONS D-S3-01~06; owner decisions(production origin, `/ko`, Vercel + Cloudflare Free); `docs/reports/stage3/handoff/WP_S3_01A_HANDOFF.md`(리다이렉트·hreflang·sitemap 실측), `WP_S3_01B_HANDOFF.md`(브랜드 치환·`og.png`).

@@ -7,15 +7,15 @@ describe('NextRead (D-S3-13)', () => {
   it('is a navigation landmark with the previous and next pieces as links', () => {
     renderBothThemes(
       <NextRead
-        prev={{ href: '/ko/learn/positions-6max', title: '자리 이름', meta: '레슨 2' }}
-        next={{ href: '/ko/learn/pot-odds', title: '팟 오즈', meta: '레슨 4' }}
+        prev={{ href: '/learn/positions-6max', title: '자리 이름', meta: '레슨 2' }}
+        next={{ href: '/learn/pot-odds', title: '팟 오즈', meta: '레슨 4' }}
       />,
     );
     const nav = screen.getByRole('navigation', { name: '다음으로 읽기' });
     const links = screen.getAllByRole('link');
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      '/ko/learn/positions-6max',
-      '/ko/learn/pot-odds',
+      '/learn/positions-6max',
+      '/learn/pot-odds',
     ]);
     expect(nav.textContent).toContain('이전');
     expect(nav.textContent).toContain('다음');
@@ -23,7 +23,7 @@ describe('NextRead (D-S3-13)', () => {
   });
 
   it('renders only the side that exists, in its own column', () => {
-    renderBothThemes(<NextRead next={{ href: '/ko/learn/pot-odds', title: '팟 오즈' }} />);
+    renderBothThemes(<NextRead next={{ href: '/learn/pot-odds', title: '팟 오즈' }} />);
     expect(screen.getAllByRole('link')).toHaveLength(1);
     expect(screen.getByRole('link').getAttribute('data-direction')).toBe('next');
   });
@@ -40,16 +40,16 @@ describe('NextRead (D-S3-13)', () => {
       renderBothThemes(
         <NextRead
           emphasis="next"
-          prev={{ href: '/ko/learn/positions-6max', title: '자리 이름', meta: '레슨 2' }}
-          next={{ href: '/ko/learn/pot-odds', title: '팟 오즈', meta: '레슨 4' }}
+          prev={{ href: '/learn/positions-6max', title: '자리 이름', meta: '레슨 2' }}
+          next={{ href: '/learn/pot-odds', title: '팟 오즈', meta: '레슨 4' }}
         />,
       );
       const nav = screen.getByRole('navigation', { name: '다음으로 읽기' });
       expect(nav.getAttribute('data-emphasis')).toBe('next');
       const next = nav.querySelector('a[data-direction="next"]');
       const prev = nav.querySelector('a[data-direction="prev"]');
-      expect(next).toHaveAttribute('href', '/ko/learn/pot-odds');
-      expect(prev).toHaveAttribute('href', '/ko/learn/positions-6max');
+      expect(next).toHaveAttribute('href', '/learn/pot-odds');
+      expect(prev).toHaveAttribute('href', '/learn/positions-6max');
       // DOM order: the step, then the line — the next piece is the first thing in the tail.
       expect(next!.compareDocumentPosition(prev!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(next?.querySelector('span.text-xl, span.sm\\:text-2xl')?.textContent).toBe('팟 오즈');

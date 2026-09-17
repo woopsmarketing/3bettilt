@@ -31,7 +31,7 @@ describe('ArticleHero / EditorialHero — names onto PageHero (D-S3-12/13)', () 
         visual={<svg data-testid="art" />}
         facts={[{ label: '핸드', value: '169' }]}
       >
-        <a href="/ko/learn">시작하기</a>
+        <a href="/learn">시작하기</a>
       </EditorialHero>,
     );
     const header = container.querySelector('header');

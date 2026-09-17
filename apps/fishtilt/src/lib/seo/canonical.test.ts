@@ -57,12 +57,18 @@ describe('canonicalPath', () => {
   });
 });
 
-describe('canonicalPath — the locale gate (D-S3-01)', () => {
-  it('refuses a path under no supported locale, because no document lives there', () => {
-    expect(() => canonicalPath('/learn/pot-odds')).toThrow(/supported locale/u);
-    expect(() => canonicalPath('/')).toThrow(/supported locale/u);
-    expect(() => canonicalPath('/xx/learn')).toThrow(/supported locale/u);
-    expect(() => canonicalPath('/korean/learn')).toThrow(/supported locale/u);
+describe('canonicalPath — the locale gate (D-S3-23)', () => {
+  it('accepts prefixless default-locale paths, the root included', () => {
+    expect(canonicalPath('/learn/pot-odds')).toBe('/learn/pot-odds');
+    expect(canonicalPath('/')).toBe('/');
+    expect(canonicalPath('/?q=1')).toBe('/');
+    expect(canonicalPath(`${SITE_ORIGIN}/`)).toBe('/');
+  });
+
+  it('refuses a legacy default-locale prefix, because that address only redirects', () => {
+    expect(() => canonicalPath('/ko')).toThrow(/never a URL prefix/u);
+    expect(() => canonicalPath('/ko/learn/pot-odds')).toThrow(/never a URL prefix/u);
+    expect(() => canonicalPath(`${SITE_ORIGIN}/ko/learn`)).toThrow(/never a URL prefix/u);
   });
 });
 
@@ -74,7 +80,7 @@ describe('canonicalUrl', () => {
     expect(new URL(url).origin).toBe(new URL(SITE_ORIGIN).origin);
   });
 
-  it('does not double the slash at the root', () => {
-    expect(canonicalUrl(ko('/'))).toBe(`${SITE_ORIGIN}${ko('/')}`);
+  it('names the root as the bare origin, exactly as Next renders a root canonical', () => {
+    expect(canonicalUrl(ko('/'))).toBe(SITE_ORIGIN);
   });
 });

@@ -40,9 +40,9 @@ const PARSE_BASE = 'https://canonical.invalid';
  * string, a path with a fragment, an absolute URL on this origin — to its canonical PATH.
  *
  * Throws for an input that names a different origin, rather than quietly emitting a
- * canonical that points off-site — and for a path under no supported locale (D-S3-01):
- * every document on this site lives under `/ko/…`, so a locale-less canonical would name
- * a URL that answers 404.
+ * canonical that points off-site — and for a path that spells the default locale as a prefix
+ * (`/ko/learn`, D-S3-23): the default locale is prefixless, so such a canonical would name a
+ * legacy address that only redirects. The root reduces to `/`.
  */
 export function canonicalPath(input: string): string {
   const url = new URL(input, PARSE_BASE);
@@ -51,10 +51,9 @@ export function canonicalPath(input: string): string {
     throw new Error(`canonicalPath refuses a foreign origin: ${input}`);
   }
   const { pathname } = url;
-  const path = pathname.endsWith('/') ? pathname.replace(/\/+$/u, '') : pathname;
-  if (localeOfPath(path) === null) {
-    throw new Error(`canonicalPath expects a path under a supported locale, got: ${input}`);
-  }
+  const path = pathname.endsWith('/') ? pathname.replace(/\/+$/u, '') || '/' : pathname;
+  // Throws for a legacy default-locale prefix; the answer itself is not needed here.
+  localeOfPath(path);
   return path;
 }
 

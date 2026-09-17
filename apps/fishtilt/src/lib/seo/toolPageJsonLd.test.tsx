@@ -10,16 +10,16 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Metadata } from 'next';
-import EquityPage, { metadata as equityMeta } from '../../app/[locale]/tools/equity/page.js';
-import PotOddsPage, { metadata as potOddsMeta } from '../../app/[locale]/tools/pot-odds/page.js';
-import OutsPage, { metadata as outsMeta } from '../../app/[locale]/tools/outs/page.js';
+import EquityPage, { metadata as equityMeta } from '../../app/(default-locale)/tools/equity/page.js';
+import PotOddsPage, { metadata as potOddsMeta } from '../../app/(default-locale)/tools/pot-odds/page.js';
+import OutsPage, { metadata as outsMeta } from '../../app/(default-locale)/tools/outs/page.js';
 import HandCheckerPage, {
   metadata as handCheckerMeta,
-} from '../../app/[locale]/tools/hand-checker/page.js';
-import RangePage, { metadata as rangeMeta } from '../../app/[locale]/tools/range/page.js';
+} from '../../app/(default-locale)/tools/hand-checker/page.js';
+import RangePage, { metadata as rangeMeta } from '../../app/(default-locale)/tools/range/page.js';
 import StartingHandPage, {
   metadata as startingHandMeta,
-} from '../../app/[locale]/tools/starting-hand/page.js';
+} from '../../app/(default-locale)/tools/starting-hand/page.js';
 import { TOOL_FAQ_TITLE } from '../../features/tools/index.js';
 import { routeById } from '../routes.js';
 import { TITLE_QUALIFIER_SEPARATOR } from './site.js';

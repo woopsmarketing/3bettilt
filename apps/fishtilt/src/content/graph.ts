@@ -27,7 +27,7 @@
  * 눌러보고 확인해볼까요?" over tools. `RELATION_HEADING` below is the only place those
  * sentences exist.
  */
-import { APP_LOCALE_SEGMENT, DEFAULT_LOCALE, localePath } from '../lib/locale.js';
+import { APP_DEFAULT_LOCALE_GROUP, DEFAULT_LOCALE, localePath } from '../lib/locale.js';
 import { routeById, type RouteEntry } from '../lib/routes.js';
 import { ALL_CONTENT } from './registry/index.js';
 import type {
@@ -198,7 +198,7 @@ export function glossaryById(id: ContentId): GlossaryRecord | undefined {
 
 /**
  * The SITE-path prefix each kind lives under (audit §4's route map) — locale-less, like
- * `RouteEntry.sitePath`. `contentPath` puts the locale in front; nothing else reads this
+ * `RouteEntry.sitePath`. `contentPath` localises it; nothing else reads this
  * except the filesystem checks in `content.test.ts`.
  */
 export const CONTENT_PREFIX: Readonly<Record<ContentKind, string>> = {
@@ -214,15 +214,15 @@ export const CONTENT_PREFIX: Readonly<Record<ContentKind, string>> = {
  * not exist would be a dead link the moment something pointed at it.
  */
 export const CONTENT_ROUTE_TEMPLATE: Readonly<Record<ContentKind, string>> = {
-  learn: `${APP_LOCALE_SEGMENT}/learn/[slug]`,
-  blog: `${APP_LOCALE_SEGMENT}/blog/[slug]`,
-  glossary: `${APP_LOCALE_SEGMENT}/glossary/[slug]`,
-  hands: `${APP_LOCALE_SEGMENT}/hands/[hand]`,
+  learn: `${APP_DEFAULT_LOCALE_GROUP}/learn/[slug]`,
+  blog: `${APP_DEFAULT_LOCALE_GROUP}/blog/[slug]`,
+  glossary: `${APP_DEFAULT_LOCALE_GROUP}/glossary/[slug]`,
+  hands: `${APP_DEFAULT_LOCALE_GROUP}/hands/[hand]`,
 };
 
 /**
  * The path a piece WOULD live at, whether or not it exists yet — localised, like
- * `RouteEntry.path`: `'/ko/learn/pot-odds'`. This is the one place a content URL is built.
+ * `RouteEntry.path`: `'/learn/pot-odds'` (the default locale is prefixless). This is the one place a content URL is built.
  */
 export function contentPath(record: AnyContentRecord): string {
   return localePath(DEFAULT_LOCALE, `${CONTENT_PREFIX[record.kind]}/${record.slug}`);

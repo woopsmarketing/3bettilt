@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { routeById } from '../../../../lib/routes.js';
+import { routeById, ROUTES } from '../../../../lib/routes.js';
 import { contentById, hrefOfContent } from '../../../../content/graph.js';
 import { EQUITY_FAQ, toolLessonIds } from '../../../../features/tools/index.js';
 import EquityCalculatorPage, { metadata } from './page.js';
@@ -81,9 +81,7 @@ describe('/tools/equity page shell', () => {
       // `available: true`, or is not a `/tools/...` link at all (e.g. the equity lesson,
       // handled by content status rather than the route registry).
       if (href.startsWith('/tools/')) {
-        const matching = ['toolPotOdds', 'toolHandChecker', 'toolOuts', 'toolEquity']
-          .map((id) => routeById(id))
-          .find((route) => route.path === href);
+        const matching = ROUTES.find((route) => route.path === href.split(/[?#]/u)[0]);
         expect(matching?.available, href).toBe(true);
       }
     }

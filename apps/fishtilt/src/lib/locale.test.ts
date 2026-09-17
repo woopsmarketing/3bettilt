@@ -14,9 +14,11 @@ import {
   isLocale,
   localeOfPath,
   localePath,
+  localePrefixOf,
   localiseHref,
   sitePathOf,
   SUPPORTED_LOCALES,
+  type Locale,
 } from './locale.js';
 
 describe('the locale list', () => {
@@ -37,15 +39,24 @@ describe('the locale list', () => {
 });
 
 describe('localePath', () => {
-  it('prefixes a site path with the locale, and makes the root the bare prefix', () => {
-    expect(localePath('ko', '/learn/pot-odds')).toBe('/ko/learn/pot-odds');
-    expect(localePath('ko', '/')).toBe('/ko');
+  it('leaves the default locale prefixless, the root included (D-S3-23)', () => {
+    expect(localePath('ko', '/learn/pot-odds')).toBe('/learn/pot-odds');
+    expect(localePath('ko', '/')).toBe('/');
+  });
+
+  it('prefixes a non-default locale, and makes its root the bare prefix', () => {
+    // No second locale exists yet; the cast pins the future `/en` URL contract.
+    const en = 'en' as Locale;
+    expect(localePath(en, '/learn')).toBe('/en/learn');
+    expect(localePath(en, '/')).toBe('/en');
+    expect(localePath(en, '/tools/range?hero=BTN')).toBe('/en/tools/range?hero=BTN');
+    expect(localePath(en, '/?q=x')).toBe('/en?q=x');
   });
 
   it('keeps a query string and a fragment after the path', () => {
-    expect(localePath('ko', '/tools/range?hero=BTN')).toBe('/ko/tools/range?hero=BTN');
-    expect(localePath('ko', '/?q=x')).toBe('/ko?q=x');
-    expect(localePath('ko', '/learn/outs#faq')).toBe('/ko/learn/outs#faq');
+    expect(localePath('ko', '/tools/range?hero=BTN')).toBe('/tools/range?hero=BTN');
+    expect(localePath('ko', '/?q=x')).toBe('/?q=x');
+    expect(localePath('ko', '/learn/outs#faq')).toBe('/learn/outs#faq');
   });
 
   it('refuses what is not a root-relative site path', () => {
@@ -54,48 +65,64 @@ describe('localePath', () => {
     expect(() => localePath('ko', '//elsewhere.invalid/learn')).toThrow(/protocol-relative/u);
   });
 
-  it('refuses to double a prefix', () => {
+  it('refuses a path that already carries a locale, including the legacy default prefix', () => {
     expect(() => localePath('ko', '/ko/learn')).toThrow(/already carries a locale/u);
     expect(() => localePath('ko', '/ko')).toThrow(/already carries a locale/u);
   });
 });
 
-describe('localeOfPath / sitePathOf', () => {
-  it('reads the locale segment exactly, never by prefix', () => {
-    expect(localeOfPath('/ko')).toBe('ko');
-    expect(localeOfPath('/ko/learn')).toBe('ko');
-    expect(localeOfPath('/ko?q=1')).toBe('ko');
-    expect(localeOfPath('/ko-something')).toBeNull();
-    expect(localeOfPath('/korean/learn')).toBeNull();
-    expect(localeOfPath('/')).toBeNull();
-    expect(localeOfPath('/learn')).toBeNull();
-    expect(localeOfPath('/og.png')).toBeNull();
+describe('localePrefixOf / localeOfPath / sitePathOf', () => {
+  it('reads the prefix segment exactly, never by string prefix', () => {
+    expect(localePrefixOf('/ko')).toBe('ko');
+    expect(localePrefixOf('/ko/learn')).toBe('ko');
+    expect(localePrefixOf('/ko?q=1')).toBe('ko');
+    expect(localePrefixOf('/ko-something')).toBeNull();
+    expect(localePrefixOf('/korean/learn')).toBeNull();
+    expect(localePrefixOf('/')).toBeNull();
+    expect(localePrefixOf('/learn')).toBeNull();
+    expect(localePrefixOf('/og.png')).toBeNull();
+  });
+
+  it('assigns every unprefixed path to the default locale', () => {
+    expect(localeOfPath('/')).toBe(DEFAULT_LOCALE);
+    expect(localeOfPath('/learn')).toBe(DEFAULT_LOCALE);
+    expect(localeOfPath('/learn/pot-odds?x=1')).toBe(DEFAULT_LOCALE);
+    expect(localeOfPath('/korean/learn')).toBe(DEFAULT_LOCALE);
+  });
+
+  it('refuses a legacy default-locale-prefixed path: it is a redirect, not a page', () => {
+    expect(() => localeOfPath('/ko')).toThrow(/never a URL prefix/u);
+    expect(() => localeOfPath('/ko/learn')).toThrow(/never a URL prefix/u);
+    expect(() => sitePathOf('/ko/learn')).toThrow(/never a URL prefix/u);
   });
 
   it('inverts localePath', () => {
     for (const sitePath of ['/', '/learn', '/learn/pot-odds', '/tools/range?hero=BTN', '/?q=1']) {
       expect(sitePathOf(localePath('ko', sitePath))).toBe(sitePath);
     }
-    expect(() => sitePathOf('/learn')).toThrow(/supported locale/u);
   });
 });
 
 describe('localiseHref', () => {
-  it('prefixes a hand-written internal link once, and leaves everything else alone', () => {
-    expect(localiseHref('/learn/pot-odds')).toBe('/ko/learn/pot-odds');
-    expect(localiseHref('/')).toBe('/ko');
-    expect(localiseHref('/ko/learn/pot-odds')).toBe('/ko/learn/pot-odds');
+  it('localises a hand-written internal link, and leaves everything else alone', () => {
+    expect(localiseHref('/learn/pot-odds')).toBe('/learn/pot-odds');
+    expect(localiseHref('/')).toBe('/');
     expect(localiseHref('#faq')).toBe('#faq');
     expect(localiseHref('https://schema.org')).toBe('https://schema.org');
     expect(localiseHref('//cdn.invalid/x')).toBe('//cdn.invalid/x');
     expect(localiseHref('mailto:x@y.z')).toBe('mailto:x@y.z');
   });
+
+  it('refuses a legacy default-locale link instead of shipping a redirecting href', () => {
+    expect(() => localiseHref('/ko/learn/pot-odds')).toThrow(/already carries a locale/u);
+  });
 });
 
 /*
- * D-S3-02: the prefix is spelt in ONE place. Every other file derives it through
- * `localePath`, so a `/ko` literal anywhere else in shipped source is a second spelling
- * that will be wrong the day the default changes. Test files are exempt — an expectation
+ * D-S3-02 / D-S3-23: locale paths are built in ONE place. The default locale is prefixless,
+ * so a `/ko` literal anywhere in shipped source is a link to a legacy address that only
+ * redirects (the migration list in `legacyLocaleRedirects.ts` derives its prefix from
+ * `DEFAULT_LOCALE` in `next.config.ts` and spells no literal). Test files are exempt — an expectation
  * has to state the answer literally, or it is not testing anything.
  */
 const SRC_DIR = fileURLToPath(new URL('..', import.meta.url));

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { koPath, positionButtonName, visibleBodyText } from './helpers.js';
 
 /*
- * `/ko` — the front door (WP-S3-05).
+ * `/` — the front door (WP-S3-05; prefixless since D-S3-23).
  *
  * What a browser proves here that a unit test cannot: the twelve bands survive the trip
  * through a production build into prerendered HTML, every link the page ships actually

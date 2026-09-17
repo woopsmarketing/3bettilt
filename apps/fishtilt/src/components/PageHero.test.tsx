@@ -53,7 +53,7 @@ describe('PageHero — Stage 3 variants (D-S3-13)', () => {
   it('renders the meta slot between the lead and the actions', () => {
     const { container } = render(
       <PageHero title="제목" description="리드" meta={<p>입문 · 약 4분</p>}>
-        <a href="/ko/learn">배우기</a>
+        <a href="/learn">배우기</a>
       </PageHero>,
     );
     const texts = [...container.querySelectorAll('p, a')].map((el) => el.textContent);

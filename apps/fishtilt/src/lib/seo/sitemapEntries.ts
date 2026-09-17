@@ -39,7 +39,7 @@ import { hreflangAlternates } from './metadata.js';
 import { indexableContent, indexableRoutes } from './policy.js';
 import { absoluteUrl } from './site.js';
 
-/** Localised root-relative paths (`/ko/…`), routes first (registry order), then content
+/** Localised root-relative paths (`/`, `/learn/…` — prefixless default locale), routes first (registry order), then content
  *  (registry order). */
 export function sitemapPaths(
   routes: readonly RouteEntry[] = ROUTES,

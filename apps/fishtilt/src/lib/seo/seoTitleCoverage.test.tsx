@@ -13,30 +13,30 @@ import type { Metadata } from 'next';
 import { describe, expect, it } from 'vitest';
 import { ALL_CONTENT } from '../../content/registry/index.js';
 import { contentPath } from '../../content/graph.js';
-import { HREFLANG, DEFAULT_LOCALE } from '../locale.js';
-import { routeById, type RouteEntry } from '../routes.js';
+import { HREFLANG, DEFAULT_LOCALE, localePath } from '../locale.js';
+import type { RouteEntry } from '../routes.js';
 import { canonicalUrl } from './canonical.js';
 import { contentMetadata } from './metadata.js';
 import { indexableContent, indexableRoutes } from './policy.js';
 import { SITE_NAME, TITLE_BRAND_SEPARATOR, titleHead } from './site.js';
 import { sitemapPaths } from './sitemapEntries.js';
-import { metadata as homeMeta } from '../../app/[locale]/page.js';
-import { metadata as learnMeta } from '../../app/[locale]/learn/page.js';
-import { metadata as toolsMeta } from '../../app/[locale]/tools/page.js';
-import { metadata as rangeMeta } from '../../app/[locale]/tools/range/page.js';
-import { metadata as startingHandMeta } from '../../app/[locale]/tools/starting-hand/page.js';
-import { metadata as equityMeta } from '../../app/[locale]/tools/equity/page.js';
-import { metadata as potOddsMeta } from '../../app/[locale]/tools/pot-odds/page.js';
-import { metadata as handCheckerMeta } from '../../app/[locale]/tools/hand-checker/page.js';
-import { metadata as outsMeta } from '../../app/[locale]/tools/outs/page.js';
-import { metadata as practiceMeta } from '../../app/[locale]/practice/page.js';
-import { metadata as rangeQuizMeta } from '../../app/[locale]/practice/range-quiz/page.js';
-import { metadata as handRankingQuizMeta } from '../../app/[locale]/practice/hand-ranking-quiz/page.js';
-import { metadata as startingHandQuizMeta } from '../../app/[locale]/practice/starting-hand-quiz/page.js';
-import { metadata as glossaryMeta } from '../../app/[locale]/glossary/page.js';
-import { metadata as blogMeta } from '../../app/[locale]/blog/page.js';
-import { metadata as handsMeta } from '../../app/[locale]/hands/page.js';
-import { metadata as aboutMeta } from '../../app/[locale]/about/page.js';
+import { metadata as homeMeta } from '../../app/(default-locale)/page.js';
+import { metadata as learnMeta } from '../../app/(default-locale)/learn/page.js';
+import { metadata as toolsMeta } from '../../app/(default-locale)/tools/page.js';
+import { metadata as rangeMeta } from '../../app/(default-locale)/tools/range/page.js';
+import { metadata as startingHandMeta } from '../../app/(default-locale)/tools/starting-hand/page.js';
+import { metadata as equityMeta } from '../../app/(default-locale)/tools/equity/page.js';
+import { metadata as potOddsMeta } from '../../app/(default-locale)/tools/pot-odds/page.js';
+import { metadata as handCheckerMeta } from '../../app/(default-locale)/tools/hand-checker/page.js';
+import { metadata as outsMeta } from '../../app/(default-locale)/tools/outs/page.js';
+import { metadata as practiceMeta } from '../../app/(default-locale)/practice/page.js';
+import { metadata as rangeQuizMeta } from '../../app/(default-locale)/practice/range-quiz/page.js';
+import { metadata as handRankingQuizMeta } from '../../app/(default-locale)/practice/hand-ranking-quiz/page.js';
+import { metadata as startingHandQuizMeta } from '../../app/(default-locale)/practice/starting-hand-quiz/page.js';
+import { metadata as glossaryMeta } from '../../app/(default-locale)/glossary/page.js';
+import { metadata as blogMeta } from '../../app/(default-locale)/blog/page.js';
+import { metadata as handsMeta } from '../../app/(default-locale)/hands/page.js';
+import { metadata as aboutMeta } from '../../app/(default-locale)/about/page.js';
 
 /** Every indexable static route's own `metadata` export, by route id. */
 const STATIC_METADATA: Readonly<Record<string, Metadata>> = {
@@ -181,7 +181,7 @@ describe('SEO metadata coverage — every sitemap page', () => {
 describe('SEO titles — representative pages', () => {
   const byPath = new Map(PAGES.map((page) => [page.path, page]));
   const title = (sitePath: string): string => {
-    const path = sitePath === '/' ? routeById('home').path : `${routeById('home').path}${sitePath}`;
+    const path = localePath(DEFAULT_LOCALE, sitePath);
     const page = byPath.get(path);
     if (page === undefined) throw new Error(`not in the sitemap: ${path}`);
     return titleOf(page);

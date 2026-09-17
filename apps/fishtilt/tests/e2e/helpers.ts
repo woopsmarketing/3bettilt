@@ -45,11 +45,11 @@ export function matrixCellName(key: string, membership = ''): RegExp {
 }
 
 /**
- * Stage 3 (D-S3-01/02): every page lives under a locale segment, `/ko/...`. A spec never
- * spells that prefix — it states the SITE path it means (`'/learn/pot-odds'`) and this
- * turns it into the URL a visitor actually loads, through the same `localePath` the app
- * builds every href from. `page.goto(koPath('/'))` is `/ko`; the bare `/` is the one
- * redirect and is asserted once, in `locale.spec.ts`.
+ * D-S3-02/23: a spec states the SITE path it means (`'/learn/pot-odds'`) and this turns it
+ * into the URL a visitor actually loads, through the same `localePath` the app builds every
+ * href from. The default locale is prefixless, so `koPath('/')` is `/` and
+ * `koPath('/learn')` is `/learn`; the legacy `/ko/*` redirects are asserted once, in
+ * `locale.spec.ts`.
  *
  * `localePath` keeps a query string, so `koPath('/tools/range?hero=BTN')` is the deep link.
  */

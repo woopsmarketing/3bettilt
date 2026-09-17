@@ -75,7 +75,7 @@ describe('buildBlogHub', () => {
     expect(names.slice(0, 1 + hub.secondary.length)).toEqual(
       [hub.featured, ...hub.secondary].map((a) => a?.title),
     );
-    for (const item of items) expect(item.path).toMatch(/^\/ko\/blog\//u);
+    for (const item of items) expect(item.path).toMatch(/^\/blog\/[^/]+$/u);
   });
 
   it('degrades to nothing featured on an empty registry rather than inventing', () => {

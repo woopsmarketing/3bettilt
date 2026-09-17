@@ -75,7 +75,7 @@ export function formatTitle(title: string): string {
 }
 
 export interface PageMetadataInput {
-  /** Localised root-relative path of the page (`'/ko/learn'` — a `RouteEntry.path` or a
+  /** Localised root-relative path of the page (`'/learn'` — a `RouteEntry.path` or a
    *  `contentPath`). The canonical and the hreflang set are derived from it. */
   readonly path: string;
   /** Korean page title WITHOUT the site suffix — `formatTitle` adds it. */
@@ -108,9 +108,10 @@ const OG_IMAGE = {
  * the caller that knows that passes it here. Because every edition computes the same set from
  * the same list, the annotations are reciprocal by construction.
  *
- * `x-default` names the default locale's edition while `/` redirects to it (D-S3-03). When a
- * real language selector replaces that redirect, this is the one line that points `x-default`
- * at `/` instead (`docs/3BETTILT_MULTILINGUAL_ARCHITECTURE.md`).
+ * `x-default` names the default locale's edition. The default locale is prefixless (D-S3-23),
+ * so for Korean that is the same prefixless canonical the page itself carries, and a future
+ * `/en/…` edition would point its `x-default` at the prefixless Korean page too
+ * (`docs/3BETTILT_MULTILINGUAL_ARCHITECTURE.md`).
  */
 export function hreflangAlternates(
   canonical: string,
@@ -118,9 +119,6 @@ export function hreflangAlternates(
   editions?: readonly Locale[],
 ): Record<string, string> {
   const locale = localeOfPath(path);
-  if (locale === null) {
-    throw new Error(`hreflangAlternates expects a localised path, got: ${path}`);
-  }
   const available = editions ?? [locale];
   if (!available.includes(locale)) {
     throw new Error(`hreflangAlternates: ${path} is not listed among its own editions`);
@@ -167,7 +165,7 @@ export function pageMetadata(input: PageMetadataInput): Metadata {
       type: input.ogType ?? 'website',
       url,
       siteName: SITE_NAME,
-      locale: OPEN_GRAPH_LOCALE[localeOfPath(input.path) ?? DEFAULT_LOCALE],
+      locale: OPEN_GRAPH_LOCALE[localeOfPath(input.path)],
       title,
       description: input.description,
       images: [image],

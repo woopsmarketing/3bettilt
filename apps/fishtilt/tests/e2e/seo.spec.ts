@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { DEFAULT_LOCALE, HREFLANG } from '../../src/lib/locale.js';
+import { DEFAULT_LOCALE, HREFLANG, sitePathOf } from '../../src/lib/locale.js';
 import { koPath } from './helpers.js';
 
 /*
@@ -59,7 +59,27 @@ const ALLOWED_NESTED_TYPES = new Set([
   'DefinedTerm',
   'DefinedTermSet',
   'WebSite',
+  // Image SEO: an `Article`'s featured visual, and ONLY as that `Article`'s own `image` —
+  // `nestedImageObjectsInPlace` below pins the placement, not just the name.
+  'ImageObject',
 ]);
+
+/**
+ * `ImageObject` is vetted in exactly one position: the `image` of a top-level `Article`. Returns
+ * true when every `ImageObject` inside `block` is that one (so a stray `ImageObject` anywhere
+ * else in the tree — or two — still fails, while a top-level `ImageObject` block already fails
+ * `ALLOWED_TYPES`).
+ */
+function nestedImageObjectsInPlace(block: Record<string, unknown>): boolean {
+  const count = typesIn(block).filter((type) => type === 'ImageObject').length;
+  const image = block['image'] as Record<string, unknown> | undefined;
+  const articleImage =
+    block['@type'] === 'Article' &&
+    typeof image === 'object' &&
+    image !== null &&
+    image['@type'] === 'ImageObject';
+  return count === (articleImage ? 1 : 0);
+}
 
 interface Sitemap {
   readonly origin: string;
@@ -85,7 +105,7 @@ async function readSitemap(request: APIRequestContext): Promise<Sitemap> {
   };
 }
 
-/** The canonical URL for a path — the root has no trailing slash. */
+/** The canonical URL for a path — the root has no trailing slash (Next renders it so). */
 function canonicalFor(origin: string, path: string): string {
   return path === '/' ? origin : origin + path;
 }
@@ -189,8 +209,7 @@ function collectionRows(block: Record<string, unknown>): { name: string; url: st
 
 /** `koPath('/learn/pot-odds')` -> `koPath('/learn')`. The hub a content page is listed on. */
 function hubOf(path: string): string {
-  const site = path.slice(koPath('/').length);
-  return koPath(`/${site.split('/')[1] ?? ''}`);
+  return koPath(`/${sitePathOf(path).split('/')[1] ?? ''}`);
 }
 
 test.describe('SEO foundation', () => {
@@ -271,7 +290,7 @@ test.describe('SEO foundation', () => {
       expect(html, `${path} has no og:title`).toContain('property="og:title"');
       // Content pages carry their own card (`/og/<kind>/<slug>.png`); every other page the
       // shared `/og.png`.
-      const card = /^\/ko\/(learn|blog|glossary|hands)\/([a-z0-9-]+)$/u.exec(path);
+      const card = /^\/(learn|blog|glossary|hands)\/([a-z0-9-]+)$/u.exec(sitePathOf(path));
       const image = card === null ? '/og.png' : `/og/${card[1]}/${card[2]}.png`;
       expect(html, `${path} has no og:image`).toContain(`${origin}${image}`);
       expect(html, `${path} has no og:url`).toContain(`content="${canonicalFor(origin, path)}"`);
@@ -340,6 +359,10 @@ test.describe('SEO foundation', () => {
             `${path} emits an unexpected nested @type: ${nested}`,
           ).toBe(true);
         }
+        expect(
+          nestedImageObjectsInPlace(block),
+          `${path}: ImageObject may appear only as the image of an Article block`,
+        ).toBe(true);
       }
     }
   });
@@ -559,13 +582,37 @@ test.describe('SEO foundation', () => {
     }
   });
 
-  test('WebApplication markup appears on tool pages and nowhere else', async ({ request }) => {
+  /*
+   * The pages that ARE applications: the six interactive tools under `/tools` and the three
+   * practice quizzes (the quiz JSON-LD decision). Listed, not inferred from a prefix, so a new
+   * page under either section has to be added here on purpose. The hubs (`/tools`, `/practice`)
+   * are lists, not applications, and every other page must carry none.
+   */
+  const WEB_APPLICATION_PATHS = new Set(
+    [
+      '/tools/range',
+      '/tools/starting-hand',
+      '/tools/equity',
+      '/tools/pot-odds',
+      '/tools/hand-checker',
+      '/tools/outs',
+      '/practice/hand-ranking-quiz',
+      '/practice/range-quiz',
+      '/practice/starting-hand-quiz',
+    ].map(koPath),
+  );
+
+  test('WebApplication markup appears on the 6 tools and 3 quizzes and nowhere else', async ({
+    request,
+  }) => {
     const { paths } = await readSitemap(request);
+    for (const expected of WEB_APPLICATION_PATHS) {
+      expect(paths, `${expected} must be an indexed page`).toContain(expected);
+    }
     for (const { path, html } of await fetchAll(request, paths)) {
-      const hasApp = jsonLdBlocks(html).some((block) => block['@type'] === 'WebApplication');
-      // A tool page is a page UNDER `/tools`; the hub itself is a list, not an application.
-      expect(hasApp, `${path}: WebApplication markup does not match the page kind`).toBe(
-        path.startsWith(`${koPath('/tools')}/`),
+      const apps = jsonLdBlocks(html).filter((block) => block['@type'] === 'WebApplication');
+      expect(apps.length, `${path}: WebApplication markup does not match the page kind`).toBe(
+        WEB_APPLICATION_PATHS.has(path) ? 1 : 0,
       );
     }
   });
@@ -691,14 +738,14 @@ test.describe('SEO foundation', () => {
   /* ------------------------------------------------------------- WP-S3-16 additions */
 
   /**
-   * The sitemap paths grouped by route family — `/ko/learn/*`, `/ko/tools/*`, the hubs, the
+   * The sitemap paths grouped by route family — `/learn/*`, `/tools/*`, the hubs, the
    * root — so a rule can be shown to hold on a representative of EVERY family rather than
    * on the pages that happen to be first. Derived from the sitemap, never listed.
    */
   function familyOf(path: string): string {
-    const site = path.slice(koPath('/').length);
+    const site = sitePathOf(path);
     const [, section = '', leaf] = site.split('/');
-    if (site === '') return 'home';
+    if (site === '/') return 'home';
     return leaf === undefined ? `${section}-hub` : section;
   }
 
@@ -795,7 +842,9 @@ test.describe('SEO foundation', () => {
   test('a page that does not exist is noindex with no canonical and no hreflang', async ({
     request,
   }) => {
-    for (const path of [koPath('/learn/no-such-lesson'), '/learn', '/xx/learn']) {
+    // D-S3-23: `/learn` is a page now; an unknown slug, a never-existing legacy `/ko` address
+    // and an unsupported locale are the 404s.
+    for (const path of [koPath('/learn/no-such-lesson'), '/ko/no-such-page', '/en/learn', '/xx/learn']) {
       const response = await request.get(path);
       expect(response.status(), path).toBe(404);
       const html = await response.text();

@@ -142,8 +142,9 @@ const TYPOGRAPHY: MDXComponents = {
     />
   ),
 
-  // Prose writes internal links locale-less (`[레슨](/learn/pot-odds)`); the locale prefix
-  // is added here, once, so `content/**` never spells it (D-S3-02, `localiseHref`).
+  // Prose writes internal links locale-less (`[레슨](/learn/pot-odds)`); the locale is
+  // applied here, once, so `content/**` never spells it (D-S3-02, `localiseHref`; the
+  // default locale stays prefixless, D-S3-23).
   a: ({ href, ...props }) => (
     <a
       className="text-brand-500 underline underline-offset-4 outline-none hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
